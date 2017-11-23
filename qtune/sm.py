@@ -69,6 +69,7 @@ class BasicDQD(Experiment):
     def measurements(self) -> Tuple[Measurement, ...]:
         return self.default_line_scan, self.default_charge_scan
 
+    @property
     def gate_voltages(self) -> Tuple[GateIdentifier, ...]:
         return 'T', 'N', 'bla'
 
@@ -91,6 +92,10 @@ class LegacyDQD(BasicDQD):
         super().__init__(matlab_instance)
 
         self.default_lead_scan = Measurement('lead_scan')
+
+    @property
+    def measurements(self) -> Tuple[Measurement, ...]:
+        return *super().measurements, self.default_lead_scan
 
     def measure(self,
                 gate_voltages: pandas.Series,
