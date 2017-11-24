@@ -89,5 +89,8 @@ setuptools.setup(
     long_description=read('README'),
     install_requires=get_requirements(),
 
+    setup_requires=['pytest-runner'] + get_requirements(),
+    tests_require=['pytest'] + get_requirements(),
+
     cmdclass={'install_matlab': MatlabInstall}
 )
