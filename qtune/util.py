@@ -1,4 +1,5 @@
 import itertools
+import datetime
 from typing import Iterable, Any, Callable
 
 
@@ -16,3 +17,7 @@ def static_vars(**kwargs) -> Callable[[Callable], Callable]:
             setattr(func, key, value)
         return func
     return decorate
+
+
+def time_string() -> str:
+    return datetime.datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
