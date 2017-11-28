@@ -1,6 +1,9 @@
 function [ voltages ] = read_gate_voltages( )
 %UNTITLED3 Summary of this function goes here
 %   Detailed explanation goes here
+global tunedata
+global smdata
+
 gate_voltages = cell2mat(smget({smdata.channels(tunedata.gatechan).name}));
 voltages=struct;
 voltages.SB=gate_voltages(1);
