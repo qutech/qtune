@@ -7,13 +7,19 @@ import sys
 from typing import Tuple, Sequence
 
 import matlab.engine
-import pandas
+import pd as pd
+import numpy as np
 
 from qtune.experiment import *
-
+from qtune.util import time_string
 
 def redirect_output(func):
     return functools.partial(func, stdout=sys.stdout, stderr=sys.stderr)
+
+
+def to_malab(obj):
+    if isinstance(obj, np.ndarray):
+        return matlab.double(obj.tolist())
 
 
 class SpecialMeasureMatlab:
@@ -37,11 +43,11 @@ class SpecialMeasureMatlab:
             else:
                 self._engine = matlab.engine.connect_matlab(connect)
 
-        if 'smdata' not in self.engine.workspace:
+        if not self.engine.exist('smdata'):
             if special_measure_setup_script:
                 getattr(self._engine, special_measure_setup_script)()
 
-                if 'smdata' not in self.engine.workspace:
+                if not self.engine.exist('smdata'):
                     raise RuntimeError('Special measure setup script did not create smdata')
 
     @property
@@ -74,14 +80,14 @@ class BasicDQD(Experiment):
         return 'T', 'N', 'bla'
 
     def measure(self,
-                gate_voltages: pandas.Series,
-                measurement: Measurement) -> pandas.Series:
+                gate_voltages: pd.Series,
+                measurement: Measurement) -> pd.Series:
 
         if measurement == 'line_scan':
-            return pandas.Series()
+            return pd.Series()
 
         elif measurement == 'charge_scan':
-            return pandas.Series()
+            return pd.Series()
 
         else:
             raise ValueError('Unknown measurement: {}'.format(measurement))
@@ -95,12 +101,47 @@ class LegacyDQD(BasicDQD):
 
     @property
     def measurements(self) -> Tuple[Measurement, ...]:
-        return *super().measurements, self.default_lead_scan
+        return (*super().measurements, self.default_lead_scan)
 
     def measure(self,
-                gate_voltages: pandas.Series,
+                gate_voltages: pd.Series,
                 measurement: Measurement):
         if measurement == 'lead_scan':
-            return pandas.Series()
+            return pd.Series()
         else:
             return super().measure(gate_voltages, measurement)
+        
+        
+class PrototypeDQD(Experiment):
+    def __init__(self, matlab_instance: SpecialMeasureMatlab):
+        self._matlab = matlab_instance
+
+        self.default_line_scan = Measurement('line_scan',
+                                             center=0, range=3e-3, gate='RFA', N_points=1280, ramptime=.0005, N_average=3, AWGorDecaDAC='AWG', file_name=time_string())
+
+        self.default_charge_scan = Measurement('charge_scan',
+                                               range_x=(-4., 4.), range_y=(-4., 4.), resolution=(50, 50))
+
+    @property
+    def measurements(self) -> Tuple[Measurement, ...]:
+        return (self.default_line_scan,)
+
+    @property
+    def gate_voltage_names(self) -> Tuple:
+        return tuple(sorted(self._matlab.engine.atune.read_gate_voltages().keys()))
+
+    def read_gate_voltages(self):
+        return pd.Series(self._matlab.engine.atune.read_gate_voltages()).sort_index()
+
+    def set_gate_voltages(self, new_gate_voltages: pd.Series):
+        self._matlab.engine.atune.set_gates_v_pretuned(dict(new_gate_voltages))
+
+    def measure(self,
+                gate_voltages: pd.Series,
+                measurement: Measurement) -> pd.Series:
+
+        if measurement == 'line_scan':
+            return self._matlab.engine.atune.PythonChargeLineScan(measurement.parameter)
+
+        else:
+            raise ValueError('Unknown measurement: {}'.format(measurement))
