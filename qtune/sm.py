@@ -56,7 +56,7 @@ class SpecialMeasureMatlab:
     def _add_qtune_to_path(self, silently_overwrite_path):
         try:
             with io.StringIO() as devnull:
-                qtune_path = os.path.split(self.engine.qtune.find_qtune(stderr=devnull, stdout=devnull))[:-1]
+                qtune_path = self.engine.qtune.find_qtune(stderr=devnull, stdout=devnull)
 
             if not os.path.samefile(qtune_path, matlab_files_path()):
                 if silently_overwrite_path is False:
@@ -75,7 +75,9 @@ class SpecialMeasureMatlab:
         #  ensure everything worked
         try:
             with io.StringIO() as devnull:
-                qtune_path = os.path.abspath(os.path.split(self.engine.qtune.find_qtune(stderr=devnull, stdout=devnull))[:-1])
+                self.engine.qtune.find_qtune(stderr=devnull, stdout=devnull)
+        except matlab.engine.MatlabExecutionError as e:
+            raise RuntimeError('Could not add +qtune to MATLAB path') from e
 
 
     def to_matlab(self, obj):

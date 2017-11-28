@@ -74,6 +74,7 @@ setuptools.setup(
     keywords="autotune quantum",
     url="https://git.rwth-aachen.de/qutech/python-atune",
     packages=['qtune'],
+    package_data={'qtune': ['qtune/MATLAB/*.m']},
     long_description=read('README'),
     install_requires=get_requirements()
 )
