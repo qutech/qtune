@@ -5,6 +5,7 @@ import io
 import functools
 import sys
 from typing import Tuple, Sequence
+import os.path
 
 import matlab.engine
 import pd as pd
@@ -17,13 +18,12 @@ def redirect_output(func):
     return functools.partial(func, stdout=sys.stdout, stderr=sys.stderr)
 
 
-def to_malab(obj):
-    if isinstance(obj, np.ndarray):
-        return matlab.double(obj.tolist())
+def matlab_files_path():
+    return os.path.join(os.path.dirname(__file__), 'MATLAB')
 
 
 class SpecialMeasureMatlab:
-    def __init__(self, connect=None, gui=None, special_measure_setup_script=None):
+    def __init__(self, connect=None, gui=None, special_measure_setup_script=None, silently_overwrite_path=None):
         if not connect:
             # start new instance
             gui = True if gui is None else gui
@@ -42,13 +42,65 @@ class SpecialMeasureMatlab:
                 self._engine = matlab.engine.connect_matlab()
             else:
                 self._engine = matlab.engine.connect_matlab(connect)
+        self._init_special_measure(special_measure_setup_script)
+        self._add_qtune_to_path(silently_overwrite_path)
 
+    def _init_special_measure(self, special_measure_setup_script):
         if not self.engine.exist('smdata'):
             if special_measure_setup_script:
                 getattr(self._engine, special_measure_setup_script)()
 
                 if not self.engine.exist('smdata'):
                     raise RuntimeError('Special measure setup script did not create smdata')
+
+    def _add_qtune_to_path(self, silently_overwrite_path):
+        try:
+            with io.StringIO() as devnull:
+                qtune_path = os.path.split(self.engine.qtune.find_qtune(stderr=devnull, stdout=devnull))[:-1]
+
+            if not os.path.samefile(qtune_path, matlab_files_path()):
+                if silently_overwrite_path is False:
+                    return
+
+                if silently_overwrite_path is None:
+                    warn_text = 'Found other qtune on MATLAB path: {}\n Will override with {}'.format(qtune_path, matlab_files_path())
+                    warnings.warn(warn_text, UserWarning)
+
+                self.engine.addpath(matlab_files_path())
+
+        except matlab.engine.MatlabExecutionError:
+            #  not on path
+            self.engine.addpath(matlab_files_path())
+
+        #  ensure everything worked
+        try:
+            with io.StringIO() as devnull:
+                qtune_path = os.path.abspath(os.path.split(self.engine.qtune.find_qtune(stderr=devnull, stdout=devnull))[:-1])
+
+
+    def to_matlab(self, obj):
+        if isinstance(obj, np.ndarray):
+            raw = bytes(obj)
+            obj_type_str = str(obj.dtype)
+            conversions = {'float64': 'double',
+                           'float32': 'single',
+                           'bool': 'logical',
+                           'int32': 'int32',
+                           'uint64': 'uint64'}
+            if obj_type_str in conversions:
+                casted = self.engine.typecast(raw, conversions[obj_type_str])
+            else:
+                raise NotImplementedError('{} to MATLAB conversion'.format(obj.dtype))
+
+            shape = tuple(reversed(obj.shape))
+            if len(shape) == 1:
+                shape = shape + (1,)
+
+            casted = self.engine.reshape(casted, *shape)
+
+            return self.engine.transpose(casted)
+        else:
+            raise NotImplementedError('To MATLAB conversion', obj)
 
     @property
     def engine(self):
