@@ -2,6 +2,7 @@ import subprocess
 import setuptools
 import os.path
 import re
+import sys
 
 from pip.req import parse_requirements
 
@@ -23,43 +24,53 @@ def get_version():
         raise RuntimeError('Could not extract version from {}'.format(get_file('qtune', '__init__.py')))
 
 
-def is_matlab_engine_installed():
-    try:
-        import matlab.engine
-        return True
-    except ImportError:
-        return False
+class MatlabInstall(setuptools.Command):
+    description = "Install MATLAB engine"
+    user_options = [('matlabroot=', None, 'path to MATLAB version to install')]
 
+    @staticmethod
+    def is_engine_installed():
+        try:
+            import matlab.engine
+            return True
+        except ImportError:
+            return False
 
-def find_matlab_engine_installer_dir():
-    p = subprocess.Popen(['where', 'matlab'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    out, err = p.communicate(timeout=1)
+    @staticmethod
+    def find_matlabroot():
+        p = subprocess.Popen(['where', 'matlab'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = p.communicate(timeout=1)
 
-    if p.returncode:
-        raise RuntimeError('Could not locate matlab', str(err, 'utf-8'))
-    else:
-        matlab_root = os.path.dirname(str(out, 'utf-8').splitlines()[0])
+        if p.returncode:
+            raise RuntimeError('Could not locate matlab', str(err, 'utf-8'))
+        else:
+            return os.path.dirname(str(out, 'utf-8').splitlines()[0])
 
-        matlab_engine_dir = os.path.join(matlab_root, 'extern', 'engines', 'python')
+    def get_installer_dir(self):
+        return os.path.join(self.matlabroot, 'extern', 'engines', 'python')
 
-        matlab_engine_installer = os.path.join(matlab_engine_dir, 'setup.py')
-        if not os.path.exists(matlab_engine_installer):
-            raise RuntimeError('Could not find matlab engine installer')
+    def get_installer_script(self):
+        return os.path.join(self.get_installer_dir(), 'setup.py')
 
-        return matlab_engine_dir
+    def initialize_options(self):
+        self.matlabroot = None
 
+    def finalize_options(self):
+        if self.matlabroot:
+            assert os.path.exists(self.matlabroot), 'Provided MATLAB root path does not exist'
+        else:
+            self.matlabroot = self.find_matlabroot()
 
-def install_matlab():
-    if not is_matlab_engine_installed():
-        matlab_installer_dir = find_matlab_engine_installer_dir()
+        assert os.path.isfile(self.get_installer_script()), '{} does not exist'.format(self.get_installer_script())
 
-        matlab_engine_installer = os.path.join(matlab_installer_dir, 'setup.py')
+    def run(self):
+        if not self.is_engine_installed():
+            install_process = subprocess.Popen([sys.executable, self.get_installer_script(), 'install'],
+                                               cwd=self.get_installer_dir())
+            install_process.communicate()
 
-        install_process = subprocess.Popen(['python', matlab_engine_installer, 'install'], cwd=matlab_installer_dir)
-        install_process.communicate()
-
-        if install_process.returncode:
-            raise RuntimeError('Error while installing matlab engine')
+            if install_process.returncode:
+                raise RuntimeError('Error while installing matlab engine')
 
 
 def get_requirements():
@@ -75,5 +86,7 @@ setuptools.setup(
     url="https://git.rwth-aachen.de/qutech/python-atune",
     packages=['qtune'],
     long_description=read('README'),
-    install_requires=get_requirements()
+    install_requires=get_requirements(),
+
+    cmdclass={'install_matlab': MatlabInstall}
 )
