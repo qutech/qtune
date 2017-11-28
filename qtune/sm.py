@@ -104,3 +104,49 @@ class LegacyDQD(BasicDQD):
             return pandas.Series()
         else:
             return super().measure(gate_voltages, measurement)
+        
+        
+class PrototypeDQD(Experiment):
+    def __init__(self, matlab_instance: SpecialMeasureMatlab):
+        self._matlab = matlab_instance
+
+        self.default_line_scan = Measurement('line_scan',
+                                             center=0, range=3e-3, gate='RFA', N_points=1280, ramptime=.0005, N_average=3, AWGorDecaDAC='AWG', file_name=str(now))
+ #       self.default_charge_scan = Measurement('charge_scan',
+ #                                              range_x=(-4., 4.), range_y=(-4., 4.), resolution=(50, 50))
+
+    @property
+    def measurements(self) -> Tuple[Measurement, ...]:
+        return self.default_line_scan#, self.default_charge_scan
+
+    @property
+    def gate_voltages(self) -> Tuple[GateIdentifier, ...]:
+        return self.gate_voltages
+    
+    @gate_voltages.setter
+    def gate_voltages(self, new_gate_voltages):
+        self.gate_voltages=new_gate_voltages 
+
+# gate_voltages is supposed to be a dictionary of the form{"SB" : value, "BB" : value, "T" : v, "N" : v, "SA" : v, "BA" : v }
+        
+    def read_gate_voltages(self):
+        voltages = util.mat2py(atune.read_gate_voltages())
+        gate_voltages={"SA" : voltages.SA, "BA" : voltages.BA, "T" : voltages.T, "N" : voltages.N, "SB" : voltages.SB, "BB" : voltages.BB }
+        self.gate_voltages=gate_voltages
+        
+        
+    def set_gate_voltages(self, new_gate_voltages):
+        self.gate_voltages=new_gate_voltages
+        mat_voltages=util.py2mat(np.array(new_gate_voltages["S1"], np.array(new_gate_voltages["B1"], np.array(new_gate_voltages["T"], np.array(new_gate_voltages["N"], np.array(new_gate_voltages["S2"], np.array(new_gate_voltages["B2"], ))
+        atune.set_gates_v_pretuned(mat_voltages)
+
+
+    def measure(self,
+                gate_voltages: pandas.Series,
+                measurement: Measurement) -> pandas.Series:
+
+        if measurement == 'line_scan':
+            return atune.PythonChargeLineScan(measurement.center, measurement.range, measurement.gate, measurememt.N_points, measurement.ramptime, measurement.N_average, measurement.AWGorDecaDAC, measurement.file_name)
+
+        else:
+            raise ValueError('Unknown measurement: {}'.format(measurement))
