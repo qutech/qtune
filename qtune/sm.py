@@ -7,7 +7,7 @@ import sys
 from typing import Tuple, Sequence
 
 import matlab.engine
-import pd as pd
+import pandas as pd
 import numpy as np
 
 from qtune.experiment import *
