@@ -4,7 +4,9 @@ import warnings
 import io
 import functools
 import sys
-from typing import Tuple, Sequence
+from typing import Tuple, Sequence, Union
+import os.path
+import weakref
 
 import matlab.engine
 import pandas as pd
@@ -17,38 +19,112 @@ def redirect_output(func):
     return functools.partial(func, stdout=sys.stdout, stderr=sys.stderr)
 
 
-def to_malab(obj):
-    if isinstance(obj, np.ndarray):
-        return matlab.double(obj.tolist())
+def matlab_files_path():
+    return os.path.join(os.path.dirname(__file__), 'MATLAB')
 
 
 class SpecialMeasureMatlab:
-    def __init__(self, connect=None, gui=None, special_measure_setup_script=None):
+    connected_engines = weakref.WeakValueDictionary()
+    """Keeps track of all connected engines as matlab.engine does not allow to connect to the same engine twice."""
+
+    def __init__(self, connect=None, gui=None, special_measure_setup_script=None, silently_overwrite_path=None):
         if not connect:
             # start new instance
             gui = True if gui is None else gui
-
-            if gui:
-                self._engine = matlab.engine.start_matlab('-desktop')
-            else:
-                self._engine = matlab.engine.start_matlab('-nodesktop')
+            self._engine = self._start_engine(gui)
 
         else:
             if gui is not None:
                 warnings.warn('gui switch was set but a connection to already existing matlab session was requested',
                               UserWarning)
+            self._engine = self._connect_to_engine(connect)
 
-            if connect is True:
-                self._engine = matlab.engine.connect_matlab()
-            else:
-                self._engine = matlab.engine.connect_matlab(connect)
+        self._init_special_measure(special_measure_setup_script)
+        self._add_qtune_to_path(silently_overwrite_path)
 
+    @classmethod
+    def _start_engine(cls, gui: bool) -> matlab.engine.MatlabEngine:
+        args = '-desktop' if gui else '-nodesktop'
+        engine = matlab.engine.start_matlab(args)
+        cls.connected_engines[int(engine.feature('getpid'))] = engine
+        return engine
+
+    @classmethod
+    def _connect_to_engine(cls, connect: Union[bool, str]) -> matlab.engine.MatlabEngine:
+        if connect is False:
+            raise ValueError('False is not a valid argument')
+
+        elif connect is True:
+            try:
+                return next(cls.connected_engines.values())
+            except StopIteration:
+                engine = matlab.engine.connect_matlab()
+        else:
+            try:
+                return cls.connected_engines[connect]
+            except KeyError:
+                engine = matlab.engine.connect_matlab(connect)
+        cls.connected_engines[engine.matlab.engine.engineName()] = engine
+        return engine
+
+    def _init_special_measure(self, special_measure_setup_script):
         if not self.engine.exist('smdata'):
             if special_measure_setup_script:
                 getattr(self._engine, special_measure_setup_script)()
 
                 if not self.engine.exist('smdata'):
                     raise RuntimeError('Special measure setup script did not create smdata')
+
+    def _add_qtune_to_path(self, silently_overwrite_path):
+        try:
+            with io.StringIO() as devnull:
+                qtune_path = self.engine.qtune.find_qtune(stderr=devnull, stdout=devnull)
+
+            if not os.path.samefile(qtune_path, matlab_files_path()):
+                if silently_overwrite_path is False:
+                    return
+
+                if silently_overwrite_path is None:
+                    warn_text = 'Found other qtune on MATLAB path: {}\n Will override with {}'.format(qtune_path, matlab_files_path())
+                    warnings.warn(warn_text, UserWarning)
+
+                self.engine.addpath(matlab_files_path())
+
+        except matlab.engine.MatlabExecutionError:
+            #  not on path
+            self.engine.addpath(matlab_files_path())
+
+        #  ensure everything worked
+        try:
+            with io.StringIO() as devnull:
+                self.engine.qtune.find_qtune(stderr=devnull, stdout=devnull)
+        except matlab.engine.MatlabExecutionError as e:
+            raise RuntimeError('Could not add +qtune to MATLAB path') from e
+
+
+    def to_matlab(self, obj):
+        if isinstance(obj, np.ndarray):
+            raw = bytes(obj)
+            obj_type_str = str(obj.dtype)
+            conversions = {'float64': 'double',
+                           'float32': 'single',
+                           'bool': 'logical',
+                           'int32': 'int32',
+                           'uint64': 'uint64'}
+            if obj_type_str in conversions:
+                casted = self.engine.typecast(raw, conversions[obj_type_str])
+            else:
+                raise NotImplementedError('{} to MATLAB conversion'.format(obj.dtype))
+
+            shape = tuple(reversed(obj.shape))
+            if len(shape) == 1:
+                shape = shape + (1,)
+
+            casted = self.engine.reshape(casted, *shape)
+
+            return self.engine.transpose(casted)
+        else:
+            raise NotImplementedError('To MATLAB conversion', obj)
 
     @property
     def engine(self):
