@@ -4,8 +4,9 @@ import warnings
 import io
 import functools
 import sys
-from typing import Tuple, Sequence
+from typing import Tuple, Sequence, Union
 import os.path
+import weakref
 
 import matlab.engine
 import pd as pd
@@ -23,27 +24,48 @@ def matlab_files_path():
 
 
 class SpecialMeasureMatlab:
+    connected_engines = weakref.WeakValueDictionary()
+    """Keeps track of all connected engines as matlab.engine does not allow to connect to the same engine twice."""
+
     def __init__(self, connect=None, gui=None, special_measure_setup_script=None, silently_overwrite_path=None):
         if not connect:
             # start new instance
             gui = True if gui is None else gui
-
-            if gui:
-                self._engine = matlab.engine.start_matlab('-desktop')
-            else:
-                self._engine = matlab.engine.start_matlab('-nodesktop')
+            self._engine = self._start_engine(gui)
 
         else:
             if gui is not None:
                 warnings.warn('gui switch was set but a connection to already existing matlab session was requested',
                               UserWarning)
+            self._engine = self._connect_to_engine(connect)
 
-            if connect is True:
-                self._engine = matlab.engine.connect_matlab()
-            else:
-                self._engine = matlab.engine.connect_matlab(connect)
         self._init_special_measure(special_measure_setup_script)
         self._add_qtune_to_path(silently_overwrite_path)
+
+    @classmethod
+    def _start_engine(cls, gui: bool) -> matlab.engine.MatlabEngine:
+        args = '-desktop' if gui else '-nodesktop'
+        engine = matlab.engine.start_matlab(args)
+        cls.connected_engines[int(engine.feature('getpid'))] = engine
+        return engine
+
+    @classmethod
+    def _connect_to_engine(cls, connect: Union[bool, str]) -> matlab.engine.MatlabEngine:
+        if connect is False:
+            raise ValueError('False is not a valid argument')
+
+        elif connect is True:
+            try:
+                return next(cls.connected_engines.values())
+            except StopIteration:
+                engine = matlab.engine.connect_matlab()
+        else:
+            try:
+                return cls.connected_engines[connect]
+            except KeyError:
+                engine = matlab.engine.connect_matlab(connect)
+        cls.connected_engines[engine.matlab.engine.engineName()] = engine
+        return engine
 
     def _init_special_measure(self, special_measure_setup_script):
         if not self.engine.exist('smdata'):
