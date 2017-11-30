@@ -1,4 +1,4 @@
-image: rwthqutech/ubuntu-python-3.5-pip-numpy-pandas
+image: rwthqutech/dockerfiles:ubuntu-python3.5-pip-numpy-pandas
 
 test:
   script:
