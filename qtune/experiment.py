@@ -13,7 +13,7 @@ class Measurement(str):
         return super().__new__(cls, name)
 
     def __init__(self, name, **kwargs):
-        super().__init__(name)
+        super().__init__()
 
         self.parameter = kwargs
 
