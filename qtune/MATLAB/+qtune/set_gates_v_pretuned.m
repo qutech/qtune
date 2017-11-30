@@ -11,7 +11,7 @@ gatechannels=tunedata.gatechan;
 % 'The gates are changed by the values above away from the pretuned point to the absolute value below!'
 % new_point
 
-new_point=[args.SB, args.BD, args.T, args.N, args.SA, args.BA];
+new_point=[args.SB, args.BB, args.T, args.N, args.SA, args.BA];
 
 for i=1:6
 	if abs(pretuned_point(i)-new_point(i)) > 5e-3
