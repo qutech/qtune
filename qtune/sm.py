@@ -67,20 +67,20 @@ class BasicDQD(Experiment):
         self._matlab = matlab_instance
 
         self.default_line_scan = Measurement('line_scan',
-                                             start=None, stop=None, N_points=50, N_average=10, time_per_point=.1)
+                                             center=0, range=3e-3, gate='RFA', N_points=1280, ramptime=.0005,
+                                             N_average=3, AWGorDecaDAC='AWG', file_name=time_string())
         self.default_charge_scan = Measurement('charge_scan',
                                                range_x=(-4., 4.), range_y=(-4., 4.), resolution=(50, 50))
 
     @property
     def measurements(self) -> Tuple[Measurement, ...]:
-        return self.default_line_scan, self.default_charge_scan
+        return (self.default_line_scan, )
 
     @property
-    def gate_voltages(self) -> Tuple[GateIdentifier, ...]:
-        return 'T', 'N', 'bla'
+    def gate_voltage_names(self) -> Tuple[GateIdentifier, ...]:
+        return 'SB', 'BB', 'T', 'N', 'SA', 'BA'
 
     def measure(self,
-                gate_voltages: pd.Series,
                 measurement: Measurement) -> pd.Series:
 
         if measurement == 'line_scan':
@@ -93,26 +93,7 @@ class BasicDQD(Experiment):
             raise ValueError('Unknown measurement: {}'.format(measurement))
 
 
-class LegacyDQD(BasicDQD):
-    def __init__(self, matlab_instance: SpecialMeasureMatlab):
-        super().__init__(matlab_instance)
-
-        self.default_lead_scan = Measurement('lead_scan')
-
-    @property
-    def measurements(self) -> Tuple[Measurement, ...]:
-        return (*super().measurements, self.default_lead_scan)
-
-    def measure(self,
-                gate_voltages: pd.Series,
-                measurement: Measurement):
-        if measurement == 'lead_scan':
-            return pd.Series()
-        else:
-            return super().measure(gate_voltages, measurement)
-        
-        
-class PrototypeDQD(Experiment):
+class LegacyDQD(Experiment):
     def __init__(self, matlab_instance: SpecialMeasureMatlab):
         self._matlab = matlab_instance
 
@@ -137,7 +118,6 @@ class PrototypeDQD(Experiment):
         self._matlab.engine.atune.set_gates_v_pretuned(dict(new_gate_voltages))
 
     def measure(self,
-                gate_voltages: pd.Series,
                 measurement: Measurement) -> pd.Series:
 
         if measurement == 'line_scan':

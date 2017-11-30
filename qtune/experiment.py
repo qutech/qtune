@@ -28,7 +28,6 @@ class Experiment:
         raise NotImplementedError()
 
     def measure(self,
-                gate_voltages: pandas.Series,
                 measurement: Measurement) -> pandas.Series:
         """Conduct specified measurements with given gate_voltages
 
