@@ -139,49 +139,19 @@ class SpecialMeasureMatlab:
 
 
 class BasicDQD(Experiment):
-    def __init__(self, matlab_instance: SpecialMeasureMatlab):
-        self._matlab = matlab_instance
-
-        self.default_line_scan = Measurement('line_scan',
-                                             center=0, range=3e-3, gate='RFA', N_points=1280, ramptime=.0005,
-                                             N_average=3, AWGorDecaDAC='AWG', file_name=time_string())
-        self.default_charge_scan = Measurement('charge_scan',
-                                               range_x=(-4., 4.), range_y=(-4., 4.), resolution=(50, 50))
+    default_line_scan = Measurement('line_scan',
+                                    center=0, range=3e-3, gate='RFA', N_points=1280, ramptime=.0005,
+                                    N_average=3, AWGorDecaDAC='AWG')
 
     @property
     def measurements(self) -> Tuple[Measurement, ...]:
         return (self.default_line_scan, )
 
-    @property
-    def gate_voltage_names(self) -> Tuple[GateIdentifier, ...]:
-        return 'SB', 'BB', 'T', 'N', 'SA', 'BA'
 
-    def measure(self,
-                measurement: Measurement) -> pd.Series:
-
-        if measurement == 'line_scan':
-            return pd.Series()
-
-        elif measurement == 'charge_scan':
-            return pd.Series()
-
-        else:
-            raise ValueError('Unknown measurement: {}'.format(measurement))
-
-
-class LegacyDQD(Experiment):
+class LegacyDQD(BasicDQD):
     def __init__(self, matlab_instance: SpecialMeasureMatlab):
+        super().__init__()
         self._matlab = matlab_instance
-
-        self.default_line_scan = Measurement('line_scan',
-                                             center=0, range=3e-3, gate='RFA', N_points=1280, ramptime=.0005, N_average=3, AWGorDecaDAC='AWG', file_name=time_string())
-
-        self.default_charge_scan = Measurement('charge_scan',
-                                               range_x=(-4., 4.), range_y=(-4., 4.), resolution=(50, 50))
-
-    @property
-    def measurements(self) -> Tuple[Measurement, ...]:
-        return (self.default_line_scan,)
 
     @property
     def gate_voltage_names(self) -> Tuple:
@@ -197,6 +167,8 @@ class LegacyDQD(Experiment):
                 measurement: Measurement) -> pd.Series:
 
         if measurement == 'line_scan':
+            parameters = measurement.parameter.copy()
+            parameters.file_name = measurement.get_file_name()
             return self._matlab.engine.atune.PythonChargeLineScan(measurement.parameter)
 
         else:
