@@ -1,7 +1,9 @@
 from typing import Tuple, Dict, Any
 
 
-import pandas
+import pandas as pd
+
+from qtune.util import time_string
 
 __all__ = ['Experiment', 'Measurement', 'GateIdentifier']
 
@@ -13,9 +15,12 @@ class Measurement(str):
         return super().__new__(cls, name)
 
     def __init__(self, name, **kwargs):
-        super().__init__(name)
+        super().__init__()
 
         self.parameter = kwargs
+
+    def get_file_name(self):
+        return time_string()
 
 
 class Experiment:
@@ -24,12 +29,17 @@ class Experiment:
         raise NotImplementedError()
 
     @property
-    def gate_voltages(self) -> Tuple[GateIdentifier, ...]:
+    def gate_voltage_names(self) -> Tuple:
+        raise NotImplementedError()
+
+    def read_gate_voltages(self):
+        raise NotImplementedError()
+
+    def set_gate_voltages(self, new_gate_voltages: pd.Series):
         raise NotImplementedError()
 
     def measure(self,
-                gate_voltages: pandas.Series,
-                measurement: Measurement) -> pandas.Series:
+                measurement: Measurement) -> pd.Series:
         """Conduct specified measurements with given gate_voltages
 
         :param gate_voltages:

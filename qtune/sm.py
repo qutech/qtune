@@ -139,68 +139,19 @@ class SpecialMeasureMatlab:
 
 
 class BasicDQD(Experiment):
-    def __init__(self, matlab_instance: SpecialMeasureMatlab):
-        self._matlab = matlab_instance
-
-        self.default_line_scan = Measurement('line_scan',
-                                             start=None, stop=None, N_points=50, N_average=10, time_per_point=.1)
-        self.default_charge_scan = Measurement('charge_scan',
-                                               range_x=(-4., 4.), range_y=(-4., 4.), resolution=(50, 50))
+    default_line_scan = Measurement('line_scan',
+                                    center=0, range=3e-3, gate='RFA', N_points=1280, ramptime=.0005,
+                                    N_average=3, AWGorDecaDAC='AWG')
 
     @property
     def measurements(self) -> Tuple[Measurement, ...]:
-        return self.default_line_scan, self.default_charge_scan
-
-    @property
-    def gate_voltages(self) -> Tuple[GateIdentifier, ...]:
-        return 'T', 'N', 'bla'
-
-    def measure(self,
-                gate_voltages: pd.Series,
-                measurement: Measurement) -> pd.Series:
-
-        if measurement == 'line_scan':
-            return pd.Series()
-
-        elif measurement == 'charge_scan':
-            return pd.Series()
-
-        else:
-            raise ValueError('Unknown measurement: {}'.format(measurement))
+        return (self.default_line_scan, )
 
 
 class LegacyDQD(BasicDQD):
     def __init__(self, matlab_instance: SpecialMeasureMatlab):
-        super().__init__(matlab_instance)
-
-        self.default_lead_scan = Measurement('lead_scan')
-
-    @property
-    def measurements(self) -> Tuple[Measurement, ...]:
-        return (*super().measurements, self.default_lead_scan)
-
-    def measure(self,
-                gate_voltages: pd.Series,
-                measurement: Measurement):
-        if measurement == 'lead_scan':
-            return pd.Series()
-        else:
-            return super().measure(gate_voltages, measurement)
-        
-        
-class PrototypeDQD(Experiment):
-    def __init__(self, matlab_instance: SpecialMeasureMatlab):
+        super().__init__()
         self._matlab = matlab_instance
-
-        self.default_line_scan = Measurement('line_scan',
-                                             center=0, range=3e-3, gate='RFA', N_points=1280, ramptime=.0005, N_average=3, AWGorDecaDAC='AWG', file_name=time_string())
-
-        self.default_charge_scan = Measurement('charge_scan',
-                                               range_x=(-4., 4.), range_y=(-4., 4.), resolution=(50, 50))
-
-    @property
-    def measurements(self) -> Tuple[Measurement, ...]:
-        return (self.default_line_scan,)
 
     @property
     def gate_voltage_names(self) -> Tuple:
@@ -213,11 +164,106 @@ class PrototypeDQD(Experiment):
         self._matlab.engine.atune.set_gates_v_pretuned(dict(new_gate_voltages))
 
     def measure(self,
-                gate_voltages: pd.Series,
                 measurement: Measurement) -> pd.Series:
 
         if measurement == 'line_scan':
+            parameters = measurement.parameter.copy()
+            parameters.file_name = measurement.get_file_name()
             return self._matlab.engine.atune.PythonChargeLineScan(measurement.parameter)
 
         else:
             raise ValueError('Unknown measurement: {}'.format(measurement))
+
+
+class ChargeDiagram:
+    charge_line_scan_lead_A = Measurement('line_scan', center=0, range=3e-3,
+                                          gate='RFA', N_points=1280,
+                                          ramptime=.0005,
+                                          N_average=3,
+                                          AWGorDecaDAC='AWG')
+
+    charge_line_scan_lead_B = Measurement('line_scan', center=0, range=3e-3,
+                                          gate='RFB', N_points=1280,
+                                          ramptime=.0005,
+                                          N_average=3,
+                                          AWGorDecaDAC='AWG')
+
+    def __init__(self, dqd: BasicDQD,
+                 charge_line_scan_lead_A: Measurement,
+                 charge_line_scan_lead_B: Measurement,
+                 matlab_engine: SpecialMeasureMatlab):
+        self.dqd = dqd
+        self.matlab = matlab_engine
+
+        self.position_lead_A = 0
+        self.position_lead_B = 0
+        self.gradient = np.asarray([[0, 0],
+                                    [0, 0]])
+
+        if charge_line_scan_lead_A is not None:
+            self.charge_line_scan_lead_A = charge_line_scan_lead_A
+
+        if charge_line_scan_lead_B is not None:
+            self.charge_line_scan_lead_B = charge_line_scan_lead_B
+
+    def measure_positions(self) -> Tuple[float, float]:
+        data_A = self.dqd.measure(self.charge_line_scan_lead_A)
+        self.position_lead_A = self.matlab.engine.qtune.at_find_lead_trans(data_A,
+                                                                           self.charge_line_scan_lead_A.parameter[
+                                                                               "center"],
+                                                                           self.charge_line_scan_lead_A.parameter[
+                                                                               "range"],
+                                                                           self.charge_line_scan_lead_A.parameter[
+                                                                               "N_points"])
+
+        data_B = self.dqd.measure(self.charge_line_scan_lead_B)
+        self.position_lead_B = self.matlab.engine.qtune.at_find_lead_trans(data_B,
+                                                                           self.charge_line_scan_lead_B.parameter[
+                                                                               "center"],
+                                                                           self.charge_line_scan_lead_B.parameter[
+                                                                               "range"],
+                                                                           self.charge_line_scan_lead_B.parameter[
+                                                                               "N_points"])
+        return self.position_lead_A, self.position_lead_B
+
+    def calculate_gradient(self):
+        current_gate_voltages = self.dqd.read_gate_voltages()
+
+        BA_eps = pd.Series(1e-3, ['BA'])
+        BB_eps = pd.Series(1e-3, ['BD'])
+
+        BA_inc = current_gate_voltages.add(BA_eps, fill_value=0)
+        BA_dec = current_gate_voltages.add(-BA_eps, fill_value=0)
+
+        BB_inc = current_gate_voltages.add(BB_eps, fill_value=0)
+        BB_dec = current_gate_voltages.add(-BB_eps, fill_value=0)
+
+        self.dqd.set_gate_voltages(BA_inc)
+        pos_A_BA_inc, pos_B_BA_inc = self.measure_positions()
+
+        self.dqd.set_gate_voltages(BA_dec)
+        pos_A_BA_dec, pos_B_BA_dec = self.measure_positions()
+
+        self.dqd.set_gate_voltages(BB_inc)
+        pos_A_BB_inc, pos_B_BB_inc = self.measure_positions()
+
+        self.dqd.set_gate_voltages(BB_dec)
+        pos_A_BB_dec, pos_B_BB_dec = self.measure_positions()
+
+        self.gradient[0, 0] = (pos_A_BA_inc - pos_A_BA_dec) / 2e-3
+        self.gradient[0, 1] = (pos_A_BB_inc - pos_A_BB_dec) / 2e-3
+        self.gradient[1, 0] = (pos_B_BA_inc - pos_B_BA_dec) / 2e-3
+        self.gradient[1, 1] = (pos_B_BB_inc - pos_B_BB_dec) / 2e-3
+
+        self.dqd.set_gate_voltages(current_gate_voltages)
+
+        return self.gradient.copy()
+
+    def center_diagram(self):
+        while np.linalg.norm(self.measure_positions()) > 0.2e-3:
+
+            du = np.linalg.solve(self.gradient, (self.position_lead_A, self.position_lead_B))
+            diff = pd.Series(du, ['BA', 'BB'])
+
+            new_gate_voltages = self.dqd.read_gate_voltages().add(diff, fill_value=0)
+            self.dqd.set_gate_voltages(new_gate_voltages)
