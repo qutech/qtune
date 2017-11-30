@@ -1,0 +1,5 @@
+image: rwthqutech/ubuntu-python-3.5-pip-numpy-pandas
+
+test:
+  script:
+  - python3 setup.py test
