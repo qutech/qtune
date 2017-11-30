@@ -180,21 +180,19 @@ class ChargeDiagram:
                                           gate='RFA', N_points=1280,
                                           ramptime=.0005,
                                           N_average=3,
-                                          AWGorDecaDAC='AWG',
-                                          file_name=time_string())
+                                          AWGorDecaDAC='AWG')
 
     charge_line_scan_lead_B = Measurement('line_scan', center=0, range=3e-3,
                                           gate='RFB', N_points=1280,
                                           ramptime=.0005,
                                           N_average=3,
-                                          AWGorDecaDAC='AWG',
-                                          file_name=time_string())
+                                          AWGorDecaDAC='AWG')
 
-    def __init__(self, exp: Experiment,
+    def __init__(self, dqd: BasicDQD,
                  charge_line_scan_lead_A: Measurement,
                  charge_line_scan_lead_B: Measurement,
                  matlab_engine: SpecialMeasureMatlab):
-        self.experiment = exp
+        self.dqd = dqd
         self.matlab = matlab_engine
 
         self.position_lead_A = 0
@@ -208,8 +206,8 @@ class ChargeDiagram:
         if charge_line_scan_lead_B is not None:
             self.charge_line_scan_lead_B = charge_line_scan_lead_B
 
-    def measure_positions(self):
-        data_A = self.experiment.measure(self.charge_line_scan_lead_A)
+    def measure_positions(self) -> Tuple[float, float]:
+        data_A = self.dqd.measure(self.charge_line_scan_lead_A)
         self.position_lead_A = self.matlab.engine.qtune.at_find_lead_trans(data_A,
                                                                            self.charge_line_scan_lead_A.parameter[
                                                                                "center"],
@@ -218,7 +216,7 @@ class ChargeDiagram:
                                                                            self.charge_line_scan_lead_A.parameter[
                                                                                "N_points"])
 
-        data_B = self.exp.measure(self.charge_line_scan_lead_B)
+        data_B = self.dqd.measure(self.charge_line_scan_lead_B)
         self.position_lead_B = self.matlab.engine.qtune.at_find_lead_trans(data_B,
                                                                            self.charge_line_scan_lead_B.parameter[
                                                                                "center"],
@@ -226,53 +224,46 @@ class ChargeDiagram:
                                                                                "range"],
                                                                            self.charge_line_scan_lead_B.parameter[
                                                                                "N_points"])
+        return self.position_lead_A, self.position_lead_B
 
     def calculate_gradient(self):
-        current_gate_voltages = self.experiment.gate_voltages
-        BA_inc = current_gate_voltages
-        BA_inc["BA"] = BA_inc["BA"] + 1e-3
-        BA_red = current_gate_voltages
-        BA_red["BA"] = BA_inc["BA"] - 1e-3
-        BB_inc = current_gate_voltages
-        BB_inc["BB"] = BA_inc["BB"] + 1e-3
-        BB_red = current_gate_voltages
-        BB_red["BB"] = BA_inc["BB"] - 1e-3
+        current_gate_voltages = self.dqd.read_gate_voltages()
 
-        self.experiment.set_gate(BA_inc)
-        self.measure_positions()
-        pos_A_BA_inc = self.position_lead_A
-        pos_B_BA_inc = self.position_lead_B
+        BA_eps = pd.Series(1e-3, ['BA'])
+        BB_eps = pd.Series(1e-3, ['BD'])
 
-        self.experiment.set_gate(BA_red)
-        self.measure_positions
-        pos_A_BA_red = self.position_lead_A
-        pos_B_BA_red = self.position_lead_B
+        BA_inc = current_gate_voltages.add(BA_eps, fill_value=0)
+        BA_dec = current_gate_voltages.add(-BA_eps, fill_value=0)
 
-        self.experiment.set_gate(BB_inc)
-        self.measure_positions
-        pos_A_BB_inc = self.position_lead_A
-        pos_B_BB_inc = self.position_lead_B
+        BB_inc = current_gate_voltages.add(BB_eps, fill_value=0)
+        BB_dec = current_gate_voltages.add(-BB_eps, fill_value=0)
 
-        self.experiment.set_gate(BB_red)
-        self.measure_positions
-        pos_A_BB_red = self.position_lead_A
-        pos_B_BB_red = self.position_lead_B
+        self.dqd.set_gate_voltages(BA_inc)
+        pos_A_BA_inc, pos_B_BA_inc = self.measure_positions()
 
-        self.gradient[0, 0] = (pos_A_BA_inc - pos_A_BA_red) / 2e-3
-        self.gradient[0, 1] = (pos_A_BB_inc - pos_A_BB_red) / 2e-3
-        self.gradient[1, 0] = (pos_B_BA_inc - pos_B_BA_red) / 2e-3
-        self.gradient[1, 1] = (pos_B_BB_inc - pos_B_BB_red) / 2e-3
+        self.dqd.set_gate_voltages(BA_dec)
+        pos_A_BA_dec, pos_B_BA_dec = self.measure_positions()
 
-        self.experiment.set_gate_voltages(current_gate_voltages)
+        self.dqd.set_gate_voltages(BB_inc)
+        pos_A_BB_inc, pos_B_BB_inc = self.measure_positions()
+
+        self.dqd.set_gate_voltages(BB_dec)
+        pos_A_BB_dec, pos_B_BB_dec = self.measure_positions()
+
+        self.gradient[0, 0] = (pos_A_BA_inc - pos_A_BA_dec) / 2e-3
+        self.gradient[0, 1] = (pos_A_BB_inc - pos_A_BB_dec) / 2e-3
+        self.gradient[1, 0] = (pos_B_BA_inc - pos_B_BA_dec) / 2e-3
+        self.gradient[1, 1] = (pos_B_BB_inc - pos_B_BB_dec) / 2e-3
+
+        self.dqd.set_gate_voltages(current_gate_voltages)
+
+        return self.gradient.copy()
 
     def center_diagram(self):
-        self.measure_positions()
-        while (abs(self.position_lead_A) > 0.2e-3) or (abs(self.position_lead_B) > 0.2e-3):
-            dpos = np.array([[self.position_lead_A], [self.position_lead_B]])
-            du = np.linalg.solve(self.gradient, dpos)
-            current_gate_voltages = self.experiment.gate_voltages
-            new_gate_voltages = current_gate_voltages
-            new_gate_voltages['BA'] = new_gate_voltages['BA'] + du[0, 0]
-            new_gate_voltages['BB'] = new_gate_voltages['BB'] + du[1, 0]
-            self.experiment.set_gate_voltages(new_gate_voltages)
-            self.measure_positions()
+        while np.linalg.norm(self.measure_positions()) > 0.2e-3:
+
+            du = np.linalg.solve(self.gradient, (self.position_lead_A, self.position_lead_B))
+            diff = pd.Series(du, ['BA', 'BB'])
+
+            new_gate_voltages = self.dqd.read_gate_voltages().add(diff, fill_value=0)
+            self.dqd.set_gate_voltages(new_gate_voltages)
