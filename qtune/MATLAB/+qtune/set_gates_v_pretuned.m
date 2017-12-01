@@ -11,9 +11,9 @@ gatechannels=tunedata.gatechan;
 % 'The gates are changed by the values above away from the pretuned point to the absolute value below!'
 % new_point
 
-new_point=[args.SB, args.BB, args.T, args.N, args.SA, args.BA];
+new_point=[args.SB, args.BB, args.T, args.N, args.SA, args.BA, args.RFA, args.RFB];
 
-for i=1:6
+for i=1:8
 	if abs(pretuned_point(i)-new_point(i)) > 5e-3
 		for i = 1:8
 			smset(gatechannels(i),pretuned_point(i))
@@ -24,13 +24,13 @@ end
 
 % str = input('The program wants to set the gates to the values above! [Y/N]','s')
 % if strcmp(str,'Y')
-    for i=1:6
+    for i=1:8
         smset(gatechannels(i),new_point(i));
     end
 % end
 vector_actual_point=cell2mat(smget({smdata.channels(tunedata.gatechan).name})); 
-vector_actual_point=actual_point(1:6)';
+vector_actual_point=vector_actual_point;
 actual_point=struct('SB',vector_actual_point(1),'BB',vector_actual_point(2),'T',vector_actual_point(3), ...
-	'N',vector_actual_point(4),'SA',vector_actual_point(5),'BA',vector_actual_point(6));
+	'N',vector_actual_point(4),'SA',vector_actual_point(5),'BA',vector_actual_point(6), 'RFA', vector_actual_point(7), 'RFB', vector_actual_point(8));
 end
 

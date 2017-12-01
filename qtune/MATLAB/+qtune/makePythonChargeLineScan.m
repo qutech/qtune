@@ -74,9 +74,9 @@ scan.loops(2).prefn(1).args = {smdata.inst(inst_index).cntrlfn,[inst_index 0 4]}
 
 elseif strcmp(AWGorDecaDAC,'AWG')
     warning('The charge line scan via AWG has not been implemented yet! You will recieve a DecaDAC scan!!!')
-    scan = makePythonChargeLineScan(center, range, gate, npoints, 'DecaDAC');
+    scan = qtune.makePythonChargeLineScan(center, range, gate, npoints, ramptime, numb_rep, 'DecaDAC');
 else
     warning('the variable AWGorDecaDAC must be AWG or DecaDAC! You will recieve a DecaDAC scan!!!')
-    scan = makePythonChargeLineScan(center, range, gate, npoints, 'DecaDAC');
+    scan = qtune.makePythonChargeLineScan(center, range, gate, npoints, ramptime, numb_rep, 'DecaDAC');
 end
 end
