@@ -1,0 +1,5 @@
+image: rwthqutech/dockerfiles:ubuntu-python3.5-pip-numpy-pandas
+
+test:
+  script:
+  - python3 setup.py test
