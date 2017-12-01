@@ -101,7 +101,6 @@ class SpecialMeasureMatlab:
         except matlab.engine.MatlabExecutionError as e:
             raise RuntimeError('Could not add +qtune to MATLAB path') from e
 
-
     def to_matlab(self, obj):
         if isinstance(obj, np.ndarray):
             raw = bytes(obj)
@@ -140,12 +139,16 @@ class SpecialMeasureMatlab:
 
 class BasicDQD(Experiment):
     default_line_scan = Measurement('line_scan',
-                                    center=0, range=3e-3, gate='RFA', N_points=1280, ramptime=.0005,
+                                    center=0., range=3e-3, gate='RFA', N_points=1280, ramptime=.0005,
                                     N_average=3, AWGorDecaDAC='DecaDAC')
+    default_detune_scan = Measurement('detune_scan',
+                                      center=0., range=2e-3, N_points=100, ramptime=.02,
+                                      N_average=20, AWGorDecaDAC='DecaDAC')
+    default_lead_scan = Measurement('lead_scan', gate='B', AWGorDecaDAC='DecaDAC')
 
     @property
     def measurements(self) -> Tuple[Measurement, ...]:
-        return (self.default_line_scan, )
+        return (self.default_line_scan, self.default_detune_scan, self.default_lead_scan)
 
     def tune_qpc(self, qpc_position=None, tuning_range=3e-3):
         raise NotImplementedError()
@@ -167,9 +170,9 @@ class LegacyDQD(BasicDQD):
         return pd.Series(self._matlab.engine.qtune.read_gate_voltages()).sort_index()
 
     def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
-        new_gate_voltages=dict(new_gate_voltages)
+        new_gate_voltages = dict(new_gate_voltages)
         for key in new_gate_voltages:
-            new_gate_voltages[key]=new_gate_voltages[key].item()
+            new_gate_voltages[key] = new_gate_voltages[key].item()
         return pd.Series(self._matlab.engine.qtune.set_gates_v_pretuned(new_gate_voltages))
 
     def read_qpc_voltage(self) -> pd.Series:
@@ -188,10 +191,19 @@ class LegacyDQD(BasicDQD):
         if measurement == 'line_scan':
             parameters = measurement.parameter.copy()
             parameters['file_name'] = measurement.get_file_name()
-            parameters['center'] = float(parameters['center'])
             parameters['N_points'] = float(parameters['N_points'])
             parameters['N_average'] = parameters['N_average']
             return pd.Series(self._matlab.engine.qtune.PythonChargeLineScan(parameters))
+        elif measurement == 'detune_scan':
+            parameters = measurement.parameter.copy()
+            parameters['file_name'] = measurement.get_file_name()
+            parameters['N_points'] = float(parameters['N_points'])
+            parameters['N_average'] = float(parameters['N_average'])
+            return pd.Series(self._matlab.engine.qtune.PythonLineScan(parameters))
+        elif measurement == 'lead_scan':
+            parameters = measurement.parameter.copy()
+            parameters['file_name'] = measurement.get_file_name()
+            return pd.Series(self._matlab.engine.qtune.LeadScan(parameters))
 
         else:
             raise ValueError('Unknown measurement: {}'.format(measurement))
@@ -228,10 +240,10 @@ class ChargeDiagram:
             self.charge_line_scan_lead_B = charge_line_scan_lead_B
 
     def measure_positions(self) -> Tuple[float, float]:
-        current_gate_voltages=self.dqd.read_gate_voltages()
+        current_gate_voltages = self.dqd.read_gate_voltages()
         RFA_eps = pd.Series(1e-3, ['RFA'])
         RFB_eps = pd.Series(1e-3, ['RFB'])
-        voltages_for_pos_a = current_gate_voltages.add(-4*RFB_eps,fill_value=0)
+        voltages_for_pos_a = current_gate_voltages.add(-4*RFB_eps, fill_value=0)
         self.dqd.set_gate_voltages(voltages_for_pos_a)
         data_A = self.dqd.measure(self.charge_line_scan_lead_A)
         self.position_lead_A = self.matlab.engine.qtune.at_find_lead_trans(data_A.values.item(),
@@ -242,7 +254,7 @@ class ChargeDiagram:
                                                                            float(self.charge_line_scan_lead_A.parameter[
                                                                                      "N_points"]))
 
-        voltages_for_pos_b = current_gate_voltages.add(-4*RFA_eps,fill_value=0)
+        voltages_for_pos_b = current_gate_voltages.add(-4*RFA_eps, fill_value=0)
         self.dqd.set_gate_voltages(voltages_for_pos_b)
         data_B = self.dqd.measure(self.charge_line_scan_lead_B)
         self.position_lead_B = self.matlab.engine.qtune.at_find_lead_trans(data_B.values.item(),
