@@ -141,7 +141,7 @@ class SpecialMeasureMatlab:
 class BasicDQD(Experiment):
     default_line_scan = Measurement('line_scan',
                                     center=0, range=3e-3, gate='RFA', N_points=1280, ramptime=.0005,
-                                    N_average=3, AWGorDecaDAC='AWG')
+                                    N_average=3, AWGorDecaDAC='DecaDAC')
 
     @property
     def measurements(self) -> Tuple[Measurement, ...]:
@@ -158,18 +158,24 @@ class LegacyDQD(BasicDQD):
         return tuple(sorted(self._matlab.engine.atune.read_gate_voltages().keys()))
 
     def read_gate_voltages(self):
-        return pd.Series(self._matlab.engine.atune.read_gate_voltages()).sort_index()
+        return pd.Series(self._matlab.engine.qtune.read_gate_voltages()).sort_index()
 
-    def set_gate_voltages(self, new_gate_voltages: pd.Series):
-        self._matlab.engine.atune.set_gates_v_pretuned(dict(new_gate_voltages))
+    def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
+        new_gate_voltages=dict(new_gate_voltages)
+        for key in new_gate_voltages:
+            new_gate_voltages[key]=new_gate_voltages[key].item()
+        return pd.Series(self._matlab.engine.qtune.set_gates_v_pretuned(new_gate_voltages))
 
     def measure(self,
                 measurement: Measurement) -> pd.Series:
 
         if measurement == 'line_scan':
             parameters = measurement.parameter.copy()
-            parameters.file_name = measurement.get_file_name()
-            return self._matlab.engine.atune.PythonChargeLineScan(measurement.parameter)
+            parameters['file_name'] = measurement.get_file_name()
+            parameters['center'] = float(parameters['center'])
+            parameters['N_points'] = float(parameters['N_points'])
+            parameters['N_average'] = parameters['N_average']
+            return pd.Series(self._matlab.engine.qtune.PythonChargeLineScan(parameters))
 
         else:
             raise ValueError('Unknown measurement: {}'.format(measurement))
@@ -180,25 +186,24 @@ class ChargeDiagram:
                                           gate='RFA', N_points=1280,
                                           ramptime=.0005,
                                           N_average=3,
-                                          AWGorDecaDAC='AWG')
+                                          AWGorDecaDAC='DecaDAC')
 
     charge_line_scan_lead_B = Measurement('line_scan', center=0, range=3e-3,
                                           gate='RFB', N_points=1280,
                                           ramptime=.0005,
                                           N_average=3,
-                                          AWGorDecaDAC='AWG')
+                                          AWGorDecaDAC='DecaDAC')
 
     def __init__(self, dqd: BasicDQD,
-                 charge_line_scan_lead_A: Measurement,
-                 charge_line_scan_lead_B: Measurement,
-                 matlab_engine: SpecialMeasureMatlab):
+                 matlab_engine: SpecialMeasureMatlab,
+                 charge_line_scan_lead_A: Measurement = None,
+                 charge_line_scan_lead_B: Measurement = None):
         self.dqd = dqd
         self.matlab = matlab_engine
 
-        self.position_lead_A = 0
-        self.position_lead_B = 0
-        self.gradient = np.asarray([[0, 0],
-                                    [0, 0]])
+        self.position_lead_A = 0.
+        self.position_lead_B = 0.
+        self.gradient = np.zeros(2, 2, dtype=float)
 
         if charge_line_scan_lead_A is not None:
             self.charge_line_scan_lead_A = charge_line_scan_lead_A
@@ -207,30 +212,40 @@ class ChargeDiagram:
             self.charge_line_scan_lead_B = charge_line_scan_lead_B
 
     def measure_positions(self) -> Tuple[float, float]:
+        current_gate_voltages=self.dqd.read_gate_voltages()
+        RFA_eps = pd.Series(1e-3, ['RFA'])
+        RFB_eps = pd.Series(1e-3, ['RFB'])
+        voltages_for_pos_a = current_gate_voltages.add(-4*RFB_eps,fill_value=0)
+        self.dqd.set_gate_voltages(voltages_for_pos_a)
         data_A = self.dqd.measure(self.charge_line_scan_lead_A)
-        self.position_lead_A = self.matlab.engine.qtune.at_find_lead_trans(data_A,
-                                                                           self.charge_line_scan_lead_A.parameter[
-                                                                               "center"],
-                                                                           self.charge_line_scan_lead_A.parameter[
-                                                                               "range"],
-                                                                           self.charge_line_scan_lead_A.parameter[
-                                                                               "N_points"])
+        self.position_lead_A = self.matlab.engine.qtune.at_find_lead_trans(data_A.values.item(),
+                                                                           float(self.charge_line_scan_lead_A.parameter[
+                                                                                     "center"]),
+                                                                           float(self.charge_line_scan_lead_A.parameter[
+                                                                                     "range"]),
+                                                                           float(self.charge_line_scan_lead_A.parameter[
+                                                                                     "N_points"]))
 
+        voltages_for_pos_b = current_gate_voltages.add(-4*RFA_eps,fill_value=0)
+        self.dqd.set_gate_voltages(voltages_for_pos_b)
         data_B = self.dqd.measure(self.charge_line_scan_lead_B)
-        self.position_lead_B = self.matlab.engine.qtune.at_find_lead_trans(data_B,
-                                                                           self.charge_line_scan_lead_B.parameter[
-                                                                               "center"],
-                                                                           self.charge_line_scan_lead_B.parameter[
-                                                                               "range"],
-                                                                           self.charge_line_scan_lead_B.parameter[
-                                                                               "N_points"])
+        self.position_lead_B = self.matlab.engine.qtune.at_find_lead_trans(data_B.values.item(),
+                                                                           float(self.charge_line_scan_lead_B.parameter[
+                                                                                     "center"]),
+                                                                           float(self.charge_line_scan_lead_B.parameter[
+                                                                                     "range"]),
+                                                                           float(self.charge_line_scan_lead_B.parameter[
+                                                                                     "N_points"]))
+        self.dqd.set_gate_voltages(current_gate_voltages)
         return self.position_lead_A, self.position_lead_B
 
     def calculate_gradient(self):
         current_gate_voltages = self.dqd.read_gate_voltages()
 
         BA_eps = pd.Series(1e-3, ['BA'])
-        BB_eps = pd.Series(1e-3, ['BD'])
+        print('current gate voltages should still be at pretuned point')
+        print(current_gate_voltages)
+        BB_eps = pd.Series(1e-3, ['BB'])
 
         BA_inc = current_gate_voltages.add(BA_eps, fill_value=0)
         BA_dec = current_gate_voltages.add(-BA_eps, fill_value=0)
