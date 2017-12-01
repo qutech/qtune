@@ -147,6 +147,12 @@ class BasicDQD(Experiment):
     def measurements(self) -> Tuple[Measurement, ...]:
         return (self.default_line_scan, )
 
+    def tune_qpc(self, qpc_position=None, tuning_range=3e-3):
+        raise NotImplementedError()
+
+    def read_qpc_voltage(self) -> pd.Series:
+        raise NotImplementedError()
+
 
 class LegacyDQD(BasicDQD):
     def __init__(self, matlab_instance: SpecialMeasureMatlab):
@@ -166,8 +172,18 @@ class LegacyDQD(BasicDQD):
             new_gate_voltages[key]=new_gate_voltages[key].item()
         return pd.Series(self._matlab.engine.qtune.set_gates_v_pretuned(new_gate_voltages))
 
+    def read_qpc_voltage(self) -> pd.Series:
+        return pd.Series(self._matlab.engine.qtune.readout_qpc())
+
+    def tune_qpc(self, qpc_position=None, tuning_range=3e-3):
+        if qpc_position is None:
+            qpc_position = dict(self.read_qpc_voltage())['qpc'][0]
+        qpc_tune_input={"tuning_range": tuning_range, "qpc_position": qpc_position, "file_name": time_string()}
+        return self._matlab.engine.qtune.retune_qpc(qpc_tune_input)
+
     def measure(self,
                 measurement: Measurement) -> pd.Series:
+        self.tune_qpc()
 
         if measurement == 'line_scan':
             parameters = measurement.parameter.copy()
@@ -203,7 +219,7 @@ class ChargeDiagram:
 
         self.position_lead_A = 0.
         self.position_lead_B = 0.
-        self.gradient = np.zeros(2, 2, dtype=float)
+        self.gradient = np.zeros((2, 2), dtype=float)
 
         if charge_line_scan_lead_A is not None:
             self.charge_line_scan_lead_A = charge_line_scan_lead_A
