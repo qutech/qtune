@@ -175,7 +175,7 @@ class LegacyDQD(BasicDQD):
     def read_qpc_voltage(self) -> pd.Series:
         return pd.Series(self._matlab.engine.qtune.readout_qpc())
 
-    def tune_qpc(self, qpc_position=None, tuning_range=3e-3):
+    def tune_qpc(self, qpc_position=None, tuning_range=4e-3):
         if qpc_position is None:
             qpc_position = dict(self.read_qpc_voltage())['qpc'][0]
         qpc_tune_input={"tuning_range": tuning_range, "qpc_position": qpc_position, "file_name": time_string()}
