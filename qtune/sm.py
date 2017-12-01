@@ -294,7 +294,12 @@ class ChargeDiagram:
         while np.linalg.norm(self.measure_positions()) > 0.2e-3:
 
             du = np.linalg.solve(self.gradient, (self.position_lead_A, self.position_lead_B))
-            diff = pd.Series(du, ['BA', 'BB'])
+            if np.linalg.norm(du) > 2e-3:
+                du = du*2e-3/np.linalg.norm(du)
+
+            diff = pd.Series(-1*du, ['BA', 'BB'])
 
             new_gate_voltages = self.dqd.read_gate_voltages().add(diff, fill_value=0)
+            print('gates will be set to')
+            print(new_gate_voltages)
             self.dqd.set_gate_voltages(new_gate_voltages)
