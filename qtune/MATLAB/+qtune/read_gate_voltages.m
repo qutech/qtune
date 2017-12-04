@@ -12,5 +12,7 @@ voltages.T=gate_voltages(3);
 voltages.N=gate_voltages(4);
 voltages.SA=gate_voltages(5);
 voltages.BA=gate_voltages(6);
+voltages.RFA=gate_voltages(7);
+voltages.RFB=gate_voltages(8);
 end
 
