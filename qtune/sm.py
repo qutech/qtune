@@ -15,6 +15,9 @@ import numpy as np
 from qtune.experiment import *
 from qtune.util import time_string
 from qtune.GradKalman import GradKalmanFilter
+from qtune.Basic_DQD import BasicDQD
+from qtune.chrg_diag import ChargeDiagram
+
 
 def redirect_output(func):
     return functools.partial(func, stdout=sys.stdout, stderr=sys.stderr)
@@ -86,7 +89,8 @@ class SpecialMeasureMatlab:
                     return
 
                 if silently_overwrite_path is None:
-                    warn_text = 'Found other qtune on MATLAB path: {}\n Will override with {}'.format(qtune_path, matlab_files_path())
+                    warn_text = 'Found other qtune on MATLAB path: {}\n Will override with {}'.format(qtune_path,
+                                                                                                      matlab_files_path())
                     warnings.warn(warn_text, UserWarning)
 
                 self.engine.addpath(matlab_files_path())
@@ -136,26 +140,6 @@ class SpecialMeasureMatlab:
 
     def get_variable(self, var_name):
         return self.engine.util.py.get_from_workspace(var_name)
-
-
-class BasicDQD(Experiment):
-    default_line_scan = Measurement('line_scan',
-                                    center=0., range=3e-3, gate='RFA', N_points=1280, ramptime=.0005,
-                                    N_average=3, AWGorDecaDAC='DecaDAC')
-    default_detune_scan = Measurement('detune_scan',
-                                      center=0., range=2e-3, N_points=100, ramptime=.02,
-                                      N_average=20, AWGorDecaDAC='DecaDAC')
-    default_lead_scan = Measurement('lead_scan', gate='B', AWGorDecaDAC='DecaDAC')
-
-    @property
-    def measurements(self) -> Tuple[Measurement, ...]:
-        return (self.default_line_scan, self.default_detune_scan, self.default_lead_scan)
-
-    def tune_qpc(self, qpc_position=None, tuning_range=3e-3):
-        raise NotImplementedError()
-
-    def read_qpc_voltage(self) -> pd.Series:
-        raise NotImplementedError()
 
 
 class LegacyDQD(BasicDQD):
@@ -210,7 +194,7 @@ class LegacyDQD(BasicDQD):
             raise ValueError('Unknown measurement: {}'.format(measurement))
 
 
-class ChargeDiagram:
+class LegacyChargeDiagram(ChargeDiagram):
     charge_line_scan_lead_A = Measurement('line_scan', center=0., range=3e-3,
                                           gate='RFA', N_points=1280,
                                           ramptime=.0005,
@@ -223,7 +207,7 @@ class ChargeDiagram:
                                           N_average=3,
                                           AWGorDecaDAC='DecaDAC')
 
-    def __init__(self, dqd: BasicDQD,
+    def __init__(self, dqd: LegacyDQD,
                  matlab_engine: SpecialMeasureMatlab,
                  charge_line_scan_lead_A: Measurement = None,
                  charge_line_scan_lead_B: Measurement = None):
