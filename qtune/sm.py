@@ -17,6 +17,7 @@ from qtune.util import time_string
 from qtune.GradKalman import GradKalmanFilter
 from qtune.Basic_DQD import BasicDQD
 from qtune.chrg_diag import ChargeDiagram
+from qtune.Solver import Evaluator
 
 
 def redirect_output(func):
@@ -294,7 +295,7 @@ class LegacyChargeDiagram(ChargeDiagram):
         self.grad_kalman = GradKalmanFilter(2, 2, initX=initX, initP=initP, initR=initR, alpha=alpha)
 
     def center_diagram(self):
-        positions=self.measure_positions()
+        positions = self.measure_positions()
         while np.linalg.norm(positions) > 0.2e-3:
             current_position = (self.position_lead_A, self.position_lead_B)
             du = np.linalg.solve(self.grad_kalman.grad, current_position)
@@ -308,3 +309,57 @@ class LegacyChargeDiagram(ChargeDiagram):
             positions = self.measure_positions()
             dpos = (positions[0] - current_position[0], positions[1] - current_position[1])
             self.grad_kalman.update(-1*du, dpos, hack=False)
+
+
+class SMInterDotTCByLineScan(Evaluator):
+    def __init__(self, dqd: BasicDQD, matlab_instance: SpecialMeasureMatlab,
+                 parameters: pd.Series() = pd.Series(np.nan, 'tc'), line_scan: Measurement=None):
+        if line_scan is None:
+            line_scan = dqd.measurements[1]
+
+        super().__init__(dqd, line_scan, parameters)
+        self.matlab = matlab_instance
+
+    def __call__(self, *args, **kwargs):
+        return self.evaluate()
+
+    def evaluate(self) -> pd.Series:
+        ydata = self.experiment.measure(self.measurements)
+        center = self.measurements.parameter['center']
+        scan_range = self.measurements.parameter['range']
+        npoints = self. measurements.parameter['N_points']
+        xdata = np.linspace(center - scan_range, center + scan_range, npoints)
+        tc, failed = self.matlab.engine.qtune.at_line_fit(xdata, ydata)
+        self.parameters['tc'] = tc
+        return pd.Series([tc, failed], ['tc', 'failed'])
+
+
+class SMLeadTunnelTimeByLeadScan(Evaluator):
+    def __init__(self, dqd: BasicDQD, matlab_instance: SpecialMeasureMatlab,
+                 parameters: pd.Series() = pd.Series([np.nan, np.nan], ['t_rise', 't_fall']),
+                 lead_scan: Measurement = None):
+        if lead_scan is None:
+            lead_scan = dqd.measurements[2]
+
+        super().__init__(dqd, lead_scan, parameters)
+        self.matlab = matlab_instance
+
+    def __call__(self, *args, **kwargs):
+        return self.evaluate()
+
+    def evaluate(self) -> pd.Series:
+        data = self.experiment.measure(self.measurements)
+        t_rise, t_fall, failed = self.matlab.engine.qtune.lead_fit(data)
+        self.parameters['t_rise'] = t_rise
+        self.parameters['t_fall'] = t_fall
+        return pd.Series([t_rise, t_fall, failed], ['t_rise', 't_fall', 'failed'])
+
+
+
+
+
+
+
+
+
+
