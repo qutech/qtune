@@ -6,7 +6,7 @@ from qtune.Evaluator import Evaluator
 
 
 class Solver:
-    def __init__(self, gradient, desired_values, evaluators: Tuple(Evaluator, ...), gate_names):
+    def __init__(self, gradient, desired_values: pd.Series, evaluators: Tuple(Evaluator, ...), gate_names):
         self.gradient = gradient
         self.gate_names = gate_names
         self.need_new_gradient = False
@@ -26,11 +26,11 @@ class Solver:
 
 
 class KalmanNewtonSolver(Solver):
-    def __init__(self, evaluators: Tuple(Evaluator, ...), gradient, desired_values: pd.Series, covariance=None,
+    def __init__(self, evaluators: Tuple(Evaluator, ...), gradient, desired_values: pd.Series, gate_names, covariance=None,
                  noise=None, load_cov_noise=False, filename=None):
         if load_cov_noise:
             raise NotImplementedError
-        super().__init__(gradient, desired_values, evaluators)
+        super().__init__(gradient=gradient, desired_values=desired_values, evaluators=evaluators, gate_names=gate_names)
         self.evaluators = evaluators
         n_parameter, n_gates = gradient.shape()
         assert(len(evaluators) == n_parameter)
