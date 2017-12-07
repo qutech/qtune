@@ -14,6 +14,10 @@ import numpy as np
 
 from qtune.experiment import *
 from qtune.util import time_string
+from qtune.GradKalman import GradKalmanFilter
+from qtune.Basic_DQD import BasicDQD
+from qtune.chrg_diag import ChargeDiagram
+
 
 def redirect_output(func):
     return functools.partial(func, stdout=sys.stdout, stderr=sys.stderr)
@@ -85,7 +89,8 @@ class SpecialMeasureMatlab:
                     return
 
                 if silently_overwrite_path is None:
-                    warn_text = 'Found other qtune on MATLAB path: {}\n Will override with {}'.format(qtune_path, matlab_files_path())
+                    warn_text = 'Found other qtune on MATLAB path: {}\n Will override with {}'.format(qtune_path,
+                                                                                                      matlab_files_path())
                     warnings.warn(warn_text, UserWarning)
 
                 self.engine.addpath(matlab_files_path())
@@ -137,26 +142,6 @@ class SpecialMeasureMatlab:
         return self.engine.util.py.get_from_workspace(var_name)
 
 
-class BasicDQD(Experiment):
-    default_line_scan = Measurement('line_scan',
-                                    center=0., range=3e-3, gate='RFA', N_points=1280, ramptime=.0005,
-                                    N_average=3, AWGorDecaDAC='DecaDAC')
-    default_detune_scan = Measurement('detune_scan',
-                                      center=0., range=2e-3, N_points=100, ramptime=.02,
-                                      N_average=20, AWGorDecaDAC='DecaDAC')
-    default_lead_scan = Measurement('lead_scan', gate='B', AWGorDecaDAC='DecaDAC')
-
-    @property
-    def measurements(self) -> Tuple[Measurement, ...]:
-        return (self.default_line_scan, self.default_detune_scan, self.default_lead_scan)
-
-    def tune_qpc(self, qpc_position=None, tuning_range=3e-3):
-        raise NotImplementedError()
-
-    def read_qpc_voltage(self) -> pd.Series:
-        raise NotImplementedError()
-
-
 class LegacyDQD(BasicDQD):
     def __init__(self, matlab_instance: SpecialMeasureMatlab):
         super().__init__()
@@ -192,7 +177,7 @@ class LegacyDQD(BasicDQD):
             parameters = measurement.parameter.copy()
             parameters['file_name'] = measurement.get_file_name()
             parameters['N_points'] = float(parameters['N_points'])
-            parameters['N_average'] = parameters['N_average']
+            parameters['N_average'] = float(parameters['N_average'])
             return pd.Series(self._matlab.engine.qtune.PythonChargeLineScan(parameters))
         elif measurement == 'detune_scan':
             parameters = measurement.parameter.copy()
@@ -209,20 +194,20 @@ class LegacyDQD(BasicDQD):
             raise ValueError('Unknown measurement: {}'.format(measurement))
 
 
-class ChargeDiagram:
-    charge_line_scan_lead_A = Measurement('line_scan', center=0, range=3e-3,
+class LegacyChargeDiagram(ChargeDiagram):
+    charge_line_scan_lead_A = Measurement('line_scan', center=0., range=3e-3,
                                           gate='RFA', N_points=1280,
                                           ramptime=.0005,
                                           N_average=3,
                                           AWGorDecaDAC='DecaDAC')
 
-    charge_line_scan_lead_B = Measurement('line_scan', center=0, range=3e-3,
+    charge_line_scan_lead_B = Measurement('line_scan', center=0., range=3e-3,
                                           gate='RFB', N_points=1280,
                                           ramptime=.0005,
                                           N_average=3,
                                           AWGorDecaDAC='DecaDAC')
 
-    def __init__(self, dqd: BasicDQD,
+    def __init__(self, dqd: LegacyDQD,
                  matlab_engine: SpecialMeasureMatlab,
                  charge_line_scan_lead_A: Measurement = None,
                  charge_line_scan_lead_B: Measurement = None):
@@ -231,7 +216,7 @@ class ChargeDiagram:
 
         self.position_lead_A = 0.
         self.position_lead_B = 0.
-        self.gradient = np.zeros((2, 2), dtype=float)
+        self.grad_kalman=GradKalmanFilter(2, 2, initX=np.zeros((2, 2), dtype=float))
 
         if charge_line_scan_lead_A is not None:
             self.charge_line_scan_lead_A = charge_line_scan_lead_A
@@ -293,25 +278,33 @@ class ChargeDiagram:
         self.dqd.set_gate_voltages(BB_dec)
         pos_A_BB_dec, pos_B_BB_dec = self.measure_positions()
 
-        self.gradient[0, 0] = (pos_A_BA_inc - pos_A_BA_dec) / 2e-3
-        self.gradient[0, 1] = (pos_A_BB_inc - pos_A_BB_dec) / 2e-3
-        self.gradient[1, 0] = (pos_B_BA_inc - pos_B_BA_dec) / 2e-3
-        self.gradient[1, 1] = (pos_B_BB_inc - pos_B_BB_dec) / 2e-3
+        gradient = np.zeros((2, 2), dtype=float)
+        gradient[0, 0] = (pos_A_BA_inc - pos_A_BA_dec) / 2e-3
+        gradient[0, 1] = (pos_A_BB_inc - pos_A_BB_dec) / 2e-3
+        gradient[1, 0] = (pos_B_BA_inc - pos_B_BA_dec) / 2e-3
+        gradient[1, 1] = (pos_B_BB_inc - pos_B_BB_dec) / 2e-3
 
         self.dqd.set_gate_voltages(current_gate_voltages)
 
-        return self.gradient.copy()
+        return gradient.copy()
+
+    def initialize_kalman(self, initX=None, initP=None, initR=None, alpha=1.02):
+        if initX is None:
+            initX = self.calculate_gradient()
+        self.grad_kalman = GradKalmanFilter(2, 2, initX=initX, initP=initP, initR=initR, alpha=alpha)
 
     def center_diagram(self):
-        while np.linalg.norm(self.measure_positions()) > 0.2e-3:
-
-            du = np.linalg.solve(self.gradient, (self.position_lead_A, self.position_lead_B))
+        positions=self.measure_positions()
+        while np.linalg.norm(positions) > 0.2e-3:
+            current_position = (self.position_lead_A, self.position_lead_B)
+            du = np.linalg.solve(self.grad_kalman.grad, current_position)
             if np.linalg.norm(du) > 2e-3:
                 du = du*2e-3/np.linalg.norm(du)
 
             diff = pd.Series(-1*du, ['BA', 'BB'])
-
             new_gate_voltages = self.dqd.read_gate_voltages().add(diff, fill_value=0)
-            print('gates will be set to')
-            print(new_gate_voltages)
             self.dqd.set_gate_voltages(new_gate_voltages)
+
+            positions = self.measure_positions()
+            dpos = (positions[0] - current_position[0], positions[1] - current_position[1])
+            self.grad_kalman.update(-1*du, dpos, hack=False)
