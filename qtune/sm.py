@@ -235,7 +235,7 @@ class LegacyChargeDiagram(ChargeDiagram):
 
 class SMInterDotTCByLineScan(Evaluator):
     def __init__(self, dqd: BasicDQD, matlab_instance: SpecialMeasureMatlab,
-                 parameters: pd.Series() = pd.Series(np.nan, 'tc'), line_scan: Measurement=None):
+                 parameters: pd.Series() = pd.Series((np.nan, ), ('tc', )), line_scan: Measurement=None):
         if line_scan is None:
             line_scan = dqd.measurements[1]
         super().__init__(dqd, line_scan, parameters)
@@ -247,9 +247,11 @@ class SMInterDotTCByLineScan(Evaluator):
         scan_range = self.measurements.parameter['range']
         npoints = self. measurements.parameter['N_points']
         xdata = np.linspace(center - scan_range, center + scan_range, npoints)
-        tc, failed = self.matlab.engine.qtune.at_line_fit(xdata, ydata)
+        fitresult = self.matlab.engine.qtune.at_line_fit(self.matlab.to_matlab(xdata), self.matlab.to_matlab(ydata))
+        tc = fitresult['tc']
+        failed = bool(fitresult['failed'])
         self.parameters['tc'] = tc
-        return pd.Series([tc, failed], ['tc', 'failed'])
+        return pd.Series((tc, failed), ('tc', 'failed'))
 
 
 class SMLeadTunnelTimeByLeadScan(Evaluator):
@@ -263,7 +265,10 @@ class SMLeadTunnelTimeByLeadScan(Evaluator):
 
     def evaluate(self) -> pd.Series:
         data = self.experiment.measure(self.measurements)
-        t_rise, t_fall, failed = self.matlab.engine.qtune.lead_fit(data)
+        fitresult = self.matlab.engine.qtune.lead_fit(self.matlab.to_matlab(data))
+        t_rise = fitresult['t_rise']
+        t_fall = fitresult['t_fall']
+        failed = fitresult['failed']
         self.parameters['t_rise'] = t_rise
         self.parameters['t_fall'] = t_fall
         return pd.Series([t_rise, t_fall, failed], ['t_rise', 't_fall', 'failed'])

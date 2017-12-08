@@ -1,4 +1,4 @@
-function [t_rise, t_fall, failed] = lead_fit(data)
+function [output] = lead_fit(data)
 %UNTITLED Summary of this function goes here
 %   Detailed explanation goes here
 failed =0;
@@ -22,5 +22,9 @@ catch
 end
 t_rise=leadinfo_B(3);
 t_fall=leadinfo_B(4);
+output = struct;
+output.t_rise = t_rise;
+output.t_fall = t_fall;
+output.failed = failed;
 end
 

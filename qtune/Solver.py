@@ -6,7 +6,7 @@ from qtune.Evaluator import Evaluator
 
 
 class Solver:
-    def __init__(self, gradient, desired_values: pd.Series, evaluators: Tuple(Evaluator, ...), gate_names):
+    def __init__(self, gradient, desired_values: pd.Series, evaluators: Tuple[Evaluator, ...], gate_names):
         self.gradient = gradient
         self.gate_names = gate_names
         self.need_new_gradient = False
@@ -26,7 +26,7 @@ class Solver:
 
 
 class KalmanNewtonSolver(Solver):
-    def __init__(self, evaluators: Tuple(Evaluator, ...), gradient, desired_values: pd.Series, gate_names, covariance=None,
+    def __init__(self, evaluators: Tuple[Evaluator, ...], gradient, desired_values: pd.Series, gate_names, covariance=None,
                  noise=None, load_cov_noise=False, filename=None):
         if load_cov_noise:
             raise NotImplementedError

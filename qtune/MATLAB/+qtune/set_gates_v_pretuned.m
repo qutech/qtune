@@ -15,8 +15,8 @@ new_point=[args.SB, args.BB, args.T, args.N, args.SA, args.BA, args.RFA, args.RF
 
 for i=1:8
 	if abs(pretuned_point(i)-new_point(i)) > 5e-3
-		for i = 1:8
-			smset(gatechannels(i),pretuned_point(i))
+		for j = 1:8
+			smset(gatechannels(j),pretuned_point(j))
 		end
 		error('emergency: the dot is 5mV away from pretuned point!!!!')
 	end
