@@ -34,7 +34,7 @@ class ChargeDiagram:
 
         self.position_lead_A = 0.
         self.position_lead_B = 0.
-        self.grad_kalman=GradKalmanFilter(2, 2, initX=np.zeros((2, 2), dtype=float))
+        self.grad_kalman = GradKalmanFilter(2, 2, initX=np.zeros((2, 2), dtype=float))
 
         if charge_line_scan_lead_A is not None:
             self.charge_line_scan_lead_A = charge_line_scan_lead_A
@@ -106,7 +106,7 @@ class ChargeDiagram:
         self.grad_kalman = GradKalmanFilter(2, 2, initX=initX, initP=initP, initR=initR, alpha=alpha)
 
     def center_diagram(self):
-        positions=self.measure_positions()
+        positions = self.measure_positions()
         while np.linalg.norm(positions) > 0.2e-3:
             current_position = (self.position_lead_A, self.position_lead_B)
             du = np.linalg.solve(self.grad_kalman.grad, current_position)
