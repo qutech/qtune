@@ -4,7 +4,7 @@ import pandas as pd
 
 
 class Evaluator:
-    def __init__(self, experiment: Experiment, measurements: Tuple(Measurement, ...), parameters: pd.Series):
+    def __init__(self, experiment: Experiment, measurements: Tuple[Measurement, ...], parameters: pd.Series):
         self.experiment = experiment
         self.measurements = measurements
         self.parameters = parameters
