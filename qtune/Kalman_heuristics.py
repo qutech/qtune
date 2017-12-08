@@ -3,7 +3,7 @@ import numpy as np
 import pickle
 
 
-def initialcovarianceandnoise(ch_diag: ChargeDiagram, n_noise=30, n_cov=30, savetofile=True,
+def save_charge_diagram_histogram_position_gradient(ch_diag: ChargeDiagram, n_noise=30, n_cov=30, savetofile=True,
                               filename=r'Y:\GaAs\Autotune\Data\UsingPython\heuristics_kalman\NoiseCov.pickle'):
     position_histo = np.zeros((n_noise, 2))
     grad_histo = np.zeros((n_cov, 2, 2))
@@ -27,7 +27,7 @@ def initialcovarianceandnoise(ch_diag: ChargeDiagram, n_noise=30, n_cov=30, save
     return std_position, std_grad
 
 
-def load_covandnoise(filename=r'Y:\GaAs\Autotune\Data\UsingPython\heuristics_kalman\NoiseCov.pickle'):
+def load_charge_diagram_covariance_noise_from_histogram(filename=r'Y:\GaAs\Autotune\Data\UsingPython\heuristics_kalman\NoiseCov.pickle'):
     with open(filename, 'rb') as handle:
         data = pickle.load(handle)
     initP = np.zeros((4, 4))
