@@ -23,9 +23,9 @@ subplot(122);
 plot(x(2:end), smoothed);
 hold on;
 scatter(x(idx+1), smoothed(idx), 'ro');
-if abs(x(idx)-sensor_pretuned)> 5e-3
+if abs(x(idx)-sensor_pretuned)> 7e-3
 	smset('SDB2', sensor_pretuned);
-	error('The sensing dot is being tuned more than 5mV away from its original position!')
+	error('The sensing dot is being tuned more than 7mV away from its original position!')
 else
 	smset('SDB2', x(idx));
 end
