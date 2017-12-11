@@ -150,7 +150,7 @@ class LegacyDQD(BasicDQD):
 
     @property
     def gate_voltage_names(self) -> Tuple:
-        return tuple(sorted(self._matlab.engine.atune.read_gate_voltages().keys()))
+        return tuple(sorted(self._matlab.engine.qtune.read_gate_voltages().keys()))
 
     def read_gate_voltages(self):
         return pd.Series(self._matlab.engine.qtune.read_gate_voltages()).sort_index()
