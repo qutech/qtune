@@ -6,7 +6,8 @@ from qtune.Evaluator import Evaluator
 
 
 class Solver:
-    def __init__(self, gradient, desired_values: pd.Series, evaluators: Tuple[Evaluator, ...], gate_names):
+    def __init__(self, gate_names, gradient=None, evaluators: Tuple[Evaluator, ...] = (),
+                 desired_values: pd.Series = pd.Series()):
         self.gradient = gradient
         self.gate_names = gate_names
         self.need_new_gradient = False
@@ -16,7 +17,11 @@ class Solver:
         for e in evaluators:
             self.parameter.append(e.parameters, verify_integrity=True)
         self.parameter.sort_index()
-        assert(desired_values.index.tolist() == self.parameter.index.tolist())
+
+    def check_dimensinality(self):
+
+        assert(self.desired_values.index.tolist() == self.parameter.index.tolist())
+        raise NotImplementedError()
 
     def suggest_next_step(self):
         raise NotImplementedError()
@@ -26,8 +31,8 @@ class Solver:
 
 
 class KalmanNewtonSolver(Solver):
-    def __init__(self, evaluators: Tuple[Evaluator, ...], gradient, desired_values: pd.Series, gate_names, covariance=None,
-                 noise=None, load_cov_noise=False, filename=None):
+    def __init__(self, evaluators: Tuple[Evaluator, ...], gradient, desired_values: pd.Series, gate_names,
+                 covariance=None, noise=None, load_cov_noise=False, filename=None):
         if load_cov_noise:
             raise NotImplementedError
         super().__init__(gradient=gradient, desired_values=desired_values, evaluators=evaluators, gate_names=gate_names)

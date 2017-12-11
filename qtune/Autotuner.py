@@ -36,7 +36,7 @@ class Autotuner:
                 print('This Evaluator determines a parameter which is already being evaluated by another Evaluator')
                 return
             series_to_add = pd.Series((new_parameters[i],), (i,))
-            self.parameters.append(series_to_add, verify_integrity=True)
+            self.parameters = self.parameters.append(series_to_add, verify_integrity=True)
         self._evaluators += (new_evaluator,)
 
     @property
@@ -52,6 +52,7 @@ class Autotuner:
         raise NotImplementedError
 
     def evaluate_gradient(self, delta_u=4e-3, n_repetitions=3) -> pd.DataFrame:
+        current_gate_positions = self.experiment.read_gate_voltages()
         gradient = pd.DataFrame()
         for gate in self.experiment.gate_voltage_names:
             positive_detune_parameter = pd.Series()
@@ -61,7 +62,6 @@ class Autotuner:
                 positive_detune_parameter[i] = np.zeros((n_repetitions,), dtype=float)
                 negative_detune_parameter[i] = np.zeros((n_repetitions,), dtype=float)
 
-            current_gate_positions = self.experiment.read_gate_voltages()
             detuning = pd.Series(delta_u, gate)
 
             for i in range(1, n_repetitions):
@@ -101,8 +101,15 @@ class Autotuner:
                 positive_detune_parameter[i] = np.nanmean(positive_detune_parameter[i])
                 negative_detune_parameter[i] = np.nanmean(negative_detune_parameter[i])
             gradient_column = (positive_detune_parameter.add(-1.*negative_detune_parameter))/2./delta_u
-            gradient = gradient_column.join(gradient)
+            if gradient.empty:
+                gradient = gradient_column
+            else:
+                gradient = gradient.join(gradient_column)
+            self.experiment.set_gate_voltages(current_gate_positions)
         return gradient
+
+    def set_solver(self):
+        raise NotImplementedError
 
     def autotune(self):
         raise NotImplementedError
@@ -158,19 +165,20 @@ class ChargeDiagramAutotuner(Autotuner):
         return heuristic_covariance, heuristic_noise
 
     def evaluate_gradient(self, delta_u=4e-3, n_repetitions=3) -> pd.DataFrame:
+        current_gate_positions = self.experiment.read_gate_voltages()
         gradient = pd.DataFrame()
-        for gate in self.experiment.gate_voltage_names:
+        tunable_gates = current_gate_positions.drop(['RFA', 'RFB', 'BA', 'BB'])
+        for gate in tunable_gates.index.tolist():
             positive_detune_parameter = pd.Series()
             negative_detune_parameter = pd.Series()
 
-            for i in self.parameters.index.tolist():
-                positive_detune_parameter[i] = np.zeros((n_repetitions,), dtype=float)
-                negative_detune_parameter[i] = np.zeros((n_repetitions,), dtype=float)
+            for parameter in self.parameters.index.tolist():
+                positive_detune_parameter[parameter] = np.zeros((n_repetitions,), dtype=float)
+                negative_detune_parameter[parameter] = np.zeros((n_repetitions,), dtype=float)
 
-            current_gate_positions = self.experiment.read_gate_voltages()
-            detuning = pd.Series(delta_u, gate)
+            detuning = pd.Series((delta_u, ), (gate, ))
 
-            for i in range(1, n_repetitions):
+            for i in range(n_repetitions):
                 new_gate_positions = current_gate_positions.add(detuning, fill_value=0)
                 self.experiment.set_gate_voltages(new_gate_positions)
                 self.charge_diagram.center_diagram()
@@ -187,7 +195,8 @@ class ChargeDiagramAutotuner(Autotuner):
 
                     for r in evaluation_result.index.tolist():
                         positive_detune_parameter[r][i] = evaluation_result[r]
-
+                self.experiment.set_gate_voltages(current_gate_positions)
+                self.charge_diagram.center_diagram()
                 new_gate_positions = current_gate_positions.add(-1.*detuning, fill_value=0)
                 self.experiment.set_gate_voltages(new_gate_positions)
                 self.charge_diagram.center_diagram()
@@ -204,10 +213,16 @@ class ChargeDiagramAutotuner(Autotuner):
 
                     for r in evaluation_result.index.tolist():
                         negative_detune_parameter[r][i] = evaluation_result[r]
+                self.experiment.set_gate_voltages(current_gate_positions)
+                self.charge_diagram.center_diagram()
 
             for i in self.parameters.index.tolist():
                 positive_detune_parameter[i] = np.nanmean(positive_detune_parameter[i])
                 negative_detune_parameter[i] = np.nanmean(negative_detune_parameter[i])
             gradient_column = (positive_detune_parameter.add(-1.*negative_detune_parameter))/2./delta_u
-            gradient = gradient_column.join(gradient)
+            gradient_column = gradient_column.to_frame(gate)
+            if gradient.empty:
+                gradient = gradient_column
+            else:
+                gradient = gradient.join(gradient_column)
         return gradient
