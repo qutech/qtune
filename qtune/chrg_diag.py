@@ -49,7 +49,7 @@ class ChargeDiagram:
         voltages_for_pos_a = current_gate_voltages.add(-4*RFB_eps, fill_value=0)
         self.dqd.set_gate_voltages(voltages_for_pos_a)
         data_A = self.dqd.measure(self.charge_line_scan_lead_A)
-        self.position_lead_A = find_lead_transition(data_A.values.item(),
+        self.position_lead_A = find_lead_transition(data_A,
                                                     float(self.charge_line_scan_lead_A.parameter["center"]),
                                                     float(self.charge_line_scan_lead_A.parameter["range"]),
                                                     self.charge_line_scan_lead_A.parameter["N_points"])
@@ -57,7 +57,7 @@ class ChargeDiagram:
         voltages_for_pos_b = current_gate_voltages.add(-4*RFA_eps, fill_value=0)
         self.dqd.set_gate_voltages(voltages_for_pos_b)
         data_B = self.dqd.measure(self.charge_line_scan_lead_B)
-        self.position_lead_B = find_lead_transition(data_B.values.item(),
+        self.position_lead_B = find_lead_transition(data_B,
                                                     float(self.charge_line_scan_lead_B.parameter["center"]),
                                                     float(self.charge_line_scan_lead_B.parameter["range"]),
                                                     self.charge_line_scan_lead_B.parameter["N_points"])

@@ -211,7 +211,7 @@ class LegacyChargeDiagram(ChargeDiagram):
         voltages_for_pos_a = current_gate_voltages.add(-4*RFB_eps, fill_value=0)
         self.dqd.set_gate_voltages(voltages_for_pos_a)
         data_A = self.dqd.measure(self.charge_line_scan_lead_A)
-        self.position_lead_A = self.matlab.engine.qtune.at_find_lead_trans(data_A.values.item(),
+        self.position_lead_A = self.matlab.engine.qtune.at_find_lead_trans(self.matlab.to_matlab(data_A),
                                                                            float(self.charge_line_scan_lead_A.parameter[
                                                                                      "center"]),
                                                                            float(self.charge_line_scan_lead_A.parameter[
@@ -222,7 +222,7 @@ class LegacyChargeDiagram(ChargeDiagram):
         voltages_for_pos_b = current_gate_voltages.add(-4*RFA_eps, fill_value=0)
         self.dqd.set_gate_voltages(voltages_for_pos_b)
         data_B = self.dqd.measure(self.charge_line_scan_lead_B)
-        self.position_lead_B = self.matlab.engine.qtune.at_find_lead_trans(data_B.values.item(),
+        self.position_lead_B = self.matlab.engine.qtune.at_find_lead_trans(self.matlab.to_matlab(data_B),
                                                                            float(self.charge_line_scan_lead_B.parameter[
                                                                                      "center"]),
                                                                            float(self.charge_line_scan_lead_B.parameter[

@@ -11,22 +11,23 @@ from qtune.Kalman_heuristics import load_charge_diagram_covariance_noise_from_hi
 
 
 class Autotuner:
-    def __init__(self, experiment: Experiment, solver: Solver = None, evaluators: Tuple(Evaluator, ...) = (),
+    def __init__(self, experiment: Experiment, solver: Solver = None, evaluators: Tuple[Evaluator, ...] = (),
                  desired_values: pd.Series = pd.Series()):
         self.parameters = pd.Series()
         self.solver = solver
         self.experiment = experiment
+        self._evaluators = ()
         for e in evaluators:
             self.add_evaluator(e)
-        self.desired_values = desired_values
+        self._desired_values = desired_values
 
     @property
     def evaluators(self):
-        return self.evaluators
+        return self._evaluators
 
     @evaluators.setter
-    def evaluators(self, evaluators: Tuple(Evaluator, ...)):
-        self.evaluators = evaluators
+    def evaluators(self, evaluators: Tuple[Evaluator, ...]):
+        self._evaluators = evaluators
 
     def add_evaluator(self, new_evaluator: Evaluator):
         new_parameters = new_evaluator.parameters
@@ -34,17 +35,18 @@ class Autotuner:
             if i in self.parameters:
                 print('This Evaluator determines a parameter which is already being evaluated by another Evaluator')
                 return
-            self.parameters.append(i, verify_integrity=True)
-        self.evaluators += (new_evaluator,)
+            series_to_add = pd.Series((new_parameters[i],), (i,))
+            self.parameters.append(series_to_add, verify_integrity=True)
+        self._evaluators += (new_evaluator,)
 
     @property
     def desired_values(self):
-        return self.desired_values
+        return self._desired_values
 
     @desired_values.setter
     def desired_values(self, desired_values: pd.Series):
         assert(desired_values.index.tolist() == self.parameters.index.tolist())
-        self.desired_values = desired_values
+        self._desired_values = desired_values
 
     def set_desired_values_manually(self):
         raise NotImplementedError
@@ -107,7 +109,7 @@ class Autotuner:
 
 
 class ChargeDiagramAutotuner(Autotuner):
-    def __init__(self, dqd: BasicDQD, solver: Solver = None, evaluators: Tuple(Evaluator, ...) = (),
+    def __init__(self, dqd: BasicDQD, solver: Solver = None, evaluators: Tuple[Evaluator, ...] = (),
                  desired_values: pd.Series = pd.Series(), charge_diagram_gradient=None,
                  charge_diagram_covariance=None, charge_diagram_noise=None):
         super().__init__(experiment=dqd, solver=solver, evaluators=evaluators, desired_values=desired_values)
