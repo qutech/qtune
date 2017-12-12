@@ -18,10 +18,16 @@ class Solver:
             self.parameter.append(e.parameters, verify_integrity=True)
         self.parameter.sort_index()
 
-    def check_dimensinality(self):
-
-        assert(self.desired_values.index.tolist() == self.parameter.index.tolist())
-        raise NotImplementedError()
+    def check_dimensionality(self) -> bool:
+        if self.gradient.shape != (len(self.parameter.index.tolist()), len(self.gate_names)):
+            print('The gradients shape', self.gradient.shape, 'doesnt match the number of parameters',
+                  self.parameter.index.tolist(), 'and gate names', len(self.gate_names), '!')
+            return False
+        if self.desired_values.index.tolist() != self.parameter.index.tolist():
+            print('The desired values', self.desired_values.index.tolist(), 'do not match the parameters',
+                  self.parameter.index.tolist(), '!')
+            return False
+        return True
 
     def suggest_next_step(self):
         raise NotImplementedError()
@@ -30,32 +36,28 @@ class Solver:
         raise NotImplementedError()
 
 
-class KalmanNewtonSolver(Solver):
-    def __init__(self, evaluators: Tuple[Evaluator, ...], gradient, desired_values: pd.Series, gate_names,
-                 covariance=None, noise=None, load_cov_noise=False, filename=None):
-        if load_cov_noise:
-            raise NotImplementedError
-        super().__init__(gradient=gradient, desired_values=desired_values, evaluators=evaluators, gate_names=gate_names)
-        self.evaluators = evaluators
-        n_parameter, n_gates = gradient.shape()
-        assert(len(evaluators) == n_parameter)
-        assert(n_parameter == desired_values.size())
-        self.grad_kalman = GradKalmanFilter(n_gates, n_parameter, initF=None, initX=gradient, initP=covariance,
-                                            initR=noise, initQ=None)
-        self.need_new_gradient = False
+class KalmanSolver(Solver):
+    def __init__(self, gate_names, gradient=None, evaluators: Tuple[Evaluator, ...] = (),
+                 desired_values: pd.Series = pd.Series(), covariance=None, noise=None, alpha=1.02):
+        super().__init__(gate_names=gate_names, gradient=gradient, desired_values=desired_values, evaluators=evaluators)
+        self.covariance = covariance
+        self.noise = noise
+        if gradient is not None:
+            n_parameter, n_gates = gradient.shape()
+            self.grad_kalman = GradKalmanFilter(nGates=n_gates, nParams=n_parameter, initF=None, initX=gradient, initP=covariance,
+                                                initR=noise, initQ=None, alpha=alpha)
 
-    def suggest_next_step(self):
-        d_parameter_series = self.desired_values.add(-1.*self.parameter)
-        d_parameter_series = d_parameter_series.sort_index()
-        d_parameter_vector = np.asarray(d_parameter_series.values).T
-        d_voltages_vector = np.linalg.solve(self.grad_kalman.grad, d_parameter_vector)
-        d_voltages_series = pd.Series(d_voltages_vector, self.gate_names)
-        return d_voltages_series
+    def initialize_kalman(self, gradient=None, covariance=None, noise=None, alpha=1.02):
+        if gradient is None:
+            gradient = self.gradient
+        n_parameters, n_gates = gradient.shape
+        self.grad_kalman = GradKalmanFilter(nGates=n_gates, nParams=n_parameters, initX=gradient, initP=covariance,
+                                            initR=noise, alpha=alpha)
 
     def update_after_step(self, d_voltages_series: pd.Series) -> bool:
         current_parameter = self.parameter
         for e in self.evaluators:
-            evaluation_result = e.evaluate
+            evaluation_result = e.evaluate()
             if evaluation_result['failed']:
                 return False
             evaluation_result.drop(['failed'])
@@ -72,6 +74,25 @@ class KalmanNewtonSolver(Solver):
         d_voltages_vector = d_voltages_vector.T
         self.grad_kalman.update(d_voltages_vector, d_parameter_vector, hack=False)
         self.gradient = self.grad_kalman.grad
+        return True
+
+
+class KalmanNewtonSolver(KalmanSolver):
+    def __init__(self, gate_names, gradient=None, evaluators: Tuple[Evaluator, ...] = (),
+                 desired_values: pd.Series = pd.Series(), covariance=None, noise=None, alpha=1.02):
+        super().__init__(gate_names=gate_names, gradient=gradient, evaluators=evaluators, desired_values=desired_values,
+                         covariance=covariance, noise=noise, alpha=alpha)
+
+    def suggest_next_step(self):
+        if not self.check_dimensionality():
+            print('The internal dimensionality is not consistent! Cant predict next Step! Abort mission!')
+            return
+        d_parameter_series = self.desired_values.add(-1.*self.parameter)
+        d_parameter_series = d_parameter_series.sort_index()
+        d_parameter_vector = np.asarray(d_parameter_series.values).T
+        d_voltages_vector = np.linalg.solve(self.grad_kalman.grad, d_parameter_vector)
+        d_voltages_series = pd.Series(d_voltages_vector, self.gate_names)
+        return d_voltages_series
 
 
 

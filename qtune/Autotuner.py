@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import pickle
+import copy
 from typing import Tuple
 from qtune.experiment import Experiment
 from qtune.Evaluator import Evaluator
@@ -13,7 +14,7 @@ from qtune.Kalman_heuristics import load_charge_diagram_gradient_covariance_nois
 
 class Autotuner:
     def __init__(self, experiment: Experiment, solver: Solver = None, evaluators: Tuple[Evaluator, ...] = (),
-                 desired_values: pd.Series = pd.Series()):
+                 desired_values: pd.Series = pd.Series(), tuning_accuracy: pd.Series = pd.Series()):
         self.parameters = pd.Series()
         self.solver = solver
         self.experiment = experiment
@@ -21,6 +22,7 @@ class Autotuner:
         for e in evaluators:
             self.add_evaluator(e)
         self._desired_values = desired_values
+        self.tuning_accuracy=tuning_accuracy
         self.tunable_gates = self.experiment.read_gate_voltages()
         self.gradient = None
         self.gradient_std = None
@@ -61,6 +63,36 @@ class Autotuner:
     def set_gate_voltages(self, new_voltages):
         self.experiment.set_gate_voltages(new_gate_voltages=new_voltages)
 
+    def evaluate_parameters(self) -> pd.Series:
+        parameters=pd.Series()
+        for e in self.evaluators:
+            evaluation_result = e.evaluate()
+
+            if evaluation_result['failed']:
+                evaluation_result = evaluation_result.drop(['failed'])
+                for r in evaluation_result.index.tolist():
+                    evaluation_result[r] = np.nan
+            else:
+                evaluation_result = evaluation_result.drop(['failed'])
+
+            for r in evaluation_result.index.tolist():
+               parameters[r] = evaluation_result[r]
+        self.parameters = copy.deepcopy(parameters)
+        return parameters
+
+    def tuning_complete(self) -> bool:
+        complete = True
+        for parameter in self.parameters.index.tolist():
+            if np.abs(self.parameters[parameter]-self.desired_values[parameter]) > self.tuning_accuracy[parameter]:
+                complete = False
+        return complete
+
+    def ready_to_tune(self) -> bool:
+        if self.solver is None:
+            print('You need to setup a solver!')
+            return False
+        raise NotImplementedError
+
     def evaluate_gradient_covariance_noise(self, delta_u=4e-3, n_repetitions=3, save_to_file: bool = False,
                                            filename: str = None) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
         current_gate_positions = self.experiment.read_gate_voltages()
@@ -78,38 +110,18 @@ class Autotuner:
             self.set_gate_voltages(new_gate_positions)
 
             for i in range(n_repetitions):
-
-                for e in self.evaluators:
-                    evaluation_result = e.evaluate()
-
-                    if evaluation_result['failed']:
-                        evaluation_result = evaluation_result.drop(['failed'])
-                        for r in evaluation_result.index.tolist():
-                            evaluation_result[r] = np.nan
-                    else:
-                        evaluation_result = evaluation_result.drop(['failed'])
-
-                    for r in evaluation_result.index.tolist():
-                        positive_detune_parameter[r][i] = evaluation_result[r]
+                evaluation_result = self.evaluate_parameters()
+                for r in evaluation_result.index.tolist()
+                    positive_detune_parameter[r][i] = evaluation_result[r]
 
             self.set_gate_voltages(current_gate_positions)
             new_gate_positions = current_gate_positions.add(-1.*detuning, fill_value=0)
             self.set_gate_voltages(new_gate_positions)
 
             for i in range(n_repetitions):
-
-                for e in self.evaluators:
-                    evaluation_result = e.evaluate()
-
-                    if evaluation_result['failed']:
-                        evaluation_result = evaluation_result.drop(['failed'])
-                        for r in evaluation_result.index.tolist():
-                            evaluation_result[r] = np.nan
-                    else:
-                        evaluation_result = evaluation_result.drop(['failed'])
-
-                    for r in evaluation_result.index.tolist():
-                        negative_detune_parameter[r][i] = evaluation_result[r]
+                evaluation_result = self.evaluate_parameters()
+                for r in evaluation_result.index.tolist():
+                    negative_detune_parameter[r][i] = evaluation_result[r]
 
             self.set_gate_voltages(current_gate_positions)
 
@@ -158,9 +170,10 @@ class Autotuner:
 
 class ChargeDiagramAutotuner(Autotuner):
     def __init__(self, dqd: BasicDQD, solver: Solver = None, evaluators: Tuple[Evaluator, ...] = (),
-                 desired_values: pd.Series = pd.Series(), charge_diagram_gradient=None,
-                 charge_diagram_covariance=None, charge_diagram_noise=None):
-        super().__init__(experiment=dqd, solver=solver, evaluators=evaluators, desired_values=desired_values)
+                 desired_values: pd.Series = pd.Series(), tuning_accuracy: pd.Series = pd.Series(),
+                 charge_diagram_gradient=None, charge_diagram_covariance=None, charge_diagram_noise=None):
+        super().__init__(experiment=dqd, solver=solver, evaluators=evaluators, desired_values=desired_values,
+                         tuning_accuracy=tuning_accuracy)
         self.charge_diagram = ChargeDiagram(dqd=dqd)
         self.tunable_gates = self.tunable_gates.drop(['RFA', 'RFB', 'BA', 'BB'])
         if charge_diagram_gradient is not None or charge_diagram_covariance is not None or charge_diagram_noise is not None:
@@ -213,4 +226,34 @@ class ChargeDiagramAutotuner(Autotuner):
         heuristic_noise[0, 0] = (2. * std_position[0]) * (2. * std_position[0])
         heuristic_noise[1, 1] = (2. * std_position[1]) * (2. * std_position[1])
         return gradient, heuristic_covariance, heuristic_noise
+
+
+
+class CDKalmanAutotuner(ChargeDiagramAutotuner):
+    def set_solver(self, solver: Solver, gradient: pd.DataFrame=None, evaluators: Tuple[Evaluator, ...] = (),
+                   desired_values: pd.Series = pd.Series(), gradient_std: pd.DataFrame=None,
+                   evaluation_std: pd.Series=None, alpha=1.02, load_data=False, filename: str = None):
+        gate_names = self.tunable_gates.index.tolist()
+        if load_data:
+            if filename is None:
+                print('You need to insert a filename, if you want to load data!')
+                return
+            gradient, gradient_std, evaluation_std = self.load_gradient_data(filename=filename)
+
+        if gradient is None:
+            print('You need to set or load a gradient!')
+            return
+
+        gradient = gradient.sort_index(0)
+        gradient = gradient.sort_index(1)
+        if gradient_std is not None:
+            covariance = np.zeros(())
+
+
+
+    def autotune(self):
+        self.evaluate_parameters()
+        while not self.tuning_complete():
+            raise NotImplementedError
+
 
