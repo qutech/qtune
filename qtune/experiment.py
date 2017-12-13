@@ -1,6 +1,6 @@
 from typing import Tuple, Dict, Any
 
-
+import numpy as np
 import pandas as pd
 
 from qtune.util import time_string
@@ -39,7 +39,7 @@ class Experiment:
         raise NotImplementedError()
 
     def measure(self,
-                measurement: Measurement) -> pd.Series:
+                measurement: Measurement) -> np.ndarray:
         """Conduct specified measurements with given gate_voltages
 
         :param gate_voltages:

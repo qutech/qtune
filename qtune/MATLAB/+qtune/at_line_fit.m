@@ -1,4 +1,4 @@
-function [ tc, failed ] = at_line_fit( xdata, ydata )
+function [ output ] = at_line_fit( xdata, ydata )
 %Fit the data to extract the tunnel coupling
 %   if the fit fails, the status 'failed' will be set to 0 otherwise to 1
 
@@ -60,7 +60,9 @@ function [ tc, failed ] = at_line_fit( xdata, ydata )
         end
     end
     tc=lineinfo(5);
-    
+    output = struct;
+		output.tc = tc;
+		output.failed = failed;
 
 end
 
