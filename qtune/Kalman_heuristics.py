@@ -35,10 +35,10 @@ def load_charge_diagram_gradient_covariance_noise_from_histogram(
     gradient = np.nanmean(data['grad_histo'], axis=0)
     initP = np.zeros((4, 4))
     std_grad = data["std_grad"]
-    initP[0, 0] = 2. * std_grad[0, 0]
-    initP[1, 1] = 2. * std_grad[0, 1]
-    initP[2, 2] = 2. * std_grad[1, 0]
-    initP[3, 3] = 2. * std_grad[1, 1]
+    initP[0, 0] = std_grad[0, 0] * std_grad[0, 0]
+    initP[1, 1] = std_grad[0, 1] * std_grad[0, 1]
+    initP[2, 2] = std_grad[1, 0] * std_grad[1, 0]
+    initP[3, 3] = std_grad[1, 1] * std_grad[1, 1]
     initR = np.zeros((2, 2))
     std_position = data["std_position"]
     initR[0, 0] = (2. * std_position[0]) * (2. * std_position[0])

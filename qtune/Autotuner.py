@@ -5,7 +5,7 @@ import copy
 from typing import Tuple
 from qtune.experiment import Experiment
 from qtune.Evaluator import Evaluator
-from qtune.Solver import Solver
+from qtune.Solver import Solver, KalmanSolver
 from qtune.Basic_DQD import BasicDQD
 from qtune.chrg_diag import ChargeDiagram
 from qtune.Kalman_heuristics import load_charge_diagram_gradient_covariance_noise_from_histogram, \
@@ -91,7 +91,6 @@ class Autotuner:
         if self.solver is None:
             print('You need to setup a solver!')
             return False
-        raise NotImplementedError
 
     def evaluate_gradient_covariance_noise(self, delta_u=4e-3, n_repetitions=3, save_to_file: bool = False,
                                            filename: str = None) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
@@ -111,7 +110,7 @@ class Autotuner:
 
             for i in range(n_repetitions):
                 evaluation_result = self.evaluate_parameters()
-                for r in evaluation_result.index.tolist()
+                for r in evaluation_result.index.tolist():
                     positive_detune_parameter[r][i] = evaluation_result[r]
 
             self.set_gate_voltages(current_gate_positions)
@@ -230,7 +229,7 @@ class ChargeDiagramAutotuner(Autotuner):
 
 
 class CDKalmanAutotuner(ChargeDiagramAutotuner):
-    def set_solver(self, solver: Solver, gradient: pd.DataFrame=None, evaluators: Tuple[Evaluator, ...] = (),
+    def set_solver(self, kalman_solver: KalmanSolver, gradient: pd.DataFrame=None, evaluators: Tuple[Evaluator, ...] = (),
                    desired_values: pd.Series = pd.Series(), gradient_std: pd.DataFrame=None,
                    evaluation_std: pd.Series=None, alpha=1.02, load_data=False, filename: str = None):
         gate_names = self.tunable_gates.index.tolist()
@@ -246,14 +245,51 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
 
         gradient = gradient.sort_index(0)
         gradient = gradient.sort_index(1)
+        gradient_matrix = gradient.as_matrix()
         if gradient_std is not None:
-            covariance = np.zeros(())
+            gradient_std = gradient_std.sort_index(0)
+            gradient_std = gradient_std.sort_index(1)
+            gradient_std_matrix = gradient_std.as_matrix()
+            n_parameters, n_gates = gradient.shape
+            covariance = np.zeros((n_parameters * n_gates, n_parameters * n_gates))
+            for n_p in range(n_parameters):
+                for n_g in range(n_gates):
+                    covariance[n_g + n_p * n_gates, n_g + n_p * n_gates] = gradient_std_matrix[n_p, n_g]
+        else:
+            covariance = None
+        if evaluation_std is not None:
+            evaluation_std = evaluation_std.sort_index()
+            evaluation_std_matrix = evaluation_std.as_matrix()
+            n_parameters, n_gates = gradient.shape
+            evaluation_noise = np.zeros([n_parameters, n_parameters])
+            for n_p in range(n_parameters):
+                evaluation_noise[n_p, n_p] = evaluation_std_matrix[n_p] * evaluation_std_matrix[n_p]
+        else:
+            evaluation_noise = None
 
+        self.solver = kalman_solver
+        self.solver.gate_names = gate_names
+        if evaluators != ():
+            for e in evaluators:
+                self.solver.add_evaluator(e)
+        if not desired_values.empty:
+            self.solver.desired_values = desired_values
+        self.solver.initialize_kalman(gradient=gradient_matrix, covariance=covariance, noise=evaluation_noise,
+                                      alpha=alpha)
 
-
-    def autotune(self):
-        self.evaluate_parameters()
+    def autotune(self) -> bool:
+        if not self.ready_to_tune():
+            print('The tuner setup is not complete!')
+            return False
+        parameters = self.evaluate_parameters()
         while not self.tuning_complete():
-            raise NotImplementedError
-
-
+            self.solver.parameter = parameters
+            d_voltages = self.solver.suggest_next_step()
+            current_voltages = self.experiment.read_gate_voltages()
+            new_voltages = current_voltages.add(-1.*d_voltages, fill_value=0)
+            self.set_gate_voltages(new_voltages=new_voltages)
+            new_parameters = self.evaluate_parameters()
+            d_parameter = new_parameters - parameters
+            self.solver.update_after_step(d_voltages_series=d_voltages,d_parameter_series=d_parameter)
+            parameters = new_parameters
+        return True
