@@ -147,6 +147,7 @@ class LegacyDQD(BasicDQD):
     def __init__(self, matlab_instance: SpecialMeasureMatlab):
         super().__init__()
         self._matlab = matlab_instance
+        self._qpc_tuned = False
 
     @property
     def gate_voltage_names(self) -> Tuple:
@@ -156,6 +157,7 @@ class LegacyDQD(BasicDQD):
         return pd.Series(self._matlab.engine.qtune.read_gate_voltages()).sort_index()
 
     def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
+        self._qpc_tuned = False
         new_gate_voltages = dict(new_gate_voltages)
         for key in new_gate_voltages:
             new_gate_voltages[key] = new_gate_voltages[key].item()
@@ -168,11 +170,14 @@ class LegacyDQD(BasicDQD):
         if qpc_position is None:
             qpc_position = dict(self.read_qpc_voltage())['qpc'][0]
         qpc_tune_input = {"tuning_range": tuning_range, "qpc_position": qpc_position, "file_name": time_string()}
-        return self._matlab.engine.qtune.retune_qpc(qpc_tune_input)
+        tuning_output = self._matlab.engine.qtune.retune_qpc(qpc_tune_input)
+        self._qpc_tuned = True
+        return tuning_output
 
     def measure(self,
                 measurement: Measurement) -> np.ndarray:
-        self.tune_qpc()
+        if not self._qpc_tuned:
+            self.tune_qpc()
 
         if measurement == 'line_scan':
             parameters = measurement.parameter.copy()
