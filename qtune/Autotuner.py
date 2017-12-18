@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import pickle
 import copy
+import os.path
 from typing import Tuple
 from qtune.experiment import Experiment
 from qtune.Evaluator import Evaluator
@@ -22,7 +23,7 @@ class Autotuner:
         for e in evaluators:
             self.add_evaluator(e)
         self._desired_values = desired_values
-        self.tuning_accuracy=tuning_accuracy
+        self.tuning_accuracy = tuning_accuracy
         self.tunable_gates = self.experiment.read_gate_voltages()
         self.gradient = None
         self.gradient_std = None
@@ -111,7 +112,7 @@ class Autotuner:
             for i in range(n_repetitions):
                 evaluation_result = self.evaluate_parameters()
                 for r in evaluation_result.index.tolist():
-                    positive_detune_parameter[r][i] = evaluation_result[r]
+                    (positive_detune_parameter[r])[i] = evaluation_result[r]
 
             self.set_gate_voltages(current_gate_positions)
             new_gate_positions = current_gate_positions.add(-1.*detuning, fill_value=0)
@@ -120,7 +121,7 @@ class Autotuner:
             for i in range(n_repetitions):
                 evaluation_result = self.evaluate_parameters()
                 for r in evaluation_result.index.tolist():
-                    negative_detune_parameter[r][i] = evaluation_result[r]
+                    (negative_detune_parameter[r])[i] = evaluation_result[r]
 
             self.set_gate_voltages(current_gate_positions)
 
@@ -128,19 +129,21 @@ class Autotuner:
             if positive_detune.empty:
                 positive_detune = positive_detune_parameter_df
             else:
-                positive_detune = positive_detune_parameter_df.join(positive_detune_parameter)
+                positive_detune = positive_detune.join(positive_detune_parameter_df)
             negative_detune_parameter_df = negative_detune_parameter.to_frame(gate)
             if negative_detune.empty:
                 negative_detune = negative_detune_parameter_df
             else:
-                negative_detune = negative_detune_parameter_df.join(positive_detune_parameter)
+                negative_detune = negative_detune.join(negative_detune_parameter_df)
 
         gradient = (positive_detune - negative_detune) / 2. / delta_u
-        gradient_std = gradient.apply(np.nanstd)
-        gradient = gradient.apply(np.nanmean)
+        gradient_std = gradient.applymap(np.nanstd)
+        gradient = gradient.applymap(np.nanmean)
         evaluation_std = positive_detune_parameter.apply(np.nanstd)
 
         if save_to_file:
+            if not os.path.isfile(filename):
+                open(filename, 'a').close
             save_data = pd.Series([gradient, gradient_std, evaluation_std],
                                   ['gradient', 'gradient_std', 'evaluation_std'])
             with open(filename, 'wb') as handle:
@@ -163,7 +166,7 @@ class Autotuner:
     def set_solver(self, solver: Solver):
         self.solver = solver
 
-    def autotune(self):
+    def autotune(self) -> bool:
         raise NotImplementedError
 
 
@@ -190,7 +193,7 @@ class ChargeDiagramAutotuner(Autotuner):
                 if filename is None:
                     print('Cannot save the measured data without filename!')
                     save_to_file = False
-            charge_diagram_covariance, charge_diagram_noise = self.measure_charge_diagram_histogram(n_noise=n_noise,
+            gradient, charge_diagram_covariance, charge_diagram_noise = self.measure_charge_diagram_histogram(n_noise=n_noise,
                                                                                                     n_cov=n_cov,
                                                                                                     save_to_file=save_to_file,
                                                                                                     filename=filename)
