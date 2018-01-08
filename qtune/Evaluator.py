@@ -2,6 +2,7 @@ from qtune.experiment import Experiment, Measurement, TestExperiment
 from typing import Tuple
 import pandas as pd
 import numpy as np
+import h5py
 
 
 class Evaluator:
@@ -13,7 +14,7 @@ class Evaluator:
     def __call__(self, *args, **kwargs):
         return self.evaluate()
 
-    def evaluate(self) -> pd.Series:
+    def evaluate(self, storing_group: h5py.Group) -> pd.Series:
         raise NotImplementedError
 
 

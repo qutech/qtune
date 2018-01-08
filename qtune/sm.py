@@ -7,6 +7,7 @@ import sys
 from typing import Tuple, Sequence, Union
 import os.path
 import weakref
+import h5py
 
 import matlab.engine
 import pandas as pd
@@ -246,7 +247,7 @@ class SMInterDotTCByLineScan(Evaluator):
         super().__init__(dqd, line_scan, parameters)
         self.matlab = matlab_instance
 
-    def evaluate(self) -> pd.Series:
+    def evaluate(self, storing_group: h5py.Group) -> pd.Series:
         ydata = self.experiment.measure(self.measurements)
         center = self.measurements.parameter['center']
         scan_range = self.measurements.parameter['range']
@@ -256,6 +257,13 @@ class SMInterDotTCByLineScan(Evaluator):
         tc = fitresult['tc']
         failed = bool(fitresult['failed'])
         self.parameters['tc'] = tc
+        storing_dataset = storing_group.create_dataset("SMInterDotTCByLineScan", data=ydata)
+        storing_dataset.attrs["center"] = center
+        storing_dataset.attrs["scan_range"] = scan_range
+        storing_dataset.attrs["npoints"] = npoints
+        storing_dataset.attrs["tunnel_coupling"] = tc
+        if failed:
+            storing_dataset.attrs["tunnel_coupling"] = np.nan
         return pd.Series((tc, failed), ('tc', 'failed'))
 
 
@@ -268,7 +276,7 @@ class SMLeadTunnelTimeByLeadScan(Evaluator):
         super().__init__(dqd, lead_scan, parameters)
         self.matlab = matlab_instance
 
-    def evaluate(self) -> pd.Series:
+    def evaluate(self, storing_group: h5py.Group) -> pd.Series:
         data = self.experiment.measure(self.measurements)
         fitresult = self.matlab.engine.qtune.lead_fit(self.matlab.to_matlab(data))
         t_rise = fitresult['t_rise']
@@ -276,4 +284,10 @@ class SMLeadTunnelTimeByLeadScan(Evaluator):
         failed = fitresult['failed']
         self.parameters['t_rise'] = t_rise
         self.parameters['t_fall'] = t_fall
+        storing_dataset = storing_group.create_dataset("SMLeadTunnelTimeByLeadScan", data=data)
+        storing_dataset.attrs["time_rise"] = t_rise
+        storing_dataset.attrs["time_rise"] = t_fall
+        if failed:
+            storing_dataset.attrs["time_rise"] = np.nan
+            storing_dataset.attrs["time_rise"] = np.nan
         return pd.Series([t_rise, t_fall, failed], ['t_rise', 't_fall', 'failed'])
