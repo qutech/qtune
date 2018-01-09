@@ -72,6 +72,17 @@ class Autotuner:
     def set_gate_voltages(self, new_voltages):
         self.experiment.set_gate_voltages(new_gate_voltages=new_voltages)
 
+    def shift_gate_voltages(self, new_voltages: pd.Series, step_size=2.e-3):
+        start_voltages = self.experiment.read_gate_voltages()
+        d_voltages_series = new_voltages.add(-1. * start_voltages, fill_value=0.)
+        d_voltage_abs = d_voltages_series.abs()
+        if d_voltage_abs > step_size:
+            voltage_step = d_voltages_series * d_voltage_abs / step_size
+            self.set_gate_voltages(new_voltages=start_voltages + voltage_step)
+            self.shift_gate_voltages(new_voltages=new_voltages, step_size=step_size)
+        elif d_voltage_abs > step_size / 20.:
+            self.set_gate_voltages(new_voltages=new_voltages)
+
     def evaluate_parameters(self, storing_group) -> pd.Series:
         parameters = pd.Series()
         for e in self.evaluators:
@@ -118,7 +129,7 @@ class Autotuner:
 
             detuning = pd.Series((delta_u, ), (gate, ))
             new_gate_positions = current_gate_positions.add(detuning, fill_value=0)
-            self.set_gate_voltages(new_gate_positions)
+            self.shift_gate_voltages(new_gate_positions)
 
             for i in range(n_repetitions):
                 run_subgroup = gradient_group.create_group("positive_detune_run_" + str(i))
@@ -127,9 +138,8 @@ class Autotuner:
                 for r in evaluation_result.index.tolist():
                     (positive_detune_parameter[r])[i] = evaluation_result[r]
 
-            self.set_gate_voltages(current_gate_positions)
             new_gate_positions = current_gate_positions.add(detuning.multiply(-1.), fill_value=0)
-            self.set_gate_voltages(new_gate_positions)
+            self.shift_gate_voltages(new_gate_positions)
 
             for i in range(n_repetitions):
                 run_subgroup = gradient_group.create_group("negative_detune_run_" + str(i))
@@ -138,7 +148,7 @@ class Autotuner:
                 for r in evaluation_result.index.tolist():
                     (negative_detune_parameter[r])[i] = evaluation_result[r]
 
-            self.set_gate_voltages(current_gate_positions)
+            self.shift_gate_voltages(current_gate_positions)
 
             positive_detune_parameter_df = positive_detune_parameter.to_frame(gate)
             if positive_detune.empty:
@@ -254,17 +264,6 @@ class ChargeDiagramAutotuner(Autotuner):
     def set_gate_voltages(self, new_voltages: pd.Series):
         self.experiment.set_gate_voltages(new_gate_voltages=new_voltages)
         self.charge_diagram.center_diagram()
-
-    def shift_gate_voltages(self, new_voltages: pd.Series, step_size=2.e-3):
-        start_voltages = self.experiment.read_gate_voltages()
-        d_voltages_series = new_voltages.add(-1.*start_voltages, fill_value=0.)
-        d_voltage_abs = d_voltages_series.abs()
-        if d_voltage_abs > step_size:
-            voltage_step = d_voltages_series * d_voltage_abs / step_size
-            self.set_gate_voltages(new_voltages=start_voltages + voltage_step)
-            self.shift_gate_voltages(new_voltages=new_voltages, step_size=step_size)
-        elif d_voltage_abs > step_size / 20.:
-            self.set_gate_voltages(new_voltages=new_voltages)
 
     def measure_charge_diagram_histogram(self, n_noise=10, n_cov=10) -> Tuple[
         np.array, np.array, np.array]:
