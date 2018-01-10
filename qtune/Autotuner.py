@@ -28,12 +28,10 @@ class Autotuner:
         self.gradient_std = None
         self.evaluation_std = None
         self.tune_run_number = 0
-        self.step_number = 0
         self.gradient_number = 0
         self.charge_diagram_number = 0
         self.hdf5file = h5py.File(data_directory + r'\Autotuner_' + time_string(), 'w')
         tunerun_group = self.hdf5file.create_group('Tunerun_' + str(self.tune_run_number))
-        tunerun_group.attrs["desired_values"] = desired_values
         self.current_tunerun_group = tunerun_group
 
     @property
@@ -237,6 +235,11 @@ class ChargeDiagramAutotuner(Autotuner):
         super().__init__(experiment=dqd, solver=solver, evaluators=evaluators, desired_values=desired_values,
                          tuning_accuracy=tuning_accuracy, data_directory=data_directory)
         self.charge_diagram = ChargeDiagram(dqd=dqd)
+        gate_names = self.tunable_gates.drop(['RFA', 'RFB'])
+        gate_names = gate_names.sort_index()
+        gate_names = gate_names.index.tolist()
+        gate_names = np.asarray(gate_names, dtype='S20')
+        self.hdf5file.create_dataset("Gate_Names", data=gate_names)
         self.tunable_gates = self.tunable_gates.drop(['RFA', 'RFB', 'BA', 'BB'])
         if charge_diagram_gradient is not None or charge_diagram_covariance is not None or charge_diagram_noise is not None:
             self.initialize_charge_diagram_kalman(charge_diagram_gradient=charge_diagram_gradient,
@@ -339,11 +342,17 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
         if not self.ready_to_tune():
             print('The tuner setup is not complete!')
             return False
-        current_run_group = self.current_tunerun_group.create_group("Step_" + str(self.tune_run_number))
-        current_run_group.attrs["gate_voltages"] = self.experiment.read_gate_voltages()
+        tune_sequence_group = self.current_tunerun_group.create_group("Tune_Sequence")
+        current_step_group = tune_sequence_group.create_group("Step_" + str(counter))
+        current_step_group.attrs["gate_voltages"] = self.experiment.read_gate_voltages()
         self.tune_run_number += 1
-        parameters = self.evaluate_parameters(current_run_group)
-        while counter < number_steps and not self.tuning_complete():
+        parameters = self.evaluate_parameters(current_step_group)
+        parameters = parameters.sort_index()
+        parameter_names = parameters.index.tolist()
+        parameter_names = np.asarray(parameter_names, dtype='S20')
+        tune_sequence_group.create_dataset("Parameter_Names", data=parameter_names)
+        counter += 1
+        while counter < number_steps+1 and not self.tuning_complete():
             current_run_group = self.current_tunerun_group.create_group("Step_" + str(self.tune_run_number))
             current_run_group.attrs["gate_voltages"] = self.experiment.read_gate_voltages()
             self.solver.parameter = parameters
@@ -361,8 +370,8 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
                                                                                  d_parameter_series=d_parameter)
             self.save_gradient_data(current_run_group, new_gradient, new_covariance, None)
             parameters = new_parameters
-            self.tune_run_number += 1
             counter += 1
+        self.tune_run_number += 1
         return True
 
 
