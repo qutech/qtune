@@ -112,7 +112,7 @@ class Autotuner:
 
     def evaluate_gradient_covariance_noise(self, delta_u=4e-3, n_repetitions=3) -> Tuple[
         pd.DataFrame, pd.DataFrame, pd.Series]:
-        gradient_group = self.current_tunerun_group.create_group("Gradient_setup_" + str(self.gradient_number))
+        gradient_group = self.current_tunerun_group.create_group("Gradient_Setup_" + str(self.gradient_number))
         gradient_group["n_repetitions"] = n_repetitions
         gradient_group["delta_u"] = delta_u
         current_gate_positions = self.experiment.read_gate_voltages()
@@ -130,8 +130,8 @@ class Autotuner:
             self.shift_gate_voltages(new_gate_positions)
 
             for i in range(n_repetitions):
-                run_subgroup = gradient_group.create_group("positive_detune_run_" + str(i))
-                run_subgroup.attrs["gate_voltages"] = new_gate_positions
+                run_subgroup = gradient_group.create_group("Positive_Detune_Run_" + str(i))
+                save_gate_voltages(run_subgroup, new_gate_positions)
                 evaluation_result = self.evaluate_parameters(run_subgroup)
                 for r in evaluation_result.index.tolist():
                     (positive_detune_parameter[r])[i] = evaluation_result[r]
@@ -140,8 +140,8 @@ class Autotuner:
             self.shift_gate_voltages(new_gate_positions)
 
             for i in range(n_repetitions):
-                run_subgroup = gradient_group.create_group("negative_detune_run_" + str(i))
-                run_subgroup.attrs["gate_voltages"] = new_gate_positions
+                run_subgroup = gradient_group.create_group("Negative_Detune_Run_" + str(i))
+                save_gate_voltages(run_subgroup, new_gate_positions)
                 evaluation_result = self.evaluate_parameters(run_subgroup)
                 for r in evaluation_result.index.tolist():
                     (negative_detune_parameter[r])[i] = evaluation_result[r]
@@ -172,7 +172,7 @@ class Autotuner:
 
         gradient_matrix, covariance, evaluation_noise = self.converte_gradient_heuristic_data(gradient, gradient_std,
                                                                                               evaluation_std)
-        self.save_gradient_data(gradient_group, gradient_matrix, covariance, evaluation_noise)
+        save_gradient_data(gradient_group, gradient_matrix, covariance, evaluation_noise)
 
         return gradient, gradient_std, evaluation_std
 
@@ -202,23 +202,6 @@ class Autotuner:
         else:
             evaluation_noise = None
         return gradient_matrix, covariance, evaluation_noise
-
-    def load_gradient_data(self, filename: str, filepath: str) \
-            -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
-        root_group = h5py.File(filename, 'r')
-        data_group = root_group[filepath]
-        gradient = data_group['gradient'][:]
-        heuristic_covariance = data_group['heuristic_covariance'][:]
-        heuristic_noise = data_group['heuristic_noise'][:]
-        return gradient, heuristic_covariance, heuristic_noise
-
-    def save_gradient_data(self, save_group: h5py.Group, gradient, heuristic_covariance, heuristic_noise):
-        save_group.attrs["time"] = time_string()
-        save_group.create_dataset("gradient", data=gradient)
-        if heuristic_covariance is not None:
-            save_group.create_dataset("heuristic_covariance", data=heuristic_covariance)
-        if heuristic_noise is not None:
-            save_group.create_dataset("heuristic_noise", data=heuristic_noise)
 
     def set_solver(self, solver: Solver):
         self.solver = solver
@@ -259,13 +242,13 @@ class ChargeDiagramAutotuner(Autotuner):
             if filename is None:
                 print('Please insert a file name!')
                 return
-            charge_diagram_gradient, charge_diagram_covariance, charge_diagram_noise = self.load_gradient_data(
+            charge_diagram_gradient, charge_diagram_covariance, charge_diagram_noise = load_gradient_data(
                 filename=filename,
                 filepath=filepath)
             self.charge_diagram_number += 1
             save_group = self.hdf5file.create_group(
                 'Tunerun_' + str(self.tune_run_number) + r'\ChargeDiagram_' + str(self.charge_diagram_number))
-            self.save_gradient_data(save_group, charge_diagram_gradient, charge_diagram_covariance,
+            save_gradient_data(save_group, charge_diagram_gradient, charge_diagram_covariance,
                                     charge_diagram_noise)
 
         self.charge_diagram.initialize_kalman(initX=charge_diagram_gradient, initP=charge_diagram_covariance,
@@ -299,7 +282,7 @@ class ChargeDiagramAutotuner(Autotuner):
         self.charge_diagram_number += 1
         save_group = self.hdf5file.create_group(
             'Tunerun_' + str(self.tune_run_number) + r'\ChargeDiagram_' + str(self.charge_diagram_number))
-        self.save_gradient_data(save_group, gradient, heuristic_covariance, heuristic_noise)
+        save_gradient_data(save_group, gradient, heuristic_covariance, heuristic_noise)
         return gradient, heuristic_covariance, heuristic_noise
 
 
@@ -308,16 +291,16 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
                    evaluators: Tuple[Evaluator, ...] = (),
                    desired_values: pd.Series = pd.Series(), gradient_std: pd.DataFrame = None,
                    evaluation_std: pd.Series = None, alpha=1.02, load_data=False, filename: str = None,
-                   filepath: str = "Tunerun_0/Gradient_setup_1"):
+                   filepath: str = "Tunerun_0/Gradient_Setup_1"):
         if load_data:
             if filename is None:
                 print('You need to insert a filename, if you want to load data!')
                 return
-            gradient_matrix, covariance, evaluation_noise = self.load_gradient_data(filename=filename,
+            gradient_matrix, covariance, evaluation_noise = load_gradient_data(filename=filename,
                                                                                     filepath=filepath)
             self.gradient_number += 1
-            gradient_group = self.current_tunerun_group.create_group("Gradient_setup_" + str(self.gradient_number))
-            self.save_gradient_data(gradient_group, gradient_matrix, covariance, evaluation_noise)
+            gradient_group = self.current_tunerun_group.create_group("Gradient_Setup_" + str(self.gradient_number))
+            save_gradient_data(gradient_group, gradient_matrix, covariance, evaluation_noise)
 
         elif gradient is None:
             print('You need to set or load a gradient!')
@@ -344,7 +327,7 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
             return False
         tune_sequence_group = self.current_tunerun_group.create_group("Tune_Sequence")
         current_step_group = tune_sequence_group.create_group("Step_" + str(counter))
-        current_step_group.attrs["gate_voltages"] = self.experiment.read_gate_voltages()
+        save_gate_voltages(current_step_group, self.experiment.read_gate_voltages())
         self.tune_run_number += 1
         parameters = self.evaluate_parameters(current_step_group)
         parameters = parameters.sort_index()
@@ -353,8 +336,8 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
         tune_sequence_group.create_dataset("Parameter_Names", data=parameter_names)
         counter += 1
         while counter < number_steps+1 and not self.tuning_complete():
-            current_run_group = self.current_tunerun_group.create_group("Step_" + str(self.tune_run_number))
-            current_run_group.attrs["gate_voltages"] = self.experiment.read_gate_voltages()
+            current_step_group = self.current_tunerun_group.create_group("Step_" + str(self.tune_run_number))
+            save_gate_voltages(current_step_group, self.experiment.read_gate_voltages())
             self.solver.parameter = parameters
             d_voltages = self.solver.suggest_next_step()
             current_voltages = self.experiment.read_gate_voltages()
@@ -364,20 +347,38 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
             except:
                 print("The gates could not be shifted. Maybe the solver wants to go to extreme values!")
                 return False
-            new_parameters = self.evaluate_parameters(current_run_group)
+            new_parameters = self.evaluate_parameters(current_step_group)
             d_parameter = new_parameters - parameters
             new_gradient, new_covariance, failed = self.solver.update_after_step(d_voltages_series=d_voltages,
                                                                                  d_parameter_series=d_parameter)
-            self.save_gradient_data(current_run_group, new_gradient, new_covariance, None)
+            save_gradient_data(current_step_group, new_gradient, new_covariance, None)
             parameters = new_parameters
             counter += 1
         self.tune_run_number += 1
         return True
 
 
+def load_gradient_data(filename: str, filepath: str):
+    root_group = h5py.File(filename, 'r')
+    data_group = root_group[filepath]
+    gradient = data_group['gradient'][:]
+    heuristic_covariance = data_group['heuristic_covariance'][:]
+    heuristic_noise = data_group['heuristic_noise'][:]
+    return gradient, heuristic_covariance, heuristic_noise
 
 
+def save_gradient_data(save_group: h5py.Group, gradient, heuristic_covariance, heuristic_noise):
+    save_group.attrs["time"] = time_string()
+    save_group.create_dataset("gradient", data=gradient)
+    if heuristic_covariance is not None:
+        save_group.create_dataset("heuristic_covariance", data=heuristic_covariance)
+    if heuristic_noise is not None:
+        save_group.create_dataset("heuristic_noise", data=heuristic_noise)
 
+
+def save_gate_voltages(save_group: h5py.Group, gate_voltages: pd.Series):
+    gate_voltages = gate_voltages.sort_index()
+    save_group.create_dataset("Gate_Voltages", data=gate_voltages.as_matrix())
 
 
 
