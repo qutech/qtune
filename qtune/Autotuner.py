@@ -217,8 +217,10 @@ class Autotuner:
     def save_gradient_data(self, save_group: h5py.Group, gradient, heuristic_covariance, heuristic_noise):
         save_group.attrs["time"] = time_string()
         save_group.create_dataset("gradient", data=gradient)
-        save_group.create_dataset("heuristic_covariance", data=heuristic_covariance)
-        save_group.create_dataset("heuristic_noise", data=heuristic_noise)
+        if heuristic_covariance is not None:
+            save_group.create_dataset("heuristic_covariance", data=heuristic_covariance)
+        if heuristic_noise is not None:
+            save_group.create_dataset("heuristic_noise", data=heuristic_noise)
 
     def set_solver(self, solver: Solver):
         self.solver = solver
@@ -257,6 +259,11 @@ class ChargeDiagramAutotuner(Autotuner):
             charge_diagram_gradient, charge_diagram_covariance, charge_diagram_noise = self.load_gradient_data(
                 filename=filename,
                 filepath=filepath)
+            self.charge_diagram_number += 1
+            save_group = self.hdf5file.create_group(
+                'Tunerun_' + str(self.tune_run_number) + r'\ChargeDiagram_' + str(self.charge_diagram_number))
+            self.save_gradient_data(save_group, charge_diagram_gradient, charge_diagram_covariance,
+                                    charge_diagram_noise)
 
         self.charge_diagram.initialize_kalman(initX=charge_diagram_gradient, initP=charge_diagram_covariance,
                                               initR=charge_diagram_noise)
@@ -305,6 +312,10 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
                 return
             gradient_matrix, covariance, evaluation_noise = self.load_gradient_data(filename=filename,
                                                                                     filepath=filepath)
+            self.gradient_number += 1
+            gradient_group = self.current_tunerun_group.create_group("Gradient_setup_" + str(self.gradient_number))
+            self.save_gradient_data(gradient_group, gradient_matrix, covariance, evaluation_noise)
+
         elif gradient is None:
             print('You need to set or load a gradient!')
             return
