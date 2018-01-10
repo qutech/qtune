@@ -62,13 +62,13 @@ class KalmanSolver(Solver):
         self.grad_kalman = GradKalmanFilter(nGates=n_gates, nParams=n_parameters, initX=gradient, initP=covariance,
                                             initR=noise, alpha=alpha)
 
-    def update_after_step(self, d_voltages_series: pd.Series, d_parameter_series: pd.Series=None) -> bool:
+    def update_after_step(self, d_voltages_series: pd.Series, d_parameter_series: pd.Series=None):
         if d_parameter_series is None:
             current_parameter = self.parameter
             for e in self.evaluators:
                 evaluation_result = e.evaluate()
                 if evaluation_result['failed']:
-                    return False
+                    return self.grad_kalman.grad, self.grad_kalman.cov, True
                 evaluation_result.drop(['failed'])
                 evaluated_parameters = evaluation_result.index.tolist()
                 for i in evaluated_parameters:
@@ -83,7 +83,7 @@ class KalmanSolver(Solver):
         d_voltages_vector = d_voltages_vector.T
         self.grad_kalman.update(d_voltages_vector, d_parameter_vector, hack=False)
         self.gradient = self.grad_kalman.grad
-        return True
+        return self.grad_kalman.grad, self.grad_kalman.cov, False
 
 
 class KalmanNewtonSolver(KalmanSolver):

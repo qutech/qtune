@@ -357,7 +357,9 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
                 return False
             new_parameters = self.evaluate_parameters(current_run_group)
             d_parameter = new_parameters - parameters
-            self.solver.update_after_step(d_voltages_series=d_voltages, d_parameter_series=d_parameter)
+            new_gradient, new_covariance, failed = self.solver.update_after_step(d_voltages_series=d_voltages,
+                                                                                 d_parameter_series=d_parameter)
+            self.save_gradient_data(current_run_group, new_gradient, new_covariance, None)
             parameters = new_parameters
             self.tune_run_number += 1
             counter += 1
