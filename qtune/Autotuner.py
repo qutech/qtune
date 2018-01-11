@@ -81,7 +81,7 @@ class Autotuner:
         elif d_voltage_abs > step_size / 20.:
             self.set_gate_voltages(new_voltages=new_voltages)
 
-    def evaluate_parameters(self, storing_group) -> pd.Series:
+    def evaluate_parameters(self, storing_group: h5py.Group=None) -> pd.Series:
         parameters = pd.Series()
         for e in self.evaluators:
             evaluation_result = e.evaluate(storing_group)

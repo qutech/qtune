@@ -71,6 +71,16 @@ class Analyzer:
         return gradient
 
 
+"""
+    def load_gate_voltages_and_parameter(self, data_group: h5py.Group):
+        if data_group.__contains__("Gate_Voltages"):
+            gate_voltage_data_set = data_group["Gate_Voltages"]
+            gate_voltages = gate_voltage_data_set[:]
+
+        for sub_element in data_group:
+"""
+
+
 def load_gradient_from_group(data_group: h5py.Group):
     gradient = data_group['gradient'][:]
     heuristic_covariance = data_group['heuristic_covariance'][:]

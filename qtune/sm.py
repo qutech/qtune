@@ -257,13 +257,14 @@ class SMInterDotTCByLineScan(Evaluator):
         tc = fitresult['tc']
         failed = bool(fitresult['failed'])
         self.parameters['tc'] = tc
-        storing_dataset = storing_group.create_dataset("SMInterDotTCByLineScan", data=ydata)
-        storing_dataset.attrs["center"] = center
-        storing_dataset.attrs["scan_range"] = scan_range
-        storing_dataset.attrs["npoints"] = npoints
-        storing_dataset.attrs["tunnel_coupling"] = tc
-        if failed:
-            storing_dataset.attrs["tunnel_coupling"] = np.nan
+        if storing_group is not None:
+            storing_dataset = storing_group.create_dataset("Evaluator_SMInterDotTCByLineScan", data=ydata)
+            storing_dataset.attrs["center"] = center
+            storing_dataset.attrs["scan_range"] = scan_range
+            storing_dataset.attrs["npoints"] = npoints
+            storing_dataset.attrs["tunnel_coupling"] = tc
+            if failed:
+                storing_dataset.attrs["tunnel_coupling"] = np.nan
         return pd.Series((tc, failed), ('tc', 'failed'))
 
 
@@ -284,10 +285,11 @@ class SMLeadTunnelTimeByLeadScan(Evaluator):
         failed = fitresult['failed']
         self.parameters['t_rise'] = t_rise
         self.parameters['t_fall'] = t_fall
-        storing_dataset = storing_group.create_dataset("SMLeadTunnelTimeByLeadScan", data=data)
-        storing_dataset.attrs["time_rise"] = t_rise
-        storing_dataset.attrs["time_rise"] = t_fall
-        if failed:
-            storing_dataset.attrs["time_rise"] = np.nan
-            storing_dataset.attrs["time_rise"] = np.nan
+        if storing_group is not None:
+            storing_dataset = storing_group.create_dataset("Evaluator_SMLeadTunnelTimeByLeadScan", data=data)
+            storing_dataset.attrs["time_rise"] = t_rise
+            storing_dataset.attrs["time_rise"] = t_fall
+            if failed:
+                storing_dataset.attrs["time_rise"] = np.nan
+                storing_dataset.attrs["time_rise"] = np.nan
         return pd.Series([t_rise, t_fall, failed], ['t_rise', 't_fall', 'failed'])
