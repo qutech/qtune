@@ -258,7 +258,7 @@ class SMInterDotTCByLineScan(Evaluator):
         failed = bool(fitresult['failed'])
         self.parameters['tc'] = tc
         if storing_group is not None:
-            storing_dataset = storing_group.create_dataset("Evaluator_SMInterDotTCByLineScan", data=ydata)
+            storing_dataset = storing_group.create_dataset("evaluator_SMInterDotTCByLineScan", data=ydata)
             storing_dataset.attrs["center"] = center
             storing_dataset.attrs["scan_range"] = scan_range
             storing_dataset.attrs["npoints"] = npoints
@@ -286,7 +286,7 @@ class SMLeadTunnelTimeByLeadScan(Evaluator):
         self.parameters['t_rise'] = t_rise
         self.parameters['t_fall'] = t_fall
         if storing_group is not None:
-            storing_dataset = storing_group.create_dataset("Evaluator_SMLeadTunnelTimeByLeadScan", data=data)
+            storing_dataset = storing_group.create_dataset("evaluator_SMLeadTunnelTimeByLeadScan", data=data)
             storing_dataset.attrs["time_rise"] = t_rise
             storing_dataset.attrs["time_rise"] = t_fall
             if failed:

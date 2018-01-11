@@ -14,18 +14,18 @@ class Analyzer:
 
     def load_file(self, filename: str):
         self.root_group = h5py.File(filename)
-        gate_names = self.root_group["Gate_Names"]
+        gate_names = self.root_group["gate_names"]
         nan_array = np.empty(gate_names.shape)
         nan_array[:] = np.nan
         self.gate_names = pd.Series(nan_array, gate_names)
 
     def load_parameter_names(self, tune_run_number=1):
-        tune_sequence_group = self.root_group["Tunerun_" + str(tune_run_number) + "/Tune_Sequence"]
-        self.parameter_names = tune_sequence_group["Parameter_Names"][:]
+        tune_sequence_group = self.root_group["tunerun_" + str(tune_run_number) + "/tune_sequence"]
+        self.parameter_names = tune_sequence_group["parameter_names"][:]
 
     def load_cd_gradient(self, gradient_number=1, tune_run_number=0):
-        tune_run_group = self.root_group["Tunerun_" + str(tune_run_number)]
-        if not tune_run_group.__contains__("Charge_Diagram_" + str(gradient_number)):
+        tune_run_group = self.root_group["tunerun_" + str(tune_run_number)]
+        if not tune_run_group.__contains__("charge_diagram_" + str(gradient_number)):
             if tune_run_number > 0:
                 print("There is no gradient saved for the charge diagram number " + str(
                     gradient_number) + " in tune run number" + str(
@@ -36,7 +36,7 @@ class Analyzer:
                     gradient_number) + " in tune run number" + str(
                     tune_run_number) + ".")
 
-        cd_group = tune_run_group["Charge_Diagram_" + str(gradient_number)]
+        cd_group = tune_run_group["charge_diagram_" + str(gradient_number)]
         gradient, covariance, noise = load_gradient_from_group(cd_group)
         return gradient, covariance, noise
 
@@ -46,8 +46,8 @@ class Analyzer:
         return gradient
 
     def load_gradient(self, gradient_number=1, tune_run_number=0):
-        tune_run_group = self.root_group["Tunerun_" + str(tune_run_number)]
-        if not tune_run_group.__contains__("Gradient_Setup_" + str(gradient_number)):
+        tune_run_group = self.root_group["tunerun_" + str(tune_run_number)]
+        if not tune_run_group.__contains__("gradient_setup_" + str(gradient_number)):
             if tune_run_number > 0:
                 print("There is no gradient saved for the gradient setup number " + str(
                     gradient_number) + " in tune run number" + str(
@@ -58,7 +58,7 @@ class Analyzer:
                     gradient_number) + " in tune run number" + str(
                     tune_run_number) + ".")
 
-        cd_group = tune_run_group["Gradient_setup_" + str(gradient_number)]
+        cd_group = tune_run_group["gradient_setup_" + str(gradient_number)]
         gradient, covariance, noise = load_gradient_from_group(cd_group)
         return gradient, covariance, noise
 
