@@ -2,8 +2,9 @@ import pandas as pd
 import numpy as np
 import h5py
 
-known_evaluators = pd.Series([["tunnel_coupling"], ["time_rise", "time_fall"]],
+known_evaluators = pd.Series([["parameter_tunnel_coupling"], ["parameter_time_rise", "parameter_time_fall"]],
                              ["evaluator_SMInterDotTCByLineScan", "evaluator_SMLeadTunnelTimeByLeadScan"])
+known_evaluators = known_evaluators.sort_index()
 
 
 class Analyzer:
@@ -229,4 +230,23 @@ def print_group_content(data_group: h5py.Group):
         print(element)
         print(data_group.attrs[element])
         print("\n")
+
+
+def load_single_evaluation_from_group(data_group: h5py.Group, evaluator_name: str=None, evaluator_number: int =-1):
+    if evaluator_name is None:
+        if evaluator_number == -1:
+            print("Please choose an evaluator. This can be done by name or from the Series of known evaluators.")
+            raise ValueError
+        evaluator_name = known_evaluators.index.tolist()[evaluator_number]
+
+    evaluator_data_set = data_group[evaluator_name]
+    raw_data = evaluator_data_set[:]
+    parameters_pd = pd.Series()
+    information_pd = pd.Series()
+    for attribute in evaluator_data_set.attrs.keys():
+        if "parameter_" in attribute:
+            parameters_pd[attribute] = evaluator_data_set.attrs(attribute)
+        else:
+            information_pd[attribute] = evaluator_data_set.attrs(attribute)
+    return raw_data, parameters_pd, information_pd
 

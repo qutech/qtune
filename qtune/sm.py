@@ -262,9 +262,9 @@ class SMInterDotTCByLineScan(Evaluator):
             storing_dataset.attrs["center"] = center
             storing_dataset.attrs["scan_range"] = scan_range
             storing_dataset.attrs["npoints"] = npoints
-            storing_dataset.attrs["tunnel_coupling"] = tc
+            storing_dataset.attrs["parameter_tunnel_coupling"] = tc
             if failed:
-                storing_dataset.attrs["tunnel_coupling"] = np.nan
+                storing_dataset.attrs["parameter_tunnel_coupling"] = np.nan
         return pd.Series((tc, failed), ('tc', 'failed'))
 
 
@@ -287,9 +287,9 @@ class SMLeadTunnelTimeByLeadScan(Evaluator):
         self.parameters['t_fall'] = t_fall
         if storing_group is not None:
             storing_dataset = storing_group.create_dataset("evaluator_SMLeadTunnelTimeByLeadScan", data=data)
-            storing_dataset.attrs["time_rise"] = t_rise
-            storing_dataset.attrs["time_rise"] = t_fall
+            storing_dataset.attrs["parameter_time_rise"] = t_rise
+            storing_dataset.attrs["parameter_time_rise"] = t_fall
             if failed:
-                storing_dataset.attrs["time_rise"] = np.nan
-                storing_dataset.attrs["time_rise"] = np.nan
+                storing_dataset.attrs["parameter_time_rise"] = np.nan
+                storing_dataset.attrs["parameter_time_rise"] = np.nan
         return pd.Series([t_rise, t_fall, failed], ['t_rise', 't_fall', 'failed'])
