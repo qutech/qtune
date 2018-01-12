@@ -419,9 +419,12 @@ def manual_check(new_voltages: pd.Series, current_voltages: pd.Series, d_voltage
         return manual_check(new_voltages, current_voltages, d_voltages)
 
 
-def load_gradient_data(filename: str, filepath: str):
+def load_gradient_data(filename: str, filepath: str=None):
     root_group = h5py.File(filename, 'r')
-    data_group = root_group[filepath]
+    if filepath is None:
+        data_group = root_group
+    else:
+        data_group = root_group[filepath]
     gradient = data_group['gradient'][:]
     heuristic_covariance = data_group['heuristic_covariance'][:]
     heuristic_noise = data_group['heuristic_noise'][:]
@@ -439,7 +442,7 @@ def save_gradient_data(save_group: h5py.Group, gradient, heuristic_covariance, h
 
 def save_gate_voltages(save_group: h5py.Group, gate_voltages: pd.Series):
     gate_voltages = gate_voltages.sort_index()
-    save_group.create_dataset("Gate_Voltages", data=gate_voltages.as_matrix())
+    save_group.create_dataset("gate_voltages", data=gate_voltages.as_matrix())
 
 
 

@@ -219,11 +219,11 @@ def load_gradient_from_group(data_group: h5py.Group):
 def print_group_content(data_group: h5py.Group):
     print("Subgroups:")
     for element in data_group:
-        if isinstance(element, h5py.Group):
+        if isinstance(data_group[element], h5py.Group):
             print(element)
     print("Datasets:")
     for element in data_group:
-        if isinstance(element, h5py.Dataset):
+        if isinstance(data_group[element], h5py.Dataset):
             print(element)
     print("Attributes:")
     for element in data_group.attrs:
