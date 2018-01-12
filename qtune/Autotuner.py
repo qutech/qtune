@@ -324,7 +324,7 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
         self.solver.initialize_kalman(gradient=gradient_matrix, covariance=covariance, noise=evaluation_noise,
                                       alpha=alpha)
 
-    def autotune(self, number_steps=1000) -> bool:
+    def autotune(self, number_steps=1000, supervised: bool=False) -> bool:
         counter = 0
         if not self.ready_to_tune():
             print('The tuner setup is not complete!')
@@ -347,7 +347,12 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
             self.solver.parameter = parameters
             d_voltages = self.solver.suggest_next_step()
             current_voltages = self.experiment.read_gate_voltages()
-            new_voltages = current_voltages.add(-1.*d_voltages, fill_value=0.)
+            new_voltages = current_voltages.add(d_voltages, fill_value=0.)
+            if supervised:
+                try:
+                    new_voltages = manual_check(new_voltages, current_voltages, d_voltages)
+                except KeyboardInterrupt:
+                    break
             try:
                 self.shift_gate_voltages(new_voltages=new_voltages)
             except:
@@ -362,6 +367,56 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
             counter += 1
         self.tune_run_number += 1
         return True
+
+
+def manual_check(new_voltages: pd.Series, current_voltages: pd.Series, d_voltages: pd.Series):
+    print("The Solver want to go from:")
+    print(current_voltages)
+    print("to:")
+    print(new_voltages)
+    print("which is a change by:")
+    print(d_voltages)
+    print("The absolute voltage change is:")
+    print(d_voltages.abs())
+    action = input("Would you prefer to accept (A) or change (C) the step or even stop (S) the tuning?")
+    if action == "A":
+        return new_voltages
+    elif action == "C":
+        decision = input("Would you like to multiply the step with a constant? (Y/N)")
+        if decision == "Y":
+            multiplicator = input("Please enter the multiplicator.")
+            multiplicator = float(multiplicator)
+            second_check = input("Are you sure, that you want to multiply with:" + str(multiplicator) + "? (Y/N)")
+            if second_check == "Y":
+                mult_d_voltages = d_voltages * multiplicator
+                new_voltages = current_voltages.add(mult_d_voltages, fill_value=0.)
+                return new_voltages
+            elif second_check == "N":
+                print("Restart the check.")
+                return manual_check(new_voltages, current_voltages, d_voltages)
+            else:
+                print("Invalid input! Restart")
+                return manual_check(new_voltages, current_voltages, d_voltages)
+        elif decision == "N":
+            print("No other possibilities have been implemented up to now. Restart!")
+            return manual_check(new_voltages, current_voltages, d_voltages)
+        else:
+            print("Invalid input! Restart")
+            return manual_check(new_voltages, current_voltages, d_voltages)
+    elif action == "S":
+        second_check = input(
+            "Are you sure, you want to stop the tuning? In this case write STOP. Otherwise write cancel.")
+        if second_check == "STOP":
+            raise KeyboardInterrupt
+        elif second_check == "cancel":
+            print("OK, the check will be restarted.")
+            return manual_check(new_voltages, current_voltages, d_voltages)
+        else:
+            print("Invalid input! Restart")
+            return manual_check(new_voltages, current_voltages, d_voltages)
+    else:
+        print("Invalid input! Restart")
+        return manual_check(new_voltages, current_voltages, d_voltages)
 
 
 def load_gradient_data(filename: str, filepath: str):
