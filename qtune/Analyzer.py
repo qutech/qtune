@@ -146,6 +146,11 @@ class Analyzer:
         gradient_sequence_pd = self.load_gradient_sequence_pd(tune_run_number=tune_run_number, start=start, end=end)
         return desired_values_pd, gate_voltages_sequence_pd, parameters_sequence_pd, gradient_sequence_pd
 
+    def plot_kalman_tune_run(self, tune_run_number=1, start:int=0, end: int=None):
+        desired_values_pd, gate_voltages_sequence_pd, parameters_sequence_pd, gradient_sequence_pd = \
+            self.load_kalman_tune_run(tune_run_number, start, end)
+        return
+
     def load_single_values_gradient_calculation(self, gradient_number: int = 1, tune_run_number: int = 0) -> (
             pd.Series, int, float):
         gradient_group = self.load_gradient_group(gradient_number=gradient_number, tune_run_number=tune_run_number)
@@ -199,6 +204,8 @@ class Analyzer:
                 raise KeyError("Group does not exist.")
         gradient_group = tune_run_group["gradient_setup_" + str(gradient_number)]
         return gradient_group
+
+
 
 
 def count_steps_in_sequence(sequence_group: h5py.Group):

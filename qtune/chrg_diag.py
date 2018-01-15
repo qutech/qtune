@@ -68,8 +68,6 @@ class ChargeDiagram:
         current_gate_voltages = self.dqd.read_gate_voltages()
 
         BA_eps = pd.Series(1e-3, ['BA'])
-        print('current gate voltages should still be at pretuned point')
-        print(current_gate_voltages)
         BB_eps = pd.Series(1e-3, ['BB'])
 
         BA_inc = current_gate_voltages.add(BA_eps, fill_value=0)

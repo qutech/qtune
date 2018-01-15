@@ -182,19 +182,19 @@ class LegacyDQD(BasicDQD):
 
         if measurement == 'line_scan':
             parameters = measurement.parameter.copy()
-            parameters['file_name'] = measurement.get_file_name()
+            parameters['file_name'] = "line_scan" + measurement.get_file_name()
             parameters['N_points'] = float(parameters['N_points'])
             parameters['N_average'] = float(parameters['N_average'])
             return np.asarray(self._matlab.engine.qtune.PythonChargeLineScan(parameters))
         elif measurement == 'detune_scan':
             parameters = measurement.parameter.copy()
-            parameters['file_name'] = measurement.get_file_name()
+            parameters['file_name'] = "detune_scan_" + measurement.get_file_name()
             parameters['N_points'] = float(parameters['N_points'])
             parameters['N_average'] = float(parameters['N_average'])
             return np.asarray(self._matlab.engine.qtune.PythonLineScan(parameters))
         elif measurement == 'lead_scan':
             parameters = measurement.parameter.copy()
-            parameters['file_name'] = measurement.get_file_name()
+            parameters['file_name'] = "lead_scan" + measurement.get_file_name()
             return np.asarray(self._matlab.engine.qtune.LeadScan(parameters))
 
         else:

@@ -51,7 +51,9 @@ class Autotuner:
             series_to_add = pd.Series((new_parameters[i],), (i,))
             self.parameters = self.parameters.append(series_to_add, verify_integrity=True)
         self._evaluators += (new_evaluator, )
-        self.solver.add_evaluator(evaluator=new_evaluator)
+        if self.solver is not None:
+            print(self.solver)
+            self.solver.add_evaluator(evaluator=new_evaluator)
 
     @property
     def desired_values(self):
@@ -254,7 +256,7 @@ class ChargeDiagramAutotuner(Autotuner):
                 'tunerun_' + str(self.tune_run_number) + r'\charge_diagram_' + str(self.charge_diagram_number))
             save_gradient_data(save_group, charge_diagram_gradient, charge_diagram_covariance,
                                     charge_diagram_noise)
-
+        print(charge_diagram_gradient)
         self.charge_diagram.initialize_kalman(initX=charge_diagram_gradient, initP=charge_diagram_covariance,
                                               initR=charge_diagram_noise)
 

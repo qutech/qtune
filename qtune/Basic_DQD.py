@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from typing import Tuple
 from qtune.experiment import Experiment, Measurement
 
@@ -21,3 +22,78 @@ class BasicDQD(Experiment):
 
     def read_qpc_voltage(self) -> pd.Series:
         raise NotImplementedError()
+
+
+class TestDQD(BasicDQD):
+    def __init__(self, initial_voltages=None, gate_names=None):
+        if initial_voltages is None:
+            initial_voltages = [1., 1., 1., 1., 1., 1., 0., 0.]
+        if gate_names is None:
+            gate_names = ["SB", "BB", "T", "N", "SA", "BA", "RFA", "RFB"]
+        self.gate_voltages = pd.Series(initial_voltages, gate_names)
+        self.gate_voltages = self.gate_voltages.sort_index()
+        self._qpc_tuned = False
+
+    def gate_voltage_names(self):
+        return self.gate_voltages.index.tolist()
+
+    def read_gate_voltages(self):
+        return pd.Series(self.gate_voltages).sort_index()
+
+    def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
+        new_gate_voltages = new_gate_voltages.sort_index()
+        self.gate_voltages = new_gate_voltages
+        return new_gate_voltages
+
+    def tune_qpc(self, qpc_position=None, tuning_range=4e-3):
+        self._qpc_tuned = True
+
+    def measure(self,
+                measurement: Measurement) -> np.ndarray:
+        if not self._qpc_tuned:
+            self.tune_qpc()
+
+        if measurement == 'line_scan':
+            parameters = measurement.parameter.copy()
+            parameters['file_name'] = "line_scan" + measurement.get_file_name()
+            parameters['N_points'] = float(parameters['N_points'])
+            parameters['N_average'] = float(parameters['N_average'])
+            if parameters["gate"] == "RFA":
+                simulated_center = self.gate_voltages["SA"] - self.gate_voltages["SB"] + 2. * (
+                    self.gate_voltages["T"] - 1.) - 0.5 * (self.gate_voltages["N"] - 1.)
+            elif parameters["gate"] == "RFB":
+                simulated_center = self.gate_voltages["SB"] - self.gate_voltages["SA"] + 2. * (
+                    self.gate_voltages["T"] - 1.) - 0.5 * (self.gate_voltages["N"] - 1.)
+            else:
+                raise ValueError("The gate in the measurement must be RFA or RFB!")
+            x = np.linspace(parameters["center"] - parameters["range"], parameters["center"] + parameters["range"],
+                            parameters["N_points"])
+            x = x - simulated_center
+            y = np.tanh(x)
+            return y
+        elif measurement == 'detune_scan':
+            parameters = measurement.parameter.copy()
+            parameters['file_name'] = "detune_scan_" + measurement.get_file_name()
+            parameters['N_points'] = float(parameters['N_points'])
+            parameters['N_average'] = float(parameters['N_average'])
+            x = np.linspace(parameters["center"] - parameters["range"], parameters["center"] + parameters["range"],
+                            parameters["N_points"])
+            simulated_width = self.gate_voltages["T"] + self.gate_voltages["N"] - 2. + 190e-6
+            y = np.tanh(x/simulated_width)
+            return y
+        elif measurement == 'lead_scan':
+            parameters = measurement.parameter.copy()
+            parameters['file_name'] = "lead_scan" + measurement.get_file_name()
+            simulated_rise_time = 2. * self.gate_voltages["SA"] - 2. + 0.75 * (self.gate_voltages["T"] - 1.) + 0.2
+            simulated_fall_time = 1.5 * (self.gate_voltages["SA"] - 1.) + 0.5 * (self.gate_voltages["T"] - 1.) + 0.2
+            x = np.asarray(range(400)) / 100.
+            y = np.zeros((400, ))
+            for i in range(200):
+                y[i] = (np.cosh(2. / 2 * simulated_rise_time) - np.exp(
+                    (2. - 2. * x[i]) / 2. * simulated_rise_time)) / np.sinh(2. / 2 * simulated_rise_time)
+            for i in range(200, 400):
+                y[i] = (np.cosh(2. / 2 * simulated_fall_time) - np.exp(
+                    (2. - 2. * x[i]) / 2. * simulated_fall_time)) / np.sinh(2. / 2 * simulated_fall_time)
+            return y
+        else:
+            raise ValueError('Unknown measurement: {}'.format(measurement))

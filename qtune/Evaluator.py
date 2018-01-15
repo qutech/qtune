@@ -1,4 +1,5 @@
-from qtune.experiment import Experiment, Measurement, TestExperiment
+from qtune.experiment import Experiment, Measurement
+from qtune.Basic_DQD import TestDQD
 from typing import Tuple
 import pandas as pd
 import numpy as np
@@ -16,7 +17,7 @@ class Evaluator:
 
 
 class TestEvaluator(Evaluator):
-    def __init__(self, experiment: TestExperiment, measurements=None,
+    def __init__(self, experiment: TestDQD, measurements=None,
                  parameters=pd.Series((np.nan, np.nan), ('linsine', 'quadratic')), ):
         super().__init__(experiment=experiment, measurements=measurements, parameters=parameters)
 
