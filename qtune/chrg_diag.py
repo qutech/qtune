@@ -67,8 +67,8 @@ class ChargeDiagram:
     def calculate_gradient(self):
         current_gate_voltages = self.dqd.read_gate_voltages()
 
-        BA_eps = pd.Series(1e-3, ['BA'])
-        BB_eps = pd.Series(1e-3, ['BB'])
+        BA_eps = pd.Series(2e-3, ['BA'])
+        BB_eps = pd.Series(2e-3, ['BB'])
 
         BA_inc = current_gate_voltages.add(BA_eps, fill_value=0)
         BA_dec = current_gate_voltages.add(-BA_eps, fill_value=0)

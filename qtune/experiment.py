@@ -32,7 +32,7 @@ class Experiment:
     def gate_voltage_names(self) -> Tuple:
         raise NotImplementedError()
 
-    def read_gate_voltages(self):
+    def read_gate_voltages(self) -> pd.Series:
         raise NotImplementedError()
 
     def set_gate_voltages(self, new_gate_voltages: pd.Series):

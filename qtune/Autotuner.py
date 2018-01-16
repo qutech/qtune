@@ -30,7 +30,7 @@ class Autotuner:
         self.tune_run_number = 0
         self.gradient_number = 0
         self.charge_diagram_number = 0
-        self.hdf5file = h5py.File(data_directory + r'\Autotuner_' + time_string(), 'w')
+        self.hdf5file = h5py.File(data_directory + r'\Autotuner_' + time_string() + ".hdf5", 'w')
         tunerun_group = self.hdf5file.create_group('tunerun_' + str(self.tune_run_number))
         self.current_tunerun_group = tunerun_group
 
@@ -61,6 +61,7 @@ class Autotuner:
 
     @desired_values.setter
     def desired_values(self, desired_values: pd.Series):
+        self.parameters = self.parameters.sort_index()
         assert(desired_values.index.tolist() == self.parameters.index.tolist())
         self._desired_values = desired_values
         if self.solver is not None:
@@ -69,18 +70,31 @@ class Autotuner:
     def set_desired_values_manually(self):
         raise NotImplementedError
 
+    def read_tunable_gate_voltages(self) -> pd.Series:
+        full_gate_voltages = self.experiment.read_gate_voltages()
+        tunable_gate_voltages = pd.Series()
+        for tunable_gate in self.tunable_gates.index.tolist():
+            tunable_gate_voltages[tunable_gate] = full_gate_voltages[tunable_gate]
+        return tunable_gate_voltages
+
     def set_gate_voltages(self, new_voltages):
         self.experiment.set_gate_voltages(new_gate_voltages=new_voltages)
 
     def shift_gate_voltages(self, new_voltages: pd.Series, step_size=2.e-3):
-        start_voltages = self.experiment.read_gate_voltages()
+        print("shift to")
+        print(new_voltages)
+        start_voltages = self.read_tunable_gate_voltages()
+        for key in start_voltages.index.tolist():
+            if key not in new_voltages.index.tolist():
+                start_voltages = start_voltages.drop(key)
         d_voltages_series = new_voltages.add(-1. * start_voltages, fill_value=0.)
-        d_voltage_abs = d_voltages_series.abs()
+        d_voltage_abs = d_voltages_series.as_matrix()
+        d_voltage_abs = np.linalg.norm(d_voltage_abs)
         if d_voltage_abs > step_size:
-            voltage_step = d_voltages_series * d_voltage_abs / step_size
+            voltage_step = d_voltages_series * step_size / d_voltage_abs
             self.set_gate_voltages(new_voltages=start_voltages + voltage_step)
             self.shift_gate_voltages(new_voltages=new_voltages, step_size=step_size)
-        elif d_voltage_abs > step_size / 20.:
+        else:
             self.set_gate_voltages(new_voltages=new_voltages)
 
     def evaluate_parameters(self, storing_group: h5py.Group=None) -> pd.Series:
@@ -97,12 +111,12 @@ class Autotuner:
 
             for r in evaluation_result.index.tolist():
                 parameters[r] = evaluation_result[r]
-        self.parameters = copy.deepcopy(parameters)
+        self.parameters = copy.deepcopy(parameters.sort_index())
         return parameters
 
     def tuning_complete(self) -> bool:
         complete = True
-        for parameter in self.parameters.index.tolist():
+        for parameter in self.desired_values.index.tolist():
             if np.abs(self.parameters[parameter]-self.desired_values[parameter]) > self.tuning_accuracy[parameter]:
                 complete = False
         return complete
@@ -111,13 +125,15 @@ class Autotuner:
         if self.solver is None:
             print('You need to setup a solver!')
             return False
+        else:
+            return True
 
     def evaluate_gradient_covariance_noise(self, delta_u=4e-3, n_repetitions=3) -> Tuple[
         pd.DataFrame, pd.DataFrame, pd.Series]:
         gradient_group = self.current_tunerun_group.create_group("gradient_setup_" + str(self.gradient_number))
         gradient_group["n_repetitions"] = n_repetitions
         gradient_group["delta_u"] = delta_u
-        current_gate_positions = self.experiment.read_gate_voltages()
+        current_gate_positions = self.read_tunable_gate_voltages()
         positive_detune = pd.DataFrame()
         negative_detune = pd.DataFrame()
         positive_detune_parameter = pd.Series()
@@ -127,7 +143,7 @@ class Autotuner:
                 positive_detune_parameter[parameter] = np.zeros((n_repetitions,), dtype=float)
                 negative_detune_parameter[parameter] = np.zeros((n_repetitions,), dtype=float)
 
-            detuning = pd.Series((delta_u, ), (gate, ))
+            detuning = pd.Series([delta_u, ], [gate, ])
             new_gate_positions = current_gate_positions.add(detuning, fill_value=0)
             self.shift_gate_voltages(new_gate_positions)
 
@@ -253,10 +269,9 @@ class ChargeDiagramAutotuner(Autotuner):
                 filepath=filepath)
             self.charge_diagram_number += 1
             save_group = self.hdf5file.create_group(
-                'tunerun_' + str(self.tune_run_number) + r'\charge_diagram_' + str(self.charge_diagram_number))
+                'tunerun_' + str(self.tune_run_number) + r'/charge_diagram_' + str(self.charge_diagram_number))
             save_gradient_data(save_group, charge_diagram_gradient, charge_diagram_covariance,
                                     charge_diagram_noise)
-        print(charge_diagram_gradient)
         self.charge_diagram.initialize_kalman(initX=charge_diagram_gradient, initP=charge_diagram_covariance,
                                               initR=charge_diagram_noise)
 
@@ -287,7 +302,7 @@ class ChargeDiagramAutotuner(Autotuner):
 
         self.charge_diagram_number += 1
         save_group = self.hdf5file.create_group(
-            'tunerun_' + str(self.tune_run_number) + r'\charge_diagram_' + str(self.charge_diagram_number))
+            'tunerun_' + str(self.tune_run_number) + r'/charge_diagram_' + str(self.charge_diagram_number))
         save_gradient_data(save_group, gradient, heuristic_covariance, heuristic_noise)
         return gradient, heuristic_covariance, heuristic_noise
 
@@ -297,13 +312,18 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
                    evaluators: Tuple[Evaluator, ...] = (),
                    desired_values: pd.Series = pd.Series(), gradient_std: pd.DataFrame = None,
                    evaluation_std: pd.Series = None, alpha=1.02, load_data=False, filename: str = None,
-                   filepath: str = "tunerun_0/gradient_setup_1"):
+                   filepath: str = "tunerun_0/gradient_setup_1", tuning_accuracy: pd.Series = pd.Series()):
+        if len(tuning_accuracy.index) != 0:
+            self.tuning_accuracy = tuning_accuracy.sort_index()
+        desired_values = desired_values.sort_index()
+        self.desired_values = desired_values
         if load_data:
             if filename is None:
                 print('You need to insert a filename, if you want to load data!')
                 return
             gradient_matrix, covariance, evaluation_noise = load_gradient_data(filename=filename,
                                                                                     filepath=filepath)
+            self.gradient = gradient_matrix
             self.gradient_number += 1
             gradient_group = self.current_tunerun_group.create_group("gradient_setup_" + str(self.gradient_number))
             save_gradient_data(gradient_group, gradient_matrix, covariance, evaluation_noise)
@@ -344,11 +364,11 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
         tune_sequence_group.create_dataset("parameter_names", data=parameter_names)
         counter += 1
         while counter < number_steps+1 and not self.tuning_complete():
-            current_step_group = tune_sequence_group.create_group("step_" + str(self.tune_run_number))
+            current_step_group = tune_sequence_group.create_group("step_" + str(counter))
             save_gate_voltages(current_step_group, self.experiment.read_gate_voltages())
             self.solver.parameter = parameters
             d_voltages = self.solver.suggest_next_step()
-            current_voltages = self.experiment.read_gate_voltages()
+            current_voltages = self.read_tunable_gate_voltages()
             new_voltages = current_voltages.add(d_voltages, fill_value=0.)
             if supervised:
                 try:
@@ -360,7 +380,7 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
             except:
                 print("The gates could not be shifted. Maybe the solver wants to go to extreme values!")
                 return False
-            new_parameters = self.evaluate_parameters(current_step_group)
+            new_parameters = self.evaluate_parameters(current_step_group).sort_index()
             d_parameter = new_parameters - parameters
             new_gradient, new_covariance, failed = self.solver.update_after_step(d_voltages_series=d_voltages,
                                                                                  d_parameter_series=d_parameter)
@@ -379,7 +399,7 @@ def manual_check(new_voltages: pd.Series, current_voltages: pd.Series, d_voltage
     print("which is a change by:")
     print(d_voltages)
     print("The absolute voltage change is:")
-    print(d_voltages.abs())
+    print(np.linalg.norm(d_voltages.as_matrix()))
     action = input("Would you prefer to accept (A) or change (C) the step or even stop (S) the tuning?")
     if action == "A":
         return new_voltages

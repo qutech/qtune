@@ -23,11 +23,12 @@ class Solver:
             print('The gradients shape', self.gradient.shape, 'doesnt match the number of parameters',
                   self.parameter.index.tolist(), 'and gate names', len(self.gate_names), '!')
             return False
-        if self.desired_values.index.tolist() != self.parameter.index.tolist():
+        elif self.desired_values.index.tolist() != self.parameter.index.tolist():
             print('The desired values', self.desired_values.index.tolist(), 'do not match the parameters',
                   self.parameter.index.tolist(), '!')
             return False
-        return True
+        else:
+            return True
 
     def add_evaluator(self, evaluator: Evaluator):
         try:
@@ -61,6 +62,7 @@ class KalmanSolver(Solver):
         n_parameters, n_gates = gradient.shape
         self.grad_kalman = GradKalmanFilter(nGates=n_gates, nParams=n_parameters, initX=gradient, initP=covariance,
                                             initR=noise, alpha=alpha)
+        self.gradient = gradient
 
     def update_after_step(self, d_voltages_series: pd.Series, d_parameter_series: pd.Series=None):
         if d_parameter_series is None:
@@ -73,6 +75,7 @@ class KalmanSolver(Solver):
                 evaluated_parameters = evaluation_result.index.tolist()
                 for i in evaluated_parameters:
                     self.parameter[i] = evaluation_result[i]
+                self.parameter = self.parameter.sort_index()
 
             d_parameter_series = self.parameter.add(-1.*current_parameter)
         d_parameter_series = d_parameter_series.sort_index()
@@ -99,7 +102,7 @@ class KalmanNewtonSolver(KalmanSolver):
         d_parameter_series = self.desired_values.add(-1.*self.parameter)
         d_parameter_series = d_parameter_series.sort_index()
         d_parameter_vector = np.asarray(d_parameter_series.values).T
-        d_voltages_vector = np.linalg.solve(self.grad_kalman.grad, d_parameter_vector)
+        d_voltages_vector = np.linalg.lstsq(self.grad_kalman.grad, d_parameter_vector)[0]
         d_voltages_series = pd.Series(d_voltages_vector, self.gate_names)
         return d_voltages_series
 

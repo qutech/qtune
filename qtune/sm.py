@@ -154,11 +154,15 @@ class LegacyDQD(BasicDQD):
     def gate_voltage_names(self) -> Tuple:
         return tuple(sorted(self._matlab.engine.qtune.read_gate_voltages().keys()))
 
-    def read_gate_voltages(self):
+    def read_gate_voltages(self) -> pd.Series:
         return pd.Series(self._matlab.engine.qtune.read_gate_voltages()).sort_index()
 
     def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
         self._qpc_tuned = False
+        current_gate_voltages = self.read_gate_voltages()
+        for key in current_gate_voltages.index.tolist():
+            if key not in new_gate_voltages.index.tolist():
+                new_gate_voltages[key] = current_gate_voltages[key]
         new_gate_voltages = dict(new_gate_voltages)
         for key in new_gate_voltages:
             new_gate_voltages[key] = new_gate_voltages[key].item()
