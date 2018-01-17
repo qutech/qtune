@@ -19,7 +19,7 @@ class Analyzer:
 
     def load_file(self, filename: str):
         self.root_group = h5py.File(filename)
-        gate_names = self.root_group["gate_names"]
+        gate_names = self.root_group["gate_names"][:]
         self.gate_names = gate_names
         self.tunable_gate_names = self.root_group["tunable_gate_names"]
 
@@ -54,7 +54,7 @@ class Analyzer:
         gradient, covariance, noise = load_gradient_from_group(cd_group)
         return gradient, covariance, noise
 
-    def load_gradient_tunerun(self, step_number: int=0, tune_run_number=1):
+    def load_gradient_tunerun(self, step_number: int=1, tune_run_number=1):
         tune_run_group = self.load_tune_run_group(tune_run_number)
         tune_sequence_group = tune_run_group["tune_sequence"]
         if tune_sequence_group.__contains__("step_" + str(step_number)):
@@ -70,28 +70,29 @@ class Analyzer:
         if self.parameter_names is None:
             print("You need to load the parameter names first!")
             return
-        gradient = pd.DataFrame(gradient, self.parameter_names, self.gate_names)
+        gradient = pd.DataFrame(gradient, self.parameter_names, self.tunable_gate_names)
         return gradient
 
-    def load_gradient_sequence_pd(self, tune_run_number=0, start: int=0, end: int=None):
+    def load_gradient_sequence_pd(self, tune_run_number=1, start: int=0, end: int=None):
+        self.load_parameter_names(tune_run_number=tune_run_number)
         tune_run_group = self.load_tune_run_group(tune_run_number)
         if end is None:
             end = count_steps_in_sequence(tune_run_group["tune_sequence"])
-        gradient_sequence_pd = pd.DataFrame(None, index=self.parameter_names, columns=self.gate_names)
+        gradient_sequence_pd = pd.DataFrame(None, index=self.parameter_names, columns=self.tunable_gate_names)
         for parameter in self.parameter_names:
-            for gate in self.gate_names:
-                gradient_sequence_pd[parameter, gate] = np.zeros((end + 1 - start, ))
+            for gate in self.tunable_gate_names:
+                gradient_sequence_pd[gate][parameter] = np.zeros((end + 1 - start, ))
 
         for counter in range(start, end):
             gradient_pd = self.load_gradient_pd(gradient_number=counter, tune_run_number=tune_run_number)
             for parameter in self.parameter_names:
-                for gate in self.gate_names:
-                    gradient_sequence_pd[parameter, gate][counter] = gradient_pd[parameter, gate]
+                for gate in self.tunable_gate_names:
+                    gradient_sequence_pd[gate][parameter][counter] = gradient_pd[gate][parameter]
         return gradient_sequence_pd
 
     def load_gate_voltages_and_parameters(self, data_group: h5py.Group) -> (pd.Series, pd.Series):
-        if data_group.__contains__("Gate_Voltages"):
-            gate_voltage_data_set = data_group["Gate_Voltages"]
+        if data_group.__contains__("gate_voltages"):
+            gate_voltage_data_set = data_group["gate_voltages"]
             gate_voltages = gate_voltage_data_set[:]
             gate_voltages_pd = pd.Series(gate_voltages, self.gate_names)
         else:
@@ -120,12 +121,12 @@ class Analyzer:
             end = count_steps_in_sequence(tune_sequence_group)
         gate_voltages_sequence_pd = pd.Series()
         for gate in self.gate_names:
-            gate_voltages_sequence_pd[gate] = np.zeros((end + 1 - start, ))
+            gate_voltages_sequence_pd[gate] = np.zeros((end - start, ))
         parameters_sequence_pd = pd.Series()
         run_parameters = tune_sequence_group["parameter_names"][:]
         for parameter in run_parameters:
-            parameters_sequence_pd[parameter] = np.zeros((end + 1 - start, ))
-        for counter in range(start, end+1):
+            parameters_sequence_pd[parameter] = np.zeros((end - start, ))
+        for counter in range(start, end):
             gate_voltages_pd, parameters_pd = self.load_gate_voltages_and_parameters(
                 tune_sequence_group["step_" + str(counter)])
             for gate in self.gate_names:
@@ -205,7 +206,8 @@ class Analyzer:
         gradient_group = tune_run_group["gradient_setup_" + str(gradient_number)]
         return gradient_group
 
-
+    def logout(self):
+        self.root_group.close()
 
 
 def count_steps_in_sequence(sequence_group: h5py.Group):
@@ -219,7 +221,10 @@ def count_steps_in_sequence(sequence_group: h5py.Group):
 def load_gradient_from_group(data_group: h5py.Group):
     gradient = data_group['gradient'][:]
     heuristic_covariance = data_group['heuristic_covariance'][:]
-    heuristic_noise = data_group['heuristic_noise'][:]
+    if "heuristic_noise" in data_group:
+        heuristic_noise = data_group['heuristic_noise'][:]
+    else:
+        heuristic_noise = None
     return gradient, heuristic_covariance, heuristic_noise
 
 
