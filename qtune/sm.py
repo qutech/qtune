@@ -158,6 +158,8 @@ class LegacyDQD(BasicDQD):
         return pd.Series(self._matlab.engine.qtune.read_gate_voltages()).sort_index()
 
     def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
+        print("trying to set gate voltages to:")
+        print(new_gate_voltages)
         self._qpc_tuned = False
         current_gate_voltages = self.read_gate_voltages()
         for key in current_gate_voltages.index.tolist():
@@ -245,7 +247,7 @@ class LegacyChargeDiagram(ChargeDiagram):
 
 class SMInterDotTCByLineScan(Evaluator):
     def __init__(self, dqd: BasicDQD, matlab_instance: SpecialMeasureMatlab,
-                 parameters: pd.Series() = pd.Series((np.nan, ), ('tc', )), line_scan: Measurement=None):
+                 parameters: pd.Series() = pd.Series((np.nan, ), ('parameter_tunnel_coupling', )), line_scan: Measurement=None):
         if line_scan is None:
             line_scan = dqd.measurements[1]
         super().__init__(dqd, line_scan, parameters)
@@ -260,7 +262,7 @@ class SMInterDotTCByLineScan(Evaluator):
         fitresult = self.matlab.engine.qtune.at_line_fit(self.matlab.to_matlab(xdata), self.matlab.to_matlab(ydata))
         tc = fitresult['tc']
         failed = bool(fitresult['failed'])
-        self.parameters['tc'] = tc
+        self.parameters['parameter_tunnel_coupling'] = tc
         if storing_group is not None:
             storing_dataset = storing_group.create_dataset("evaluator_SMInterDotTCByLineScan", data=ydata)
             storing_dataset.attrs["center"] = center
@@ -269,12 +271,12 @@ class SMInterDotTCByLineScan(Evaluator):
             storing_dataset.attrs["parameter_tunnel_coupling"] = tc
             if failed:
                 storing_dataset.attrs["parameter_tunnel_coupling"] = np.nan
-        return pd.Series((tc, failed), ('tc', 'failed'))
+        return pd.Series((tc, failed), ('parameter_tunnel_coupling', 'failed'))
 
 
 class SMLeadTunnelTimeByLeadScan(Evaluator):
     def __init__(self, dqd: BasicDQD, matlab_instance: SpecialMeasureMatlab,
-                 parameters: pd.Series() = pd.Series([np.nan, np.nan], ['t_rise', 't_fall']),
+                 parameters: pd.Series() = pd.Series([np.nan, np.nan], ['parameter_time_rise', 'parameter_time_fall']),
                  lead_scan: Measurement = None):
         if lead_scan is None:
             lead_scan = dqd.measurements[2]
@@ -287,13 +289,13 @@ class SMLeadTunnelTimeByLeadScan(Evaluator):
         t_rise = fitresult['t_rise']
         t_fall = fitresult['t_fall']
         failed = fitresult['failed']
-        self.parameters['t_rise'] = t_rise
-        self.parameters['t_fall'] = t_fall
+        self.parameters['parameter_time_rise'] = t_rise
+        self.parameters['parameter_time_fall'] = t_fall
         if storing_group is not None:
             storing_dataset = storing_group.create_dataset("evaluator_SMLeadTunnelTimeByLeadScan", data=data)
             storing_dataset.attrs["parameter_time_rise"] = t_rise
-            storing_dataset.attrs["parameter_time_rise"] = t_fall
+            storing_dataset.attrs["parameter_time_fall"] = t_fall
             if failed:
                 storing_dataset.attrs["parameter_time_rise"] = np.nan
-                storing_dataset.attrs["parameter_time_rise"] = np.nan
-        return pd.Series([t_rise, t_fall, failed], ['t_rise', 't_fall', 'failed'])
+                storing_dataset.attrs["parameter_time_fall"] = np.nan
+        return pd.Series([t_rise, t_fall, failed], ['parameter_time_rise', 'parameter_time_fall', 'failed'])

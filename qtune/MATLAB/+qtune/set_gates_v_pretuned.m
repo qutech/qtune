@@ -14,11 +14,11 @@ gatechannels=tunedata.gatechan;
 new_point=[args.SB, args.BB, args.T, args.N, args.SA, args.BA, args.RFA, args.RFB];
 
 for i=1:8
-	if abs(pretuned_point(i)-new_point(i)) > 7e-3
-		for j = 1:8
-			smset(gatechannels(j),pretuned_point(j))
-		end
-		error('emergency: the dot is 7mV away from pretuned point!!!!')
+	if abs(pretuned_point(i)-new_point(i)) > 70e-3
+ 		for j = 1:8
+ 			smset(gatechannels(j),pretuned_point(j))
+ 		end
+		error('emergency: the dot is 70mV away from pretuned point!')
 	end
 end
 

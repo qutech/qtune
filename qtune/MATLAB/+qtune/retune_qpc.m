@@ -23,9 +23,20 @@ subplot(122);
 plot(x(2:end), smoothed);
 hold on;
 scatter(x(idx+1), smoothed(idx), 'ro');
-if abs(x(idx)-sensor_pretuned)> 7e-3
+if abs(x(idx)-sensor_pretuned)> 50e-3
 	smset('SDB2', sensor_pretuned);
-	error('The sensing dot is being tuned more than 7mV away from its original position!')
+	error('The sensing dot is being tuned more than 50mV away from its original position!')
+%     disp('The sensing dot is being tuned more than 50mV away from its original position!')
+%         while true
+%         decision = input('You have now the possibility to shut down the tuning by typing <<stop>> or continue by typing <<continue>>.');
+%         if decision == 'stop'
+%             error('The tuning has been shut down')
+%         elseif decision == 'continue'
+%             smset('SDB2', x(idx));
+%             continue
+%         end
+%         disp('This was not a valid input!')
+%         end
 else
 	smset('SDB2', x(idx));
 end

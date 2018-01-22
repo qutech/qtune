@@ -87,7 +87,8 @@ class TestDQD(BasicDQD):
             parameters['N_average'] = float(parameters['N_average'])
             x = np.linspace(parameters["center"] - parameters["range"], parameters["center"] + parameters["range"],
                             parameters["N_points"])
-            simulated_width = self.gate_voltages["T"] + self.gate_voltages["N"] - 2. + 190e-6 + 70e-6 * (np.random.rand(1)[0] - 0.5)
+            simulated_width = 1./20.*(self.gate_voltages["T"] + self.gate_voltages["N"] - 2.) + 190e-6 + 70e-6 * (
+                np.random.rand(1)[0] - 0.5)
             y = np.tanh(x/simulated_width)
 
             return y
