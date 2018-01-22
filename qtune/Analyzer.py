@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import h5py
+import matplotlib.pyplot as plt
 
 known_evaluators = pd.Series([["parameter_tunnel_coupling"], ["parameter_time_rise", "parameter_time_fall"]],
                              ["evaluator_SMInterDotTCByLineScan", "evaluator_SMLeadTunnelTimeByLeadScan"])
@@ -11,11 +12,22 @@ class Analyzer:
     def __init__(self, filename: str=None):
         self.gate_names = None
         self.tunable_gate_names = None
-        self.parameter_names = None
+        self._parameter_names = None
+        self.evaluator_names = None
         if filename is not None:
             self.load_file(filename)
         else:
             self.root_group = None
+
+    @property
+    def parameter_names(self):
+        if self._parameter_names is None:
+            print("You need to load the Parameter names!")
+        return self._parameter_names
+
+    @parameter_names.setter
+    def parameter_names(self, parameter_names):
+        self._parameter_names = parameter_names
 
     def load_file(self, filename: str):
         self.root_group = h5py.File(filename)
@@ -24,8 +36,14 @@ class Analyzer:
         self.tunable_gate_names = self.root_group["tunable_gate_names"]
 
     def load_parameter_names(self, tune_run_number=1):
-        tune_sequence_group = self.root_group["tunerun_" + str(tune_run_number) + "/tune_sequence"]
-        self.parameter_names = tune_sequence_group["parameter_names"][:]
+        if self.root_group.__contains__("tunerun_" + str(tune_run_number) + "/tune_sequence"):
+            parameter_containing_group = self.root_group["tunerun_" + str(tune_run_number) + "/tune_sequence"]
+        elif self.root_group.__contains__("tunerun_" + str(tune_run_number) + "/gradient_setup_1"):
+            parameter_containing_group = self.root_group["tunerun_" + str(tune_run_number) + "/gradient_setup_1"]
+        else:
+            print("parameter_names could not be loaded!")
+            return
+        self.parameter_names = parameter_containing_group["parameter_names"][:]
 
     def load_cd_gradient(self, gradient_number=1, tune_run_number=0):
         tune_run_group = self.load_tune_run_group(tune_run_number)
@@ -67,9 +85,6 @@ class Analyzer:
 
     def load_gradient_pd(self, gradient_number=1, tune_run_number=0):
         gradient, covariance, noise = self.load_gradient_tunerun(gradient_number, tune_run_number)
-        if self.parameter_names is None:
-            print("You need to load the parameter names first!")
-            return
         gradient = pd.DataFrame(gradient, self.parameter_names, self.tunable_gate_names)
         return gradient
 
@@ -104,7 +119,7 @@ class Analyzer:
             if "evaluator_" in key:
                 evaluator_data_set = data_group[key]
                 for parameter_name in evaluator_data_set.attrs:
-                    parameter_name_list += [parameter_name]
+                    parameter_name_list += [str.encode(parameter_name)]
                     parameter_value_list += [evaluator_data_set.attrs[parameter_name]]
         parameters = pd.Series(parameter_value_list, parameter_name_list)
         parameters_pd = parameters.sort_index()
@@ -122,8 +137,8 @@ class Analyzer:
         gate_voltages_sequence_pd = pd.Series()
         for gate in self.gate_names:
             gate_voltages_sequence_pd[gate] = np.zeros((end - start, ))
-        parameters_sequence_pd = pd.Series()
         run_parameters = tune_sequence_group["parameter_names"][:]
+        parameters_sequence_pd = pd.Series()
         for parameter in run_parameters:
             parameters_sequence_pd[parameter] = np.zeros((end - start, ))
         for counter in range(start, end):
@@ -147,10 +162,117 @@ class Analyzer:
         gradient_sequence_pd = self.load_gradient_sequence_pd(tune_run_number=tune_run_number, start=start, end=end)
         return desired_values_pd, gate_voltages_sequence_pd, parameters_sequence_pd, gradient_sequence_pd
 
-    def plot_kalman_tune_run(self, tune_run_number=1, start:int=0, end: int=None):
+    def plot_kalman_tune_run(self, tune_run_number=1, start: int=0, end: int=None):
         desired_values_pd, gate_voltages_sequence_pd, parameters_sequence_pd, gradient_sequence_pd = \
             self.load_kalman_tune_run(tune_run_number, start, end)
+        number_parameter = len(self.parameter_names)
+        plt.figure(1)
+        for i in range(number_parameter):
+            plt.subplot(3, 1, i+1)
+            plt.plot(parameters_sequence_pd[self.parameter_names[i]], "r")
+            plt.axhline(desired_values_pd[self.parameter_names[i]])
+            plt.ylabel(self.parameter_names[i].decode("ascii"))
+        plt.figure(2)
+        for gate in self.gate_names:
+            plt.plot(gate_voltages_sequence_pd[gate])
+        plt.legend([gate.decode("ascii") for gate in self.gate_names]
+)
+        plt.show()
         return
+
+    def load_raw_measurement_pd(self, step_group):
+        raw_measurement_pd = pd.Series()
+        for evaluator in self.evaluator_names:
+            raw_measurement_pd[evaluator] = step_group[evaluator][:]
+        return raw_measurement_pd
+
+    def load_raw_measurement_gradient_calculation(self, gradient_number: int = 1, tune_run_number: int = 0) -> (
+            pd.DataFrame, pd.DataFrame, int, float):
+        self.load_evaluator_names(tune_run_number=tune_run_number)
+        gradient_group = self.load_gradient_group(gradient_number=gradient_number, tune_run_number=tune_run_number)
+        delta_u = gradient_group.attrs["delta_u"]
+        n_repetitions = gradient_group.attrs["n_repetitions"]
+        raw_measurement_positive_detune_pd = pd.DataFrame(index=self.evaluator_names, columns=self.gate_names)
+        raw_measurement_negative_detune_pd = pd.DataFrame(index=self.evaluator_names, columns=self.gate_names)
+        for i in range(n_repetitions):
+            for gate in self.gate_names:
+                raw_measurement_pd = self.load_raw_measurement_pd(
+                    step_group=gradient_group["positive_detune_run_" + gate + "_" + str(i)])
+                for evaluator in self.evaluator_names:
+                    matrix = raw_measurement_pd[evaluator]
+                    matrix = np.reshape(matrix, [1, matrix.size])
+                    if i == 0:
+                        raw_measurement_positive_detune_pd[gate][evaluator] = matrix
+                    else:
+                        raw_measurement_positive_detune_pd[gate][evaluator] = np.concatenate(
+                            (raw_measurement_positive_detune_pd[gate][evaluator], matrix))
+            for gate in self.gate_names:
+                raw_measurement_pd = self.load_raw_measurement_pd(
+                    step_group=gradient_group["negative_detune_run_" + gate + "_" + str(i)])
+                for evaluator in self.evaluator_names:
+                    matrix = raw_measurement_pd[evaluator]
+                    matrix = np.reshape(matrix, [1, matrix.size])
+                    if i == 0:
+                        raw_measurement_negative_detune_pd[gate][evaluator] = matrix
+                    else:
+                        raw_measurement_negative_detune_pd[gate][evaluator] = np.concatenate(
+                            (raw_measurement_negative_detune_pd[gate][evaluator], matrix))
+        return raw_measurement_positive_detune_pd, raw_measurement_negative_detune_pd, n_repetitions, delta_u
+
+    def load_evaluator_names(self, tune_run_number: int=1):
+        tune_run_group = self.load_tune_run_group(tune_run_number=tune_run_number)
+        if tune_run_group.__contains__("tune_sequence/step_0"):
+            first_step_group = tune_run_group["tune_sequence/step_0"]
+            list_evaluator_names = []
+            for element in first_step_group:
+                if isinstance(first_step_group[element], h5py.Dataset) and "evaluator_" in element:
+                    list_evaluator_names += [element, ]
+            self.evaluator_names = list_evaluator_names
+        else:
+            first_gradient_group = self.load_gradient_group(gradient_number=1, tune_run_number=tune_run_number)
+            run_group = first_gradient_group["negative_detune_run_" + self.tunable_gate_names[0].decode("ascii") + "_0"]
+            list_evaluator_names = []
+            for element in run_group:
+                if isinstance(run_group[element], h5py.Dataset) and "evaluator_" in element:
+                    list_evaluator_names += [element, ]
+            self.evaluator_names = list_evaluator_names
+        return list_evaluator_names
+
+    def load_raw_measurement_sequence_pd(self, start: int=0, end: int=None, tune_run_number: int=1):
+        self.load_evaluator_names(tune_run_number=tune_run_number)
+        tune_run_group = self.load_tune_run_group(tune_run_number=tune_run_number)
+        sequence_group = tune_run_group["tune_sequence"]
+        if end is None:
+            end = count_steps_in_sequence(sequence_group)
+        raw_measurement_sequence_pd = pd.DataFrame(index=self.evaluator_names, columns=range(start, end))
+        for i in range(start, end):
+            raw_measurement_pd = self.load_raw_measurement_pd(sequence_group["step_" + str(i)])
+            for evaluator in self.evaluator_names:
+                raw_measurement_sequence_pd[i][evaluator] = raw_measurement_pd[evaluator]
+        return raw_measurement_sequence_pd
+
+    def plot_raw_measurement(self, tune_run_number: int=1, start: int=0, end: int=None):
+        self.load_evaluator_names(tune_run_number=tune_run_number)
+        tune_run_group = self.load_tune_run_group(tune_run_number=tune_run_number)
+        tune_sequence_group = tune_run_group["tune_sequence"]
+        if end is None:
+            end = count_steps_in_sequence(tune_sequence_group)
+        raw_measurement_sequence_pd = self.load_raw_measurement_sequence_pd(start=start, end=end,
+                                                                            tune_run_number=tune_run_number)
+        plt.ion()
+        for i in range(start, end):
+            for evaluator in self.evaluator_names:
+                plt.figure(1)
+                plt.plot(raw_measurement_sequence_pd[i][evaluator])
+                print(raw_measurement_sequence_pd[i][evaluator])
+                plt.ylabel(evaluator)
+                plt.pause(0.05)
+                decision_continue = input("Type STOP to stop. Type anything else to continue.")
+                if decision_continue == "STOP":
+                    plt.close()
+                    return
+                else:
+                    plt.close()
 
     def load_single_values_gradient_calculation(self, gradient_number: int = 1, tune_run_number: int = 0) -> (
             pd.Series, int, float):
@@ -185,6 +307,7 @@ class Analyzer:
     def load_tune_run_group(self, tune_run_number) -> h5py.Group:
         if self.root_group.__contains__("tunerun_" + str(tune_run_number)):
             tune_run_group = self.root_group["tunerun_" + str(tune_run_number)]
+            self.load_parameter_names(tune_run_number=tune_run_number)
         else:
             print("There is no tunerun number " + str(tune_run_number) + "in this file.")
             raise KeyError("Group does not exist.")
@@ -196,8 +319,17 @@ class Analyzer:
             if tune_run_number > 0:
                 print("There is no gradient saved for the gradient setup number " + str(
                     gradient_number) + " in tune run number" + str(
-                    tune_run_number) + ". We  will try to find it in a previous run, since it might have been copied.")
-                return self.load_gradient_group(gradient_number, tune_run_number - 1)
+                    tune_run_number) + ".")
+                decision = input("Would you like to load the gradient from the previous run? (Y/N)")
+                if decision == "Y":
+                    print("Gradient will be loaded from a previous run!")
+                    return self.load_gradient_group(gradient_number, tune_run_number - 1)
+                elif decision == "N":
+                    print("No gradient could be loaded!")
+                    raise KeyError("Group does not exist.")
+                else:
+                    print("This was a yes or no question. Answer with Y or N!")
+                    return self.load_gradient_group(gradient_number=gradient_number, tune_run_number=tune_run_number)
             else:
                 print("There is no gradient saved for the gradient setup number " + str(
                     gradient_number) + " in tune run number" + str(
