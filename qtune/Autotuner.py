@@ -32,9 +32,11 @@ class Autotuner:
         self.tune_run_number = 0
         self.gradient_number = 0
         self.charge_diagram_number = 0
-        self.hdf5file = h5py.File(data_directory + r'\Autotuner_' + time_string() + ".hdf5", 'w')
+        self.filename = data_directory + r'\Autotuner_' + time_string() + ".hdf5"
+        self.hdf5file = h5py.File(self.filename, 'w-')
         tunerun_group = self.hdf5file.create_group('tunerun_' + str(self.tune_run_number))
         self.current_tunerun_group = tunerun_group
+
 
     @property
     def evaluators(self):
@@ -131,6 +133,7 @@ class Autotuner:
     def evaluate_gradient_covariance_noise(self, delta_u=4e-3, n_repetitions=3) -> Tuple[
         pd.DataFrame, pd.DataFrame, pd.Series]:
         self.gradient_number += 1
+        self.login_savefile()
         gradient_group = self.current_tunerun_group.create_group("gradient_setup_" + str(self.gradient_number))
         gradient_group.attrs["n_repetitions"] = n_repetitions
         gradient_group.attrs["delta_u"] = delta_u
@@ -195,6 +198,7 @@ class Autotuner:
         gradient_matrix, covariance, evaluation_noise = self.converte_gradient_heuristic_data(gradient, gradient_std,
                                                                                               evaluation_std)
         save_gradient_data(gradient_group, gradient_matrix, covariance, evaluation_noise)
+        self.logout_of_savefile()
 
         return gradient, gradient_std, evaluation_std
 
@@ -231,6 +235,10 @@ class Autotuner:
     def logout_of_savefile(self):
         self.hdf5file.close()
 
+    def login_savefile(self):
+        self.hdf5file = h5py.File(self.filename, 'r+')
+        self.current_tunerun_group = self.hdf5file['tunerun_' + str(self.tune_run_number)]
+
     def manual_logout(self):
         decision_logout = input(
             "Would you like to log out of the HDF5 library file. The file will only be readable, if the Autotuner" 
@@ -260,12 +268,14 @@ class ChargeDiagramAutotuner(Autotuner):
         gate_names = gate_names.sort_index()
         gate_names = gate_names.index.tolist()
         gate_names = np.asarray(gate_names, dtype='S30')
+        self.login_savefile()
         self.hdf5file.create_dataset("gate_names", data=gate_names)
         self.tunable_gates = self.tunable_gates.drop(['BA', 'BB'])
         self.tunable_gates = self.tunable_gates.sort_index()
         tunable_gate_names = self.tunable_gates.index.tolist()
         tunable_gate_names = np.asarray(tunable_gate_names, dtype="S30")
         self.hdf5file.create_dataset("tunable_gate_names", data=tunable_gate_names)
+        self.logout_of_savefile()
         if charge_diagram_gradient is not None or charge_diagram_covariance is not None or charge_diagram_noise is not None:
             self.initialize_charge_diagram_kalman(charge_diagram_gradient=charge_diagram_gradient,
                                                   charge_diagram_covariance=charge_diagram_covariance,
@@ -276,6 +286,7 @@ class ChargeDiagramAutotuner(Autotuner):
                                          charge_diagram_noise=None, heuristic_measurement: bool = False, n_noise=15,
                                          n_cov=15, filename: str = None, filepath: str = "tunerun_0/charge_diagram_1",
                                          load_file: bool = False):
+        self.login_savefile()
         if heuristic_measurement:
             charge_diagram_gradient, charge_diagram_covariance, charge_diagram_noise = self.measure_charge_diagram_histogram(
                 n_noise=n_noise,
@@ -294,6 +305,7 @@ class ChargeDiagramAutotuner(Autotuner):
                                     charge_diagram_noise)
         self.charge_diagram.initialize_kalman(initX=charge_diagram_gradient, initP=charge_diagram_covariance,
                                               initR=charge_diagram_noise)
+        self.logout_of_savefile()
 
     def set_gate_voltages(self, new_voltages: pd.Series):
         for voltage in new_voltages:
@@ -340,6 +352,7 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
                    desired_values: pd.Series = pd.Series(), gradient_std: pd.DataFrame = None,
                    evaluation_std: pd.Series = None, alpha=1.02, load_data=False, filename: str = None,
                    filepath: str = "tunerun_0/gradient_setup_1", tuning_accuracy: pd.Series = pd.Series()):
+        self.login_savefile()
         if len(tuning_accuracy.index) != 0:
             self.tuning_accuracy = tuning_accuracy.sort_index()
         desired_values = desired_values.sort_index()
@@ -377,8 +390,10 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
             self.solver.desired_values = desired_values
         self.solver.initialize_kalman(gradient=gradient_matrix, covariance=covariance, noise=evaluation_noise,
                                       alpha=alpha)
+        self.logout_of_savefile()
 
     def autotune(self, number_steps=1000, supervised: bool=False) -> bool:
+        self.login_savefile()
         counter = 0
         if not self.ready_to_tune():
             print('The tuner setup is not complete!')
@@ -424,7 +439,7 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
             parameters = new_parameters
             counter += 1
         print("Congratulations! The tuning run is complete or the maximum number is steps has been reached. ")
-        self.manual_logout()
+        self.logout_of_savefile()
         return True
 
 
