@@ -208,7 +208,6 @@ class Analyzer:
                     step_group=gradient_group["positive_detune_run_" + gate.decode("ascii") + "_" + str(i)])
                 for evaluator in self.evaluator_names:
                     matrix = raw_measurement_pd[evaluator]
-                    matrix = np.reshape(matrix, [1, matrix.size])
                     if i == 0:
                         raw_measurement_positive_detune_pd[gate][evaluator] = matrix
                     else:
@@ -219,7 +218,6 @@ class Analyzer:
                     step_group=gradient_group["negative_detune_run_" + gate.decode("ascii") + "_" + str(i)])
                 for evaluator in self.evaluator_names:
                     matrix = raw_measurement_pd[evaluator]
-                    matrix = np.reshape(matrix, [1, matrix.size])
                     if i == 0:
                         raw_measurement_negative_detune_pd[gate][evaluator] = matrix
                     else:
@@ -412,3 +410,5 @@ def load_single_evaluation_from_group(data_group: h5py.Group, evaluator_name: st
 
 
 def fit_lead_times(ydata, scan_range, center, n_points):
+    pass
+
