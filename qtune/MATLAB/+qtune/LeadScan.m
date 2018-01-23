@@ -12,6 +12,7 @@ else
 end
 scan.figure = 1233126;
 data = smrun(scan, args.file_name);
-data = diff(squeeze(mean(data{1})));
+data = squeeze(mean(data{1},1));
+
 end
 

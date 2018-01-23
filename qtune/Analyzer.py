@@ -33,7 +33,7 @@ class Analyzer:
         self.root_group = h5py.File(filename)
         gate_names = self.root_group["gate_names"][:]
         self.gate_names = gate_names
-        self.tunable_gate_names = self.root_group["tunable_gate_names"]
+        self.tunable_gate_names = self.root_group["tunable_gate_names"][:]
 
     def load_parameter_names(self, tune_run_number=1):
         if self.root_group.__contains__("tunerun_" + str(tune_run_number) + "/tune_sequence"):
@@ -84,7 +84,13 @@ class Analyzer:
         return gradient, heuristic_covariance, heuristic_noise
 
     def load_gradient_pd(self, gradient_number=1, tune_run_number=0):
-        gradient, covariance, noise = self.load_gradient_tunerun(gradient_number, tune_run_number)
+        if self.root_group.__contains__("tunerun_" + str(tune_run_number) + "/gradient_setup_" + str(gradient_number)):
+            gradient, covariance, noise = self.load_gradient_setup(gradient_number=gradient_number, tune_run_number=tune_run_number)
+        elif self.root_group.__contains__("tunerun_" + str(tune_run_number) + "/tune_sequence"):
+            gradient, covariance, noise = self.load_gradient_tunerun(gradient_number, tune_run_number)
+        else:
+            gradient = None
+            print("Gradient could not be loaded!")
         gradient = pd.DataFrame(gradient, self.parameter_names, self.tunable_gate_names)
         return gradient
 
@@ -191,13 +197,15 @@ class Analyzer:
         self.load_evaluator_names(tune_run_number=tune_run_number)
         gradient_group = self.load_gradient_group(gradient_number=gradient_number, tune_run_number=tune_run_number)
         delta_u = gradient_group.attrs["delta_u"]
+#        delta_u = gradient_group["delta_u"].value
         n_repetitions = gradient_group.attrs["n_repetitions"]
-        raw_measurement_positive_detune_pd = pd.DataFrame(index=self.evaluator_names, columns=self.gate_names)
-        raw_measurement_negative_detune_pd = pd.DataFrame(index=self.evaluator_names, columns=self.gate_names)
+#        n_repetitions = gradient_group["n_repetitions"].value
+        raw_measurement_positive_detune_pd = pd.DataFrame(index=self.evaluator_names, columns=self.tunable_gate_names)
+        raw_measurement_negative_detune_pd = pd.DataFrame(index=self.evaluator_names, columns=self.tunable_gate_names)
         for i in range(n_repetitions):
-            for gate in self.gate_names:
+            for gate in self.tunable_gate_names:
                 raw_measurement_pd = self.load_raw_measurement_pd(
-                    step_group=gradient_group["positive_detune_run_" + gate + "_" + str(i)])
+                    step_group=gradient_group["positive_detune_run_" + gate.decode("ascii") + "_" + str(i)])
                 for evaluator in self.evaluator_names:
                     matrix = raw_measurement_pd[evaluator]
                     matrix = np.reshape(matrix, [1, matrix.size])
@@ -206,9 +214,9 @@ class Analyzer:
                     else:
                         raw_measurement_positive_detune_pd[gate][evaluator] = np.concatenate(
                             (raw_measurement_positive_detune_pd[gate][evaluator], matrix))
-            for gate in self.gate_names:
+            for gate in self.tunable_gate_names:
                 raw_measurement_pd = self.load_raw_measurement_pd(
-                    step_group=gradient_group["negative_detune_run_" + gate + "_" + str(i)])
+                    step_group=gradient_group["negative_detune_run_" + gate.decode("ascii") + "_" + str(i)])
                 for evaluator in self.evaluator_names:
                     matrix = raw_measurement_pd[evaluator]
                     matrix = np.reshape(matrix, [1, matrix.size])
@@ -251,7 +259,7 @@ class Analyzer:
                 raw_measurement_sequence_pd[i][evaluator] = raw_measurement_pd[evaluator]
         return raw_measurement_sequence_pd
 
-    def plot_raw_measurement(self, tune_run_number: int=1, start: int=0, end: int=None):
+    def plot_raw_measurement_tune_run(self, tune_run_number: int=1, start: int=0, end: int=None):
         self.load_evaluator_names(tune_run_number=tune_run_number)
         tune_run_group = self.load_tune_run_group(tune_run_number=tune_run_number)
         tune_sequence_group = tune_run_group["tune_sequence"]
@@ -274,34 +282,42 @@ class Analyzer:
                 else:
                     plt.close()
 
+    def plot_raw_measurement_gradient_setup(self):
+        pass
+
     def load_single_values_gradient_calculation(self, gradient_number: int = 1, tune_run_number: int = 0) -> (
             pd.Series, int, float):
         gradient_group = self.load_gradient_group(gradient_number=gradient_number, tune_run_number=tune_run_number)
-        n_repetitions = gradient_group.attrs("n_repetitions")
-        delta_u = gradient_group.attrs("delta_u")
-        single_values_pd = pd.DataFrame()
+        n_repetitions = gradient_group.attrs["n_repetitions"]
+#        n_repetitions = gradient_group["n_repetitions"].value
+        delta_u = gradient_group.attrs["delta_u"]
+#        delta_u = gradient_group["delta_u"].value
+        single_values_pd = pd.DataFrame(None, index=self.parameter_names, columns=self.tunable_gate_names)
         temp_parameter = pd.Series()
         for gate in self.tunable_gate_names:
             for parameter in self.parameter_names:
-                single_values_pd[parameter, gate] = np.zeros((n_repetitions, 2))
+                single_values_pd[gate][parameter] = np.zeros((n_repetitions, 2))
             for i in range(n_repetitions):
-                positive_run_group = gradient_group["positive_detune_run_" + gate + "_" + str(i)]
+                positive_run_group = gradient_group["positive_detune_run_" + gate.decode("ascii") + "_" + str(i)]
                 for element in positive_run_group.keys():
                     if "evaluator_" in element:
-                        for parameter_name in positive_run_group[element].attrs:
-                            temp_parameter[parameter_name] = positive_run_group[element].attrs(parameter_name)
+                        for parameter_name in positive_run_group[element].attrs.keys():
+                            if "parameter_" in parameter_name:
+                                temp_parameter[parameter_name] = positive_run_group[element].attrs[parameter_name]
                 temp_parameter = temp_parameter.sort_index()
-                for parameter in self.parameter_names:
-                    single_values_pd[parameter, gate][i, 0] = temp_parameter[parameter]
 
-                negative_run_group = gradient_group["negative_detune_run_" + gate + "_" + str(i)]
+                for parameter in self.parameter_names:
+                    single_values_pd[gate][parameter][i, 0] = temp_parameter[parameter.decode("ascii")]
+
+                negative_run_group = gradient_group["negative_detune_run_" + gate.decode("ascii") + "_" + str(i)]
                 for element in negative_run_group.keys():
                     if "evaluator_" in element:
-                        for parameter_name in negative_run_group[element].attrs:
-                            temp_parameter[parameter_name] = negative_run_group[element].attrs(parameter_name)
+                        for parameter_name in negative_run_group[element].attrs.keys():
+                            if "parameter_" in parameter_name:
+                                temp_parameter[parameter_name] = negative_run_group[element].attrs[parameter_name]
                 temp_parameter = temp_parameter.sort_index()
                 for parameter in self.parameter_names:
-                    single_values_pd[parameter, gate][i, 1] = temp_parameter[parameter]
+                    single_values_pd[gate][parameter][i, 1] = temp_parameter[parameter.decode("ascii")]
         return single_values_pd, n_repetitions, delta_u
 
     def load_tune_run_group(self, tune_run_number) -> h5py.Group:
@@ -394,3 +410,5 @@ def load_single_evaluation_from_group(data_group: h5py.Group, evaluator_name: st
             information_pd[attribute] = evaluator_data_set.attrs(attribute)
     return raw_data, parameters_pd, information_pd
 
+
+def fit_lead_times(ydata, scan_range, center, n_points):
