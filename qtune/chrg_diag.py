@@ -125,7 +125,7 @@ class ChargeDiagram:
             self.grad_kalman.update(-1*du, dpos, hack=False)
 
 
-def find_lead_transition(data: np.ndarray, center: float, scan_range: float, npoints: int) -> float:
+def find_lead_transition(data: np.ndarray, center: float, scan_range: float, npoints: int, width: float = .2e-3) -> float:
     if len(data.shape) == 2:
         y = np.mean(data, 0)
     elif len(data.shape) == 1:
@@ -136,7 +136,7 @@ def find_lead_transition(data: np.ndarray, center: float, scan_range: float, npo
 
     x = np.linspace(center - scan_range, center + scan_range, npoints)
 
-    n = int(.2e-3/scan_range*npoints)
+    n = int(width/scan_range*npoints)
     for i in range(0, len(y)-n-1):
         y[i] -= y[i+n]
 
@@ -144,6 +144,6 @@ def find_lead_transition(data: np.ndarray, center: float, scan_range: float, npo
     x_red = x[0:len(y) - n - 1]
 
     y_red = np.absolute(y_red)
-    max_index = np.argmax(y_red)
+    max_index = int(np.argmax(y_red) + int(round(n / 2)))
 
     return x_red[max_index]
