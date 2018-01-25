@@ -1,7 +1,9 @@
 import pandas as pd
 import numpy as np
 import h5py
+from scipy import optimize
 import matplotlib.pyplot as plt
+import qtune.Evaluator
 
 known_evaluators = pd.Series([["parameter_tunnel_coupling"], ["parameter_time_rise", "parameter_time_fall"]],
                              ["evaluator_SMInterDotTCByLineScan", "evaluator_SMLeadTunnelTimeByLeadScan"])
@@ -30,7 +32,7 @@ class Analyzer:
         self._parameter_names = parameter_names
 
     def load_file(self, filename: str):
-        self.root_group = h5py.File(filename)
+        self.root_group = h5py.File(filename, "r")
         gate_names = self.root_group["gate_names"][:]
         self.gate_names = gate_names
         self.tunable_gate_names = self.root_group["tunable_gate_names"][:]
@@ -181,8 +183,7 @@ class Analyzer:
         plt.figure(2)
         for gate in self.gate_names:
             plt.plot(gate_voltages_sequence_pd[gate])
-        plt.legend([gate.decode("ascii") for gate in self.gate_names]
-)
+        plt.legend([gate.decode("ascii") for gate in self.gate_names])
         plt.show()
         return
 
@@ -224,6 +225,83 @@ class Analyzer:
                         raw_measurement_negative_detune_pd[gate][evaluator] = np.concatenate(
                             (raw_measurement_negative_detune_pd[gate][evaluator], matrix))
         return raw_measurement_positive_detune_pd, raw_measurement_negative_detune_pd, n_repetitions, delta_u
+
+    def plot_raw_measurement_gradient_calculation(self, gradient_number: int = 1, tune_run_number: int = 0):
+        raw_measurement_positive_detune_pd, raw_measurement_negative_detune_pd, n_repetitions, delta_u = \
+            self.load_raw_measurement_gradient_calculation(gradient_number=gradient_number,
+                                                           tune_run_number=tune_run_number)
+        print("Please chose a gate by typing the number next to its name: ")
+        num_tunable_gates = len(self.tunable_gate_names)
+        for i in range(num_tunable_gates):
+            print(self.tunable_gate_names[i].decode("ascii") + ": " + str(i))
+        gate = input()
+        gate = int(gate)
+        gate = self.tunable_gate_names[gate]
+        print("please chose an evaluator by typing the number next to its name: ")
+        num_evaluators = len(self.evaluator_names)
+        for i in range(num_evaluators):
+            print(self.evaluator_names[i] + ": " + str(i))
+        evaluator = input()
+        evaluator = int(evaluator)
+        evaluator = self.evaluator_names[evaluator]
+        plt.ion()
+        if evaluator == "evaluator_SMLeadTunnelTimeByLeadScan":
+            for i in range(n_repetitions):
+                plt.figure(1)
+                plt.plot(raw_measurement_positive_detune_pd[gate][evaluator][2 * i, :])
+                plt.plot(raw_measurement_positive_detune_pd[gate][evaluator][2 * i + 1, :])
+                plt.legend(["Data", "Background"])
+                plt.draw()
+                plt.pause(0.05)
+                plt.figure(2)
+                diff = raw_measurement_positive_detune_pd[gate][evaluator][2 * i + 1, :] - \
+                       raw_measurement_positive_detune_pd[gate][evaluator][2 * i, :]
+                #                plt.plot(diff)
+                qtune.Evaluator.fit_lead_times(diff)
+                plt.legend(["BG subtracted"])
+                plt.pause(0.05)
+                decision_continue = input("Type STOP to stop. Type anything else to continue.")
+                if decision_continue == "STOP":
+                    plt.close()
+                    return
+                else:
+                    plt.close()
+                    plt.figure(1)
+                    plt.close()
+            for i in range(n_repetitions):
+                plt.figure(1)
+                plt.plot(raw_measurement_negative_detune_pd[gate][evaluator][2 * i, :])
+                plt.plot(raw_measurement_negative_detune_pd[gate][evaluator][2 * i + 1, :])
+                plt.legend(["Data", "Background"])
+                plt.draw()
+                plt.pause(0.05)
+                plt.figure(2)
+                diff = raw_measurement_negative_detune_pd[gate][evaluator][2 * i + 1, :] - \
+                       raw_measurement_negative_detune_pd[gate][evaluator][2 * i, :]
+                #                plt.plot(diff)
+                qtune.Evaluator.fit_lead_times(diff)
+                #plt.legend(["BG subtracted"])
+                plt.pause(0.05)
+                decision_continue = input("Type STOP to stop. Type anything else to continue.")
+                if decision_continue == "STOP":
+                    plt.close()
+                    return
+                else:
+                    plt.close()
+                    plt.figure(1)
+                    plt.close()
+        elif evaluator == "evaluator_SMInterDotTCByLineScan":
+            for i in range(n_repetitions):
+                plt.figure(1)
+                plt.plot(raw_measurement_positive_detune_pd[gate][evaluator][i, :])
+                decision_continue = input("Type STOP to stop. Type anything else to continue.")
+                if decision_continue == "STOP":
+                    plt.close()
+                    return
+                else:
+                    plt.close()
+        else:
+            print("No plotting implemented for this evaluator.")
 
     def load_evaluator_names(self, tune_run_number: int=1):
         tune_run_group = self.load_tune_run_group(tune_run_number=tune_run_number)
@@ -279,9 +357,6 @@ class Analyzer:
                     return
                 else:
                     plt.close()
-
-    def plot_raw_measurement_gradient_setup(self):
-        pass
 
     def load_single_values_gradient_calculation(self, gradient_number: int = 1, tune_run_number: int = 0) -> (
             pd.Series, int, float):
@@ -409,6 +484,56 @@ def load_single_evaluation_from_group(data_group: h5py.Group, evaluator_name: st
     return raw_data, parameters_pd, information_pd
 
 
-def fit_lead_times(ydata, scan_range, center, n_points):
-    pass
+def fit_lead_times_old(ydata: np.ndarray):
+    samprate = 1e8
+    n_points = len(ydata)
+    xdata = np.asarray([i for i in range(n_points)]) / samprate
+    p0 = [ydata[round(1. / 4. * n_points)] - ydata[round(3. / 4. * n_points)],
+          50e-9, 50e-9, 70e-9, 2070e-9, np.mean(ydata)]
+    popt, pcov = optimize.curve_fit(f=func_lead_times, p0=p0, xdata=xdata, ydata=ydata)
+    begin_lin = int(round(popt[4] / 10e-9))
+    end_lin = begin_lin + 7
+    slope = (ydata[end_lin] - ydata[begin_lin]) / (xdata[end_lin] - xdata[begin_lin])
+    linear_offset = ydata[begin_lin] - xdata[begin_lin] * slope
+    p0 += [slope, linear_offset, xdata[end_lin]]
+    begin_lin_1 = int(round(popt[3] / 10e-9))
+    end_lin_1 = begin_lin_1 + 7
+    slope_1 = (ydata[end_lin_1] - ydata[begin_lin_1]) / (xdata[end_lin_1] - xdata[begin_lin_1])
+    linear_offset_1 = ydata[begin_lin_1] - xdata[begin_lin_1] * slope_1
+    p0 += [slope_1, linear_offset_1, xdata[end_lin_1]]
+    plt.plot(xdata, ydata)
+    plt.plot(xdata, func_lead_times_v2(xdata, p0[0], p0[1], p0[2], p0[3], p0[4], p0[5], p0[6], p0[7], p0[8], p0[9], p0[10], p0[11]))
+    popt, pcov = optimize.curve_fit(f=func_lead_times_v2, p0=p0, xdata=xdata, ydata=ydata)
+    plt.figure(6)
+    plt.plot(xdata, ydata)
+    plt.plot(xdata, func_lead_times_v2(xdata, popt[0], popt[1], popt[2], popt[3], popt[4], popt[5], popt[6], popt[7], popt[8], popt[9], popt[10], popt[11]))
+    plt.pause(0.05)
+    print("fit parameters")
+    print(popt)
+    return popt, pcov
+
+
+def func_lead_times(x, hight: float, t_fall: float, t_rise: float, begin_rise: float, begin_fall: float,
+                    offset: float):
+    x = np.squeeze(x)
+    n_points = len(x)
+    y = np.zeros((n_points, ))
+    for i in range(n_points):
+        if x[i] >= begin_rise and x[i] <= begin_fall:
+            c = np.cosh(.5*begin_fall/t_rise)
+            s = np.sinh(.5*begin_fall/t_rise)
+            e = np.exp(.5*(begin_fall - 2. * x[i]) / t_rise)
+            signed_hight = hight
+        elif x[i] < begin_rise:
+            c = np.cosh(.5*begin_fall/t_fall)
+            s = np.sinh(.5*begin_fall/t_fall)
+            e = np.exp(.5*(1. * begin_fall - 2. * (x[i] + x[n_points - 1])) / t_fall)
+            signed_hight = -1. * hight
+        else:
+            c = np.cosh(.5*begin_fall/t_fall)
+            s = np.sinh(.5*begin_fall/t_fall)
+            e = np.exp(.5*(3. * begin_fall - 2. * x[i]) / t_fall)
+            signed_hight = -1. * hight
+        y[i] = offset + .5 * signed_hight * (c - e) / s
+    return y
 
