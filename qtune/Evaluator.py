@@ -60,7 +60,35 @@ class LeadTunnelTimeByLeadScan(Evaluator):
         return pd.Series([t_rise, t_fall, failed], ['parameter_time_rise', 'parameter_time_fall', 'failed'])
 
 
-def fit_lead_times(ydata: np.ndarray):
+class InterDotTCByLineScan(Evaluator):
+    def __init__(self, dqd: BasicDQD, parameters: pd.Series() = pd.Series((np.nan,), ('parameter_tunnel_coupling',)),
+                 line_scan: Measurement = None):
+        if line_scan is None:
+            line_scan = dqd.measurements[1]
+        super().__init__(dqd, line_scan, parameters)
+        self.matlab = matlab_instance
+
+    def evaluate(self, storing_group: h5py.Group) -> pd.Series:
+        ydata = self.experiment.measure(self.measurements)
+        center = self.measurements.parameter['center']
+        scan_range = self.measurements.parameter['range']
+        npoints = self. measurements.parameter['N_points']
+        fitresult = fit_inter_dot_coupling(ydata=ydata, center=center, scan_range=scan_range, npoints=npoints)
+        tc = fitresult['tc']
+        failed = bool(fitresult['failed'])
+        self.parameters['parameter_tunnel_coupling'] = tc
+        if storing_group is not None:
+            storing_dataset = storing_group.create_dataset("evaluator_SMInterDotTCByLineScan", data=ydata)
+            storing_dataset.attrs["center"] = center
+            storing_dataset.attrs["scan_range"] = scan_range
+            storing_dataset.attrs["npoints"] = npoints
+            storing_dataset.attrs["parameter_tunnel_coupling"] = tc
+            if failed:
+                storing_dataset.attrs["parameter_tunnel_coupling"] = np.nan
+        return pd.Series((tc, failed), ('parameter_tunnel_coupling', 'failed'))
+
+
+def fit_lead_times(ydata: np.ndarray, **kwargs):
     samprate = 1e8
     n_points = len(ydata)
     xdata = np.asarray([i for i in range(n_points)]) / samprate
@@ -118,3 +146,28 @@ def func_lead_times_v2(x, hight: float, t_fall: float, t_rise: float, begin_rise
             signed_hight = -1. * hight
             y[i] = offset + .5 * signed_hight * (c - e) / s
     return y
+
+
+def fit_inter_dot_coupling(ydata, **kwargs):
+    failed = 0
+    center = kwargs["center"]
+    scan_range = kwargs["scan_range"]
+    npoints = kwargs["npoints"]
+    xdata = np.linspace(center - scan_range, center + scan_range, npoints)
+    m_last_part, b_last_part = np.polyfit(xdata[int(round(0.75*npoints)):npoints-1], ydata[int(round(0.75*npoints)):npoints-1], 1)
+    m_first_part, b_first_part = np.polyfit(xdata[0:int(round(0.25*npoints))], ydata[0:int(round(0.25*npoints))], 1)
+    hight = (b_last_part + m_last_part * xdata[npoints - 1]) - (b_first_part + m_first_part * xdata[npoints - 1])
+    position = find_lead_transition(data=ydata - xdata * m_first_part, center=center, scan_range=scan_range, npoints=npoints,
+                                    width=scan_range / 12.)
+    p0 = [b_first_part, m_first_part, hight, position, scan_range / 8.]
+    plt.plot(xdata, ydata, "b.")
+    plt.plot(xdata, func_inter_dot_coupling(xdata, p0[0], p0[1], p0[2], p0[3], p0[4]), "k--")
+    popt, pcov = optimize.curve_fit(f=func_inter_dot_coupling, p0=p0, xdata=xdata, ydata=ydata)
+    plt.plot(xdata, func_inter_dot_coupling(xdata, popt[0], popt[1], popt[2], popt[3], popt[4]), "r")
+    fit_result = pd.Series(data=[popt[4], failed], index=["tc", "failed"])
+    return fit_result
+
+
+def func_inter_dot_coupling(xdata, offset: float, slope: float, height: float, position: float, width: float):
+    return offset + slope * xdata + .5 * height * (1 + np.tanh((xdata - position) / width))
+
