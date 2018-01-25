@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import h5py
 from scipy import optimize
+from qtune.chrg_diag import find_lead_transition
 import matplotlib.pyplot as plt
 import qtune.Evaluator
 
@@ -189,9 +190,12 @@ class Analyzer:
 
     def load_raw_measurement_pd(self, step_group):
         raw_measurement_pd = pd.Series()
+        attribute_info_pd = pd.Series()
         for evaluator in self.evaluator_names:
             raw_measurement_pd[evaluator] = step_group[evaluator][:]
-        return raw_measurement_pd
+            attribute_info = {key: step_group[evaluator].attrs[key] for key in step_group[evaluator].attrs.keys()}
+            attribute_info_pd[evaluator] = attribute_info
+        return raw_measurement_pd, attribute_info_pd
 
     def load_raw_measurement_gradient_calculation(self, gradient_number: int = 1, tune_run_number: int = 0) -> (
             pd.DataFrame, pd.DataFrame, int, float):
@@ -203,28 +207,29 @@ class Analyzer:
 #        n_repetitions = gradient_group["n_repetitions"].value
         raw_measurement_positive_detune_pd = pd.DataFrame(index=self.evaluator_names, columns=self.tunable_gate_names)
         raw_measurement_negative_detune_pd = pd.DataFrame(index=self.evaluator_names, columns=self.tunable_gate_names)
+        parameter_positive_detune_pd = pd.DataFrame(index=self.evaluator_names, columns=self.tunable_gate_names)
+        parameter_negative_detune_pd = pd.DataFrame(index=self.evaluator_names, columns=self.tunable_gate_names)
         for i in range(n_repetitions):
             for gate in self.tunable_gate_names:
-                raw_measurement_pd = self.load_raw_measurement_pd(
+                raw_measurement_pos_pd, attribute_info_pd_pos = self.load_raw_measurement_pd(
+                    step_group=gradient_group["positive_detune_run_" + gate.decode("ascii") + "_" + str(i)])
+                raw_measurement_neg_pd, attribute_info_pd_neg = self.load_raw_measurement_pd(
                     step_group=gradient_group["positive_detune_run_" + gate.decode("ascii") + "_" + str(i)])
                 for evaluator in self.evaluator_names:
-                    matrix = raw_measurement_pd[evaluator]
+                    matrix_pos = raw_measurement_pos_pd[evaluator]
+                    matrix_neg = raw_measurement_neg_pd[evaluator]
                     if i == 0:
-                        raw_measurement_positive_detune_pd[gate][evaluator] = matrix
+                        raw_measurement_positive_detune_pd[gate][evaluator] = matrix_pos
+                        raw_measurement_negative_detune_pd[gate][evaluator] = matrix_neg
+                        parameter_positive_detune_pd[gate][evaluator] = attribute_info_pd_pos[evaluator]
+                        parameter_negative_detune_pd[gate][evaluator] = attribute_info_pd_neg[evaluator]
                     else:
                         raw_measurement_positive_detune_pd[gate][evaluator] = np.concatenate(
-                            (raw_measurement_positive_detune_pd[gate][evaluator], matrix))
-            for gate in self.tunable_gate_names:
-                raw_measurement_pd = self.load_raw_measurement_pd(
-                    step_group=gradient_group["negative_detune_run_" + gate.decode("ascii") + "_" + str(i)])
-                for evaluator in self.evaluator_names:
-                    matrix = raw_measurement_pd[evaluator]
-                    if i == 0:
-                        raw_measurement_negative_detune_pd[gate][evaluator] = matrix
-                    else:
+                            (raw_measurement_positive_detune_pd[gate][evaluator], matrix_pos))
                         raw_measurement_negative_detune_pd[gate][evaluator] = np.concatenate(
-                            (raw_measurement_negative_detune_pd[gate][evaluator], matrix))
-        return raw_measurement_positive_detune_pd, raw_measurement_negative_detune_pd, n_repetitions, delta_u
+                            (raw_measurement_negative_detune_pd[gate][evaluator], matrix_neg))
+        return raw_measurement_positive_detune_pd, raw_measurement_negative_detune_pd, parameter_positive_detune_pd, \
+            parameter_negative_detune_pd, n_repetitions, delta_u
 
     def plot_raw_measurement_gradient_calculation(self, gradient_number: int = 1, tune_run_number: int = 0):
         raw_measurement_positive_detune_pd, raw_measurement_negative_detune_pd, n_repetitions, delta_u = \
@@ -293,7 +298,12 @@ class Analyzer:
         elif evaluator == "evaluator_SMInterDotTCByLineScan":
             for i in range(n_repetitions):
                 plt.figure(1)
-                plt.plot(raw_measurement_positive_detune_pd[gate][evaluator][i, :])
+                ydata = raw_measurement_positive_detune_pd[gate][evaluator][i, :]
+                scan_range = delta_u
+                npoints = len(ydata)
+                center = 0. # TODO: change for real center
+                qtune.Evaluator.fit_inter_dot_coupling(ydata=ydata, center=center, scan_range=scan_range, npoints=npoints)
+                plt.pause(0.05)
                 decision_continue = input("Type STOP to stop. Type anything else to continue.")
                 if decision_continue == "STOP":
                     plt.close()
@@ -330,7 +340,7 @@ class Analyzer:
             end = count_steps_in_sequence(sequence_group)
         raw_measurement_sequence_pd = pd.DataFrame(index=self.evaluator_names, columns=range(start, end))
         for i in range(start, end):
-            raw_measurement_pd = self.load_raw_measurement_pd(sequence_group["step_" + str(i)])
+            raw_measurement_pd, attribute_info_pd = self.load_raw_measurement_pd(sequence_group["step_" + str(i)])
             for evaluator in self.evaluator_names:
                 raw_measurement_sequence_pd[i][evaluator] = raw_measurement_pd[evaluator]
         return raw_measurement_sequence_pd
@@ -429,6 +439,23 @@ class Analyzer:
 
     def logout(self):
         self.root_group.close()
+
+    def compute_gradient_from_raw_data(self, fit_functions, evaluators, gradient_number: int = 1,
+                                       tune_run_number: int = 0):
+        raw_measurement_positive_detune_pd, raw_measurement_negative_detune_pd, n_repetitions, delta_u = \
+            self.load_raw_measurement_gradient_calculation(gradient_number=gradient_number,
+                                                           tune_run_number=tune_run_number)
+        n_evaluators = len(evaluators)
+        positive_detune = pd.DataFrame()
+        negative_detune = pd.DataFrame()
+        positive_detune_parameter = pd.Series()
+        negative_detune_parameter = pd.Series()
+        for gate in self.tunable_gate_names:
+            for parameter in self.parameter_names:
+                for i in range(n_repetitions):
+                    for evaluator_number in range(n_evaluators):
+                        raise NotImplementedError
+
 
 
 def count_steps_in_sequence(sequence_group: h5py.Group):
@@ -536,4 +563,5 @@ def func_lead_times(x, hight: float, t_fall: float, t_rise: float, begin_rise: f
             signed_hight = -1. * hight
         y[i] = offset + .5 * signed_hight * (c - e) / s
     return y
+
 
