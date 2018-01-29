@@ -1,5 +1,6 @@
 from qtune.experiment import Experiment, Measurement
 from qtune.Basic_DQD import TestDQD, BasicDQD
+import qtune.chrg_diag
 from typing import Tuple
 import pandas as pd
 import numpy as np
@@ -43,8 +44,10 @@ class LeadTunnelTimeByLeadScan(Evaluator):
         data = self.experiment.measure(self.measurements)
         plt.ion()
         plt.figure(50)
+        plt.clf()
         fitresult = fit_lead_times(data)
-        plt.pause(0.05)
+        plt.show()
+#        plt.pause(0.05)
         t_rise = fitresult['t_rise']
         t_fall = fitresult['t_fall']
         failed = fitresult['failed']
@@ -66,14 +69,17 @@ class InterDotTCByLineScan(Evaluator):
         if line_scan is None:
             line_scan = dqd.measurements[1]
         super().__init__(dqd, line_scan, parameters)
-        self.matlab = matlab_instance
 
     def evaluate(self, storing_group: h5py.Group) -> pd.Series:
         ydata = self.experiment.measure(self.measurements)
         center = self.measurements.parameter['center']
         scan_range = self.measurements.parameter['range']
         npoints = self. measurements.parameter['N_points']
-        fitresult = fit_inter_dot_coupling(ydata=ydata, center=center, scan_range=scan_range, npoints=npoints)
+        plt.ion()
+        plt.figure(51)
+        plt.clf()
+        fitresult = fit_inter_dot_coupling(data=ydata, center=center, scan_range=scan_range, npoints=npoints)
+#        plt.pause(0.05)
         tc = fitresult['tc']
         failed = bool(fitresult['failed'])
         self.parameters['parameter_tunnel_coupling'] = tc
@@ -88,35 +94,46 @@ class InterDotTCByLineScan(Evaluator):
         return pd.Series((tc, failed), ('parameter_tunnel_coupling', 'failed'))
 
 
-def fit_lead_times(ydata: np.ndarray, **kwargs):
+def fit_lead_times(data: np.ndarray, **kwargs):
+    ydata = data[1, :] - data[0, :]
     samprate = 1e8
     n_points = len(ydata)
     xdata = np.asarray([i for i in range(n_points)]) / samprate
     p0 = [ydata[round(1. / 4. * n_points)] - ydata[round(3. / 4. * n_points)],
           50e-9, 50e-9, 70e-9, 2070e-9, np.mean(ydata)]
     begin_lin = int(round(p0[4] / 10e-9))
-    end_lin = begin_lin + 7
+    end_lin = begin_lin + 5
     slope = (ydata[end_lin] - ydata[begin_lin]) / (xdata[end_lin] - xdata[begin_lin])
     linear_offset = ydata[begin_lin] - xdata[begin_lin] * slope
-    p0 += [slope, linear_offset, xdata[end_lin]]
+    p0 += [slope, linear_offset, xdata[end_lin] - xdata[begin_lin]]
     begin_lin_1 = int(round(p0[3] / 10e-9))
-    end_lin_1 = begin_lin_1 + 7
+    end_lin_1 = begin_lin_1 + 5
     slope_1 = (ydata[end_lin_1] - ydata[begin_lin_1]) / (xdata[end_lin_1] - xdata[begin_lin_1])
     linear_offset_1 = ydata[begin_lin_1] - xdata[begin_lin_1] * slope_1
-    p0 += [slope_1, linear_offset_1, xdata[end_lin_1]]
+    p0 += [slope_1, linear_offset_1, xdata[end_lin_1] - xdata[begin_lin_1]]
     plt.plot(xdata * 1e6, ydata, "b.")
-    plt.plot(xdata * 1e6, func_lead_times_v2(xdata, p0[0], p0[1], p0[2], p0[3], p0[4], p0[5], p0[6], p0[7], p0[8], p0[9], p0[10], p0[11]), "k--")
-    popt, pcov = optimize.curve_fit(f=func_lead_times_v2, p0=p0, xdata=xdata, ydata=ydata)
-    plt.plot(xdata * 1e6, func_lead_times_v2(xdata, popt[0], popt[1], popt[2], popt[3], popt[4], popt[5], popt[6], popt[7], popt[8], popt[9], popt[10], popt[11]), "r")
-    plt.pause(0.05)
+    plt.plot(xdata * 1e6,
+             func_lead_times_v2(xdata, p0[0], p0[1], p0[2], p0[3], p0[4], p0[5], p0[6], p0[7], p0[8], p0[9], p0[10],
+                                p0[11]), "k--")
+    bounds = ([-np.inf, -np.inf, -np.inf, -np.inf, -np.inf, -np.inf, -np.inf, -np.inf, 0., -np.inf, -np.inf, 0.],
+              [np.inf, np.inf, np.inf, np.inf, np.inf, np.inf, np.inf, np.inf, float(n_points / 60. * samprate), np.inf, np.inf,
+               float(n_points / 60. * samprate)])
+    popt, pcov = optimize.curve_fit(f=func_lead_times_v2, p0=p0, bounds=bounds, xdata=xdata, ydata=ydata)
+    plt.plot(xdata * 1e6,
+             func_lead_times_v2(xdata, popt[0], popt[1], popt[2], popt[3], popt[4], popt[5], popt[6], popt[7], popt[8],
+                                popt[9], popt[10], popt[11]), "r")
+    plt.draw()
+#    plt.pause(0.05)
     failed = 0
     fitresult = pd.Series(data=[popt[1], popt[2], failed], index=["t_fall", "t_rise", "failed"])
     return fitresult
 
 
 def func_lead_times_v2(x, hight: float, t_fall: float, t_rise: float, begin_rise: float, begin_fall: float,
-                       offset: float, slope: float, offset_linear: float, exp_begin_fall: float, slope_1: float,
-                       offset_linear_1: float, exp_begin_rise: float):
+                       offset: float, slope: float, offset_linear: float, lenght_lin_fall: float, slope_1: float,
+                       offset_linear_1: float, length_lin_rise: float):
+    exp_begin_rise = begin_rise + length_lin_rise
+    exp_begin_fall = begin_fall + lenght_lin_fall
     half_time = 2e-6
     x = np.squeeze(x)
     n_points = len(x)
@@ -148,22 +165,24 @@ def func_lead_times_v2(x, hight: float, t_fall: float, t_rise: float, begin_rise
     return y
 
 
-def fit_inter_dot_coupling(ydata, **kwargs):
+def fit_inter_dot_coupling(data, **kwargs):
     failed = 0
     center = kwargs["center"]
     scan_range = kwargs["scan_range"]
     npoints = kwargs["npoints"]
     xdata = np.linspace(center - scan_range, center + scan_range, npoints)
+    ydata = np.squeeze(data)
     m_last_part, b_last_part = np.polyfit(xdata[int(round(0.75*npoints)):npoints-1], ydata[int(round(0.75*npoints)):npoints-1], 1)
     m_first_part, b_first_part = np.polyfit(xdata[0:int(round(0.25*npoints))], ydata[0:int(round(0.25*npoints))], 1)
     hight = (b_last_part + m_last_part * xdata[npoints - 1]) - (b_first_part + m_first_part * xdata[npoints - 1])
-    position = find_lead_transition(data=ydata - xdata * m_first_part, center=center, scan_range=scan_range, npoints=npoints,
+    position = qtune.chrg_diag.find_lead_transition(data=ydata - xdata * m_first_part, center=center, scan_range=scan_range, npoints=npoints,
                                     width=scan_range / 12.)
     p0 = [b_first_part, m_first_part, hight, position, scan_range / 8.]
     plt.plot(xdata, ydata, "b.")
     plt.plot(xdata, func_inter_dot_coupling(xdata, p0[0], p0[1], p0[2], p0[3], p0[4]), "k--")
     popt, pcov = optimize.curve_fit(f=func_inter_dot_coupling, p0=p0, xdata=xdata, ydata=ydata)
     plt.plot(xdata, func_inter_dot_coupling(xdata, popt[0], popt[1], popt[2], popt[3], popt[4]), "r")
+    plt.draw()
     fit_result = pd.Series(data=[popt[4], failed], index=["tc", "failed"])
     return fit_result
 

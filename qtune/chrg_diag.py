@@ -108,11 +108,6 @@ class ChargeDiagram:
         while np.linalg.norm(positions) > 0.2e-3:
             current_position = (self.position_lead_A, self.position_lead_B)
             du = np.linalg.solve(self.grad_kalman.grad, current_position)
-            print("solve the lsg:")
-            print(current_position)
-            print(self.grad_kalman.grad)
-            print("the solution is:")
-            print(du)
             if np.linalg.norm(du) > 3e-3:
                 du = du*3e-3/np.linalg.norm(du)
 

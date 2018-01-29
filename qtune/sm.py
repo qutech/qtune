@@ -158,8 +158,6 @@ class LegacyDQD(BasicDQD):
         return pd.Series(self._matlab.engine.qtune.read_gate_voltages()).sort_index()
 
     def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
-        print("trying to set gate voltages to:")
-        print(new_gate_voltages)
         self._qpc_tuned = False
         current_gate_voltages = self.read_gate_voltages()
         for key in current_gate_voltages.index.tolist():
