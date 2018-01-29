@@ -392,7 +392,7 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
                                       alpha=alpha)
         self.logout_of_savefile()
 
-    def autotune(self, number_steps=1000, supervised: bool=False) -> bool:
+    def autotune(self, number_steps=1000, step_size: float=10e-3, supervised: bool=False) -> bool:
         self.login_savefile()
         counter = 0
         if not self.ready_to_tune():
@@ -414,22 +414,29 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
         tune_sequence_group.create_dataset("parameter_names", data=parameter_names)
         counter += 1
         while counter < number_steps+1 and not self.tuning_complete():
-            full_current_voltages = self.experiment.read_gate_voltages()[self.gates.index]
             self.solver.parameter = parameters
             d_voltages = self.solver.suggest_next_step()
             current_voltages = self.read_tunable_gate_voltages()
-            new_voltages = current_voltages.add(d_voltages, fill_value=0.)
+            new_voltages = current_voltages.add(d_voltages)
             if supervised:
                 try:
-                    new_voltages = manual_check(new_voltages, current_voltages, d_voltages)
+                    new_voltages = manual_check(new_voltages.copy(), current_voltages.copy(), d_voltages.copy(),
+                                                parameters.copy())
+                    d_voltages = new_voltages.add(-1. * current_voltages)
                 except KeyboardInterrupt:
                     break
+            else:
+                d_voltages_norm = np.linalg.norm(d_voltages.as_matrix())
+                if d_voltages_norm > step_size:
+                    d_voltages = d_voltages * step_size / d_voltages_norm
+                    new_voltages = current_voltages.add(d_voltages)
             try:
                 self.shift_gate_voltages(new_voltages=new_voltages)
             except:
                 print("The gates could not be shifted. Maybe the solver wants to go to extreme values!")
                 return False
             current_step_group = tune_sequence_group.create_group("step_" + str(counter))
+            full_current_voltages = self.experiment.read_gate_voltages()[self.gates.index]
             save_gate_voltages(current_step_group, full_current_voltages)
             new_parameters = self.evaluate_parameters(current_step_group).sort_index()
             d_parameter = new_parameters - parameters
@@ -443,7 +450,9 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
         return True
 
 
-def manual_check(new_voltages: pd.Series, current_voltages: pd.Series, d_voltages: pd.Series):
+def manual_check(new_voltages: pd.Series, current_voltages: pd.Series, d_voltages: pd.Series, parameters):
+    print("The parameter have been evaluated:")
+    print(parameters)
     print("The Solver want to go from:")
     print(current_voltages)
     print("to:")

@@ -105,7 +105,7 @@ class Analyzer:
         gradient_sequence_pd = pd.DataFrame(None, index=self.parameter_names, columns=self.tunable_gate_names)
         for parameter in self.parameter_names:
             for gate in self.tunable_gate_names:
-                gradient_sequence_pd[gate][parameter] = np.zeros((end + 1 - start, ))
+                gradient_sequence_pd[gate][parameter] = np.zeros((end - start, ))
 
         for counter in range(start, end):
             gradient_pd = self.load_gradient_pd(gradient_number=counter, tune_run_number=tune_run_number)
@@ -113,6 +113,17 @@ class Analyzer:
                 for gate in self.tunable_gate_names:
                     gradient_sequence_pd[gate][parameter][counter] = gradient_pd[gate][parameter]
         return gradient_sequence_pd
+
+    def plot_gradient_sequence(self, tune_run_number=1, figure_number=60, start=0, end=None):
+        gradient_sequence_pd = self.load_gradient_sequence_pd(tune_run_number=tune_run_number, start=start, end=end)
+        for parameter in self.parameter_names:
+            plt.figure(figure_number)
+            figure_number += 1
+            for gate in self.tunable_gate_names:
+                plt.plot(gradient_sequence_pd[gate][parameter])
+            plt.legend([gate_name.decode("ascii") for gate_name in self.tunable_gate_names])
+            plt.title(parameter.decode("ascii"))
+            plt.show()
 
     def load_gate_voltages_and_parameters(self, data_group: h5py.Group) -> (pd.Series, pd.Series):
         if data_group.__contains__("gate_voltages"):
@@ -185,6 +196,11 @@ class Analyzer:
         for gate in self.gate_names:
             plt.plot(gate_voltages_sequence_pd[gate])
         plt.legend([gate.decode("ascii") for gate in self.gate_names])
+        plt.figure(3)
+        for gate in self.gate_names:
+            plt.plot(gate_voltages_sequence_pd[gate] - gate_voltages_sequence_pd[gate][0])
+        plt.legend([gate.decode("ascii") for gate in self.gate_names])
+        plt.title("Change in Gate Voltages")
         plt.show()
         return
 
@@ -202,9 +218,7 @@ class Analyzer:
         self.load_evaluator_names(tune_run_number=tune_run_number)
         gradient_group = self.load_gradient_group(gradient_number=gradient_number, tune_run_number=tune_run_number)
         delta_u = gradient_group.attrs["delta_u"]
-#        delta_u = gradient_group["delta_u"].value
         n_repetitions = gradient_group.attrs["n_repetitions"]
-#        n_repetitions = gradient_group["n_repetitions"].value
         raw_measurement_positive_detune_pd = pd.DataFrame(index=self.evaluator_names, columns=self.tunable_gate_names)
         raw_measurement_negative_detune_pd = pd.DataFrame(index=self.evaluator_names, columns=self.tunable_gate_names)
         parameter_positive_detune_pd = pd.DataFrame(index=self.evaluator_names, columns=self.tunable_gate_names)
@@ -232,7 +246,9 @@ class Analyzer:
             parameter_negative_detune_pd, n_repetitions, delta_u
 
     def plot_raw_measurement_gradient_calculation(self, gradient_number: int = 1, tune_run_number: int = 0):
-        raw_measurement_positive_detune_pd, raw_measurement_negative_detune_pd, n_repetitions, delta_u = \
+        #TODO: use plot_raw_measurement function if the plotting is to be changed
+        raw_measurement_positive_detune_pd, raw_measurement_negative_detune_pd, parameter_positive_detune_pd, \
+        parameter_negative_detune_pd, n_repetitions, delta_u = \
             self.load_raw_measurement_gradient_calculation(gradient_number=gradient_number,
                                                            tune_run_number=tune_run_number)
         print("Please chose a gate by typing the number next to its name: ")
@@ -260,8 +276,7 @@ class Analyzer:
                 plt.pause(0.05)
                 plt.figure(2)
                 diff = raw_measurement_positive_detune_pd[gate][evaluator][2 * i + 1, :] - \
-                       raw_measurement_positive_detune_pd[gate][evaluator][2 * i, :]
-                #                plt.plot(diff)
+                    raw_measurement_positive_detune_pd[gate][evaluator][2 * i, :]
                 qtune.Evaluator.fit_lead_times(diff)
                 plt.legend(["BG subtracted"])
                 plt.pause(0.05)
@@ -299,10 +314,10 @@ class Analyzer:
             for i in range(n_repetitions):
                 plt.figure(1)
                 ydata = raw_measurement_positive_detune_pd[gate][evaluator][i, :]
-                scan_range = delta_u
+                scan_range = parameter_positive_detune_pd[gate][evaluator]["scan_range"]
                 npoints = len(ydata)
                 center = 0. # TODO: change for real center
-                qtune.Evaluator.fit_inter_dot_coupling(ydata=ydata, center=center, scan_range=scan_range, npoints=npoints)
+                qtune.Evaluator.fit_inter_dot_coupling(data=ydata, center=center, scan_range=scan_range, npoints=npoints)
                 plt.pause(0.05)
                 decision_continue = input("Type STOP to stop. Type anything else to continue.")
                 if decision_continue == "STOP":
@@ -339,34 +354,31 @@ class Analyzer:
         if end is None:
             end = count_steps_in_sequence(sequence_group)
         raw_measurement_sequence_pd = pd.DataFrame(index=self.evaluator_names, columns=range(start, end))
+        attribute_info_sequence_pd = pd.DataFrame(index=self.evaluator_names, columns=range(start, end))
         for i in range(start, end):
             raw_measurement_pd, attribute_info_pd = self.load_raw_measurement_pd(sequence_group["step_" + str(i)])
             for evaluator in self.evaluator_names:
                 raw_measurement_sequence_pd[i][evaluator] = raw_measurement_pd[evaluator]
-        return raw_measurement_sequence_pd
+                attribute_info_sequence_pd[i][evaluator] = attribute_info_pd[evaluator]
+        return raw_measurement_sequence_pd, attribute_info_sequence_pd
 
-    def plot_raw_measurement_tune_run(self, tune_run_number: int=1, start: int=0, end: int=None):
+    def plot_raw_measurement_tune_run(self, tune_run_number: int=1, start: int=0, end: int=None, figure_numer: int=70):
         self.load_evaluator_names(tune_run_number=tune_run_number)
         tune_run_group = self.load_tune_run_group(tune_run_number=tune_run_number)
         tune_sequence_group = tune_run_group["tune_sequence"]
         if end is None:
             end = count_steps_in_sequence(tune_sequence_group)
-        raw_measurement_sequence_pd = self.load_raw_measurement_sequence_pd(start=start, end=end,
-                                                                            tune_run_number=tune_run_number)
+        raw_measurement_sequence_pd, attribute_info_sequence_pd = \
+            self.load_raw_measurement_sequence_pd(start=start, end=end, tune_run_number=tune_run_number)
         plt.ion()
         for i in range(start, end):
             for evaluator in self.evaluator_names:
-                plt.figure(1)
-                plt.plot(raw_measurement_sequence_pd[i][evaluator])
-                print(raw_measurement_sequence_pd[i][evaluator])
+                plot_raw_measurement(evaluator, raw_data=raw_measurement_sequence_pd[i][evaluator],
+                                     attribute_info=attribute_info_sequence_pd[i][evaluator],
+                                     figure_number=figure_numer)
                 plt.ylabel(evaluator)
                 plt.pause(0.05)
-                decision_continue = input("Type STOP to stop. Type anything else to continue.")
-                if decision_continue == "STOP":
-                    plt.close()
-                    return
-                else:
-                    plt.close()
+
 
     def load_single_values_gradient_calculation(self, gradient_number: int = 1, tune_run_number: int = 0) -> (
             pd.Series, int, float):
@@ -450,11 +462,20 @@ class Analyzer:
         negative_detune = pd.DataFrame()
         positive_detune_parameter = pd.Series()
         negative_detune_parameter = pd.Series()
+        gradient_pd = pd.DataFrame(index=self.parameter_names, columns=self.tunable_gate_names)
+        gradient_std_pd = pd.DataFrame(index=self.parameter_names, columns=self.tunable_gate_names)
+        measurement_std_pd = pd.Series(index=self.parameter_names)
         for gate in self.tunable_gate_names:
             for parameter in self.parameter_names:
+                gradient_pd[gate][parameter] = np.zeros((n_repetitions, ))
                 for i in range(n_repetitions):
                     for evaluator_number in range(n_evaluators):
-                        raise NotImplementedError
+                        if len(np.shape(raw_measurement_positive_detune_pd[gate][parameter])) == 1:
+                            n_lines_per_measurement = 1
+                        else:
+                            n_lines_per_measurement = np.shape(raw_measurement_positive_detune_pd[gate][parameter])[
+                                                          0] / n_repetitions
+                        gradient_pd[gate][parameter][i] = fit_functions[evaluator_number]
 
 
 
@@ -565,3 +586,32 @@ def func_lead_times(x, hight: float, t_fall: float, t_rise: float, begin_rise: f
     return y
 
 
+def plot_raw_measurement(evaluator, raw_data, attribute_info, figure_number):
+    if evaluator == "evaluator_SMLeadTunnelTimeByLeadScan":
+        plt.figure(figure_number)
+        plt.plot(raw_data[0])
+        plt.plot(raw_data[1])
+        plt.legend(["Data", "Background"])
+        plt.draw()
+        plt.pause(0.05)
+        plt.figure(figure_number + 1)
+        qtune.Evaluator.fit_lead_times(raw_data)
+        plt.pause(0.05)
+    elif evaluator == "evaluator_SMInterDotTCByLineScan":
+        plt.figure(figure_number)
+        ydata = np.squeeze(raw_data)
+        scan_range = attribute_info["scan_range"]
+        npoints = len(ydata)
+        center = attribute_info["center"]  # TODO: change for real center
+        qtune.Evaluator.fit_inter_dot_coupling(data=ydata, center=center, scan_range=scan_range, npoints=npoints)
+        plt.pause(0.05)
+    else:
+        print("No plotting implemented for this evaluator.")
+    decision_continue = input("Type STOP to stop. Type anything else to continue.")
+    if decision_continue == "STOP":
+        plt.close(figure_number)
+        plt.close(figure_number + 1)
+        return
+    else:
+        plt.close(figure_number)
+        plt.close(figure_number + 1)
