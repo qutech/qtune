@@ -9,7 +9,8 @@ from qtune.experiment import Experiment
 from qtune.Evaluator import Evaluator
 from qtune.Solver import Solver, KalmanSolver
 from qtune.Basic_DQD import BasicDQD
-from qtune.chrg_diag import ChargeDiagram
+from qtune.chrg_diag import ChargeDiagram, PredictionChargeDiagram
+from qtune.sm import LegacyDQD
 
 
 class Autotuner:
@@ -195,39 +196,12 @@ class Autotuner:
         self.gradient_std = gradient_std
         self.evaluation_std = evaluation_std
 
-        gradient_matrix, covariance, evaluation_noise = self.converte_gradient_heuristic_data(gradient, gradient_std,
+        gradient_matrix, covariance, evaluation_noise = convert_gradient_heuristic_data(gradient, gradient_std,
                                                                                               evaluation_std)
         save_gradient_data(gradient_group, gradient_matrix, covariance, evaluation_noise)
         self.logout_of_savefile()
 
         return gradient, gradient_std, evaluation_std
-
-    def converte_gradient_heuristic_data(self, gradient: pd.DataFrame, gradient_std: pd.DataFrame,
-                                         evaluation_std: pd.Series):
-        gradient = gradient.sort_index(0)
-        gradient = gradient.sort_index(1)
-        gradient_matrix = gradient.as_matrix()
-        if gradient_std is not None:
-            gradient_std = gradient_std.sort_index(0)
-            gradient_std = gradient_std.sort_index(1)
-            gradient_std_matrix = gradient_std.as_matrix()
-            n_parameters, n_gates = gradient.shape
-            covariance = np.zeros((n_parameters * n_gates, n_parameters * n_gates))
-            for n_p in range(n_parameters):
-                for n_g in range(n_gates):
-                    covariance[n_g + n_p * n_gates, n_g + n_p * n_gates] = gradient_std_matrix[n_p, n_g] * gradient_std_matrix[n_p, n_g]
-        else:
-            covariance = None
-        if evaluation_std is not None:
-            evaluation_std = evaluation_std.sort_index()
-            evaluation_std_matrix = evaluation_std.as_matrix()
-            n_parameters, n_gates = gradient.shape
-            evaluation_noise = np.zeros([n_parameters, n_parameters])
-            for n_p in range(n_parameters):
-                evaluation_noise[n_p, n_p] = evaluation_std_matrix[n_p] * evaluation_std_matrix[n_p]
-        else:
-            evaluation_noise = None
-        return gradient_matrix, covariance, evaluation_noise
 
     def set_solver(self, solver: Solver):
         self.solver = solver
@@ -347,6 +321,21 @@ class ChargeDiagramAutotuner(Autotuner):
 
 
 class CDKalmanAutotuner(ChargeDiagramAutotuner):
+    def __init__(self, dqd: LegacyDQD, solver: Solver = None, evaluators: Tuple[Evaluator, ...] = (),
+                 desired_values: pd.Series = pd.Series(), tuning_accuracy: pd.Series = pd.Series(),
+                 charge_diagram_gradient=None, charge_diagram_covariance=None, charge_diagram_noise=None,
+                 data_directory: str = r'Y:\GaAs\Autotune\Data\UsingPython\AutotuneData'):
+        super().__init__(dqd, solver, evaluators,
+                 desired_values, tuning_accuracy,
+                 charge_diagram_gradient, charge_diagram_covariance, charge_diagram_noise,
+                 data_directory)
+        self.charge_diagram = PredictionChargeDiagram(dqd=dqd, tunable_gates=self.tunable_gates)
+        if charge_diagram_gradient is not None:
+            self.initialize_charge_diagram_kalman(charge_diagram_gradient=charge_diagram_gradient,
+                                                  charge_diagram_covariance=charge_diagram_covariance,
+                                                  charge_diagram_noise=charge_diagram_noise,
+                                                  heuristic_measurement=False, load_file=False)
+
     def set_solver(self, kalman_solver: KalmanSolver, gradient: pd.DataFrame = None,
                    evaluators: Tuple[Evaluator, ...] = (),
                    desired_values: pd.Series = pd.Series(), gradient_std: pd.DataFrame = None,
@@ -377,9 +366,9 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
             print('You need to set or load a gradient!')
             return
         else:
-            gradient_matrix, covariance, evaluation_noise = self.converte_gradient_heuristic_data(gradient,
-                                                                                                  gradient_std,
-                                                                                                  evaluation_std)
+            gradient_matrix, covariance, evaluation_noise = convert_gradient_heuristic_data(gradient,
+                                                                                            gradient_std,
+                                                                                            evaluation_std)
 
         self.solver = kalman_solver
         self.solver.gate_names = self.tunable_gates.index.tolist()
@@ -390,6 +379,32 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
             self.solver.desired_values = desired_values
         self.solver.initialize_kalman(gradient=gradient_matrix, covariance=covariance, noise=evaluation_noise,
                                       alpha=alpha)
+        self.logout_of_savefile()
+
+    def initialize_prediction_kalman(self, prediction_gradient=None, prediction_covariance=None, prediction_noise=None,
+                                     heuristic_measurement: bool=False, n_repetitions: int=5, delta_u: float=2e-3,
+                                     filename: str=None, filepath: str = "tunerun_0/charge_diagram_1/predictor",
+                                     load_file: bool=False):
+        self.login_savefile()
+        if heuristic_measurement:
+            gradient_pd, gradient_std_pd, measurement_std_pd = self.charge_diagram.calculate_prediction_gradient(
+                n_repetitions=n_repetitions, delta_u=delta_u)
+            prediction_gradient, prediction_covariance, prediction_noise = convert_gradient_heuristic_data(
+                gradient_pd, gradient_std_pd, measurement_std_pd)
+        elif load_file:
+            if filename is None:
+                print('Please insert a file name!')
+                return
+            prediction_gradient, prediction_covariance, prediction_noise = load_gradient_data(
+                filename=filename,
+                filepath=filepath)
+        save_group = self.hdf5file.create_group(
+                'tunerun_' + str(self.tune_run_number) + r'/charge_diagram_' + str(self.charge_diagram_number)
+                + "/predictor")
+        save_gradient_data(save_group=save_group, gradient=prediction_gradient,
+                           heuristic_covariance=prediction_covariance, heuristic_noise=prediction_noise)
+        self.charge_diagram.initialize_prediction_kalman(gradient=prediction_gradient, covariance=prediction_covariance,
+                                                         noise=prediction_noise)
         self.logout_of_savefile()
 
     def autotune(self, number_steps=1000, step_size: float=10e-3, supervised: bool=False) -> bool:
@@ -526,6 +541,34 @@ def save_gradient_data(save_group: h5py.Group, gradient, heuristic_covariance, h
 def save_gate_voltages(save_group: h5py.Group, gate_voltages: pd.Series):
     gate_voltages = gate_voltages.sort_index()
     save_group.create_dataset("gate_voltages", data=gate_voltages.as_matrix())
+
+
+def convert_gradient_heuristic_data(gradient: pd.DataFrame, gradient_std: pd.DataFrame,
+                                     evaluation_std: pd.Series):
+    gradient = gradient.sort_index(0)
+    gradient = gradient.sort_index(1)
+    gradient_matrix = gradient.as_matrix()
+    if gradient_std is not None:
+        gradient_std = gradient_std.sort_index(0)
+        gradient_std = gradient_std.sort_index(1)
+        gradient_std_matrix = gradient_std.as_matrix()
+        n_parameters, n_gates = gradient.shape
+        covariance = np.zeros((n_parameters * n_gates, n_parameters * n_gates))
+        for n_p in range(n_parameters):
+            for n_g in range(n_gates):
+                covariance[n_g + n_p * n_gates, n_g + n_p * n_gates] = gradient_std_matrix[n_p, n_g] * gradient_std_matrix[n_p, n_g]
+    else:
+        covariance = None
+    if evaluation_std is not None:
+        evaluation_std = evaluation_std.sort_index()
+        evaluation_std_matrix = evaluation_std.as_matrix()
+        n_parameters, n_gates = gradient.shape
+        evaluation_noise = np.zeros([n_parameters, n_parameters])
+        for n_p in range(n_parameters):
+            evaluation_noise[n_p, n_p] = evaluation_std_matrix[n_p] * evaluation_std_matrix[n_p]
+    else:
+        evaluation_noise = None
+    return gradient_matrix, covariance, evaluation_noise
 
 
 

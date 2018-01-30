@@ -177,7 +177,7 @@ class LegacyDQD(BasicDQD):
         qpc_tune_input = {"tuning_range": tuning_range, "qpc_position": qpc_position, "file_name": time_string()}
         tuning_output = self._matlab.engine.qtune.retune_qpc(qpc_tune_input)
         self._qpc_tuned = True
-        return tuning_output
+        return tuning_output, self.read_qpc_voltage()
 
     def measure(self,
                 measurement: Measurement) -> np.ndarray:

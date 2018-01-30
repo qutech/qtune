@@ -12,6 +12,7 @@ from typing import Tuple
 from qtune.experiment import Measurement
 from qtune.Basic_DQD import BasicDQD
 from qtune.GradKalman import GradKalmanFilter
+from qtune.util import find_lead_transition
 
 
 class ChargeDiagram:
@@ -103,8 +104,11 @@ class ChargeDiagram:
             initX = self.calculate_gradient()
         self.grad_kalman = GradKalmanFilter(2, 2, initX=initX, initP=initP, initR=initR, alpha=alpha)
 
-    def center_diagram(self):
-        positions = self.measure_positions()
+    def center_diagram(self, remeasure_positions: bool=True):
+        if remeasure_positions:
+            positions = self.measure_positions()
+        else:
+            positions = [self.position_lead_A, self.position_lead_B]
         while np.linalg.norm(positions) > 0.2e-3:
             current_position = (self.position_lead_A, self.position_lead_B)
             du = np.linalg.solve(self.grad_kalman.grad, current_position)
@@ -120,25 +124,92 @@ class ChargeDiagram:
             self.grad_kalman.update(-1*du, dpos, hack=False)
 
 
-def find_lead_transition(data: np.ndarray, center: float, scan_range: float, npoints: int, width: float = .2e-3) -> float:
-    if len(data.shape) == 2:
-        y = np.mean(data, 0)
-    elif len(data.shape) == 1:
-        y = data
-    else:
-        print('data must be a one or two dimensional array!')
-        return np.nan
+class PredictionChargeDiagram(ChargeDiagram):
+    def __init__(self, dqd: BasicDQD, tunable_gates: pd.Series,
+                 charge_line_scan_lead_A: Measurement = None,
+                 charge_line_scan_lead_B: Measurement = None):
+        super().__init__(dqd=dqd, charge_line_scan_lead_A=charge_line_scan_lead_A,
+                         charge_line_scan_lead_B=charge_line_scan_lead_B)
+        self.tunable_gates = tunable_gates
+        self.grad_kalman_prediction = GradKalmanFilter(nGates=4, nParams=2, initX=np.zeros((2, 4), dtype=float))
 
-    x = np.linspace(center - scan_range, center + scan_range, npoints)
+    def calculate_prediction_gradient(self, n_repetitions: int=5, delta_u: float=2e-3):
+        if self.tunable_gates is None:
+            print("Please specify the tunable gates!")
+            return
 
-    n = int(width/scan_range*npoints)
-    for i in range(0, len(y)-n-1):
-        y[i] -= y[i+n]
+        positive_detune_pd = pd.Series(index=self.tunable_gates.index)
+        negative_detune_pd = pd.Series(index=self.tunable_gates.index)
+        gradient_pd = pd.DataFrame(index=["pos_a", "pos_b", "qpc"], columns=self.tunable_gates.index)
+        gradient_std_pd = pd.DataFrame(index=["pos_a", "pos_b", "qpc"], columns=self.tunable_gates.index)
+        measurement_std_pd = pd.Series(index=["pos_a", "pos_b", "qpc"])
+        current_gate_voltages = self.dqd.read_gate_voltages(self.tunable_gates.index)
+        for gate in self.tunable_gates.index:
+            d_voltage = pd.Series(data=[delta_u], index=[gate])
+            new_gate_voltages = current_gate_voltages.add(d_voltage, fill_value=0.)
+            self.dqd.set_gate_voltages(new_gate_voltages.copy())
+            positive_detune_pd[gate] = np.zeros((n_repetitions, 3))
+            for i in range(n_repetitions):
+                tuning_output, qpc_voltage = self.dqd.tune_qpc()
+                positive_detune_pd[gate][i, 2] = qpc_voltage
+                self.measure_positions()
+                positive_detune_pd[gate][i, 0] = self.position_lead_A
+                positive_detune_pd[gate][i, 1] = self.position_lead_B
+            new_gate_voltages = current_gate_voltages.add(-1.*d_voltage, fill_value=0.)
+            self.dqd.set_gate_voltages(new_gate_voltages.copy())
+            negative_detune_pd[gate] = np.zeros((n_repetitions, 3))
+            for i in range(n_repetitions):
+                tuning_output, qpc_voltage = self.dqd.tune_qpc()
+                negative_detune_pd[gate][i, 2] = qpc_voltage
+                self.measure_positions()
+                negative_detune_pd[gate][i, 0] = self.position_lead_A
+                negative_detune_pd[gate][i, 1] = self.position_lead_B
+            gradient_pd[gate]["pos_a"] = (
+                                         positive_detune_pd[gate][:, 0] - negative_detune_pd[gate][:, 0]) / 2. / delta_u
+            gradient_pd[gate]["pos_b"] = (
+                                         positive_detune_pd[gate][:, 1] - negative_detune_pd[gate][:, 1]) / 2. / delta_u
+            gradient_pd[gate]["qpc"] = (positive_detune_pd[gate][:, 2] - negative_detune_pd[gate][:, 2]) / 2. / delta_u
+            gradient_std_pd[gate]["pos_a"] = np.nanstd(gradient_pd[gate]["pos_a"])
+            gradient_std_pd[gate]["pos_b"] = np.nanstd(gradient_pd[gate]["pos_b"])
+            gradient_std_pd[gate]["qpc"] = np.nanstd(gradient_pd[gate]["pqc"])
+        measurement_std_pd["pos_a"] = np.nanstd(gradient_pd[0]["pos_a"])
+        measurement_std_pd["pos_b"] = np.nanstd(gradient_pd[0]["pos_b"])
+        measurement_std_pd["qpc"] = np.nanstd(gradient_pd[0]["qpc"])
+        for gate in self.tunable_gates:
+            gradient_pd[gate]["pos_a"] = np.nanmean(gradient_pd[gate]["pos_a"])
+            gradient_pd[gate]["pos_b"] = np.nanmean(gradient_pd[gate]["pos_b"])
+            gradient_pd[gate]["pqc"] = np.nanmean(gradient_pd[gate]["pqc"])
+        gradient_pd = gradient_pd.sort_index(0)
+        gradient_pd = gradient_pd.sort_index(1)
+        gradient_std_pd = gradient_std_pd.sort_index(0)
+        gradient_std_pd = gradient_std_pd.sort_index(1)
+        measurement_std_pd = measurement_std_pd.sort_index()
+        return gradient_pd, gradient_std_pd, measurement_std_pd
 
-    y_red = y[0:len(y) - n - 1]
-    x_red = x[0:len(y) - n - 1]
+    def initialize_prediction_kalman(self, gradient=None, covariance=None, noise=None, alpha=1.02):
+        if gradient is None:
+            gradient = self.calculate_prediction_gradient()[0].as_matrix()
+        self.grad_kalman_prediction = GradKalmanFilter(nGates=4, nParams=2, initX=gradient, initP=covariance,
+                                                       initR=noise, alpha=alpha)
 
-    y_red = np.absolute(y_red)
-    max_index = int(np.argmax(y_red) + int(round(n / 2)))
+    def prediction_center_diagram(self, d_voltages: pd.Series):
+        d_voltages = d_voltages.sort_index()
+        d_voltages_vector = np.asarray(d_voltages)
+        d_parameter_vector = self.grad_kalman_prediction.grad * d_voltages_vector
+        current_qpc_position = dqd.read_qpc_voltage()
+        qpc_shift = d_parameter_vector[2]
+        predicted_qpc_position = current_qpc_position + qpc_shift
+        tuning_output, actual_qpc_voltage = self.dqd.tune_qpc(qpc_position=predicted_qpc_position)
+        actual_qpc_shift = actual_qpc_voltage.add(-1. * current_qpc_position)["qpc"].value
+        position_shift = d_parameter_vector[0:1]
+        correction = np.linalg.solve(self.grad_kalman.grad, -1. * position_shift)
+        correction_pd = pd.Series(data=correction, index=["BA", "BB"])
+        new_voltages = self.dqd.read_gate_voltages().add(correction_pd, fill_value=0)
+        self.dqd.set_gate_voltages(new_voltages)
+        actual_position = self.measure_positions()
+        total_position_shift = actual_position + position_shift
+        total_shift = [total_position_shift[0], total_position_shift[1], actual_qpc_shift]
+        self.grad_kalman_prediction.update(dU=d_voltages_vector, dT=total_shift)
 
-    return x_red[max_index]
+        self.center_diagram(remeasure_positions=False)
+
