@@ -45,5 +45,5 @@ def find_lead_transition(data: np.ndarray, center: float, scan_range: float, npo
     y_red = np.absolute(y_red)
     max_index = int(np.argmax(y_red) + int(round(n / 2)))
 
-    return x_red[max_index]
+    return x[max_index]
 
