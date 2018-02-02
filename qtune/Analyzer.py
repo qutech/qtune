@@ -71,8 +71,14 @@ class Analyzer:
         return gradient
 
     def load_gradient_setup(self, gradient_number=1, tune_run_number=0):
-        cd_group = self.load_gradient_group(gradient_number=gradient_number, tune_run_number=tune_run_number)
-        gradient, covariance, noise = load_gradient_from_group(cd_group)
+        gradient_group = self.load_gradient_group(gradient_number=gradient_number, tune_run_number=tune_run_number)
+        gradient, covariance, noise = load_gradient_from_group(gradient_group)
+        return gradient, covariance, noise
+
+    def load_gradient_minimization_covariance(self, gradient_number=1, tune_run_number=0):
+        gradient_group = self.load_gradient_group(gradient_number=gradient_number, tune_run_number=tune_run_number)
+        gradient, covariance, noise = load_gradient_from_group(gradient_group)
+        gradient_kalman_group = gradient_group[gradient]
         return gradient, covariance, noise
 
     def load_gradient_tunerun(self, step_number: int=1, tune_run_number=1):
@@ -114,16 +120,52 @@ class Analyzer:
                     gradient_sequence_pd[gate][parameter][counter] = gradient_pd[gate][parameter]
         return gradient_sequence_pd
 
-    def plot_gradient_sequence(self, tune_run_number=1, figure_number=60, start=0, end=None):
+    def plot_gradient_sequence(self, tune_run_number=1, figure_number=60, start=0, end=None, with_covariance: bool=True):
         gradient_sequence_pd = self.load_gradient_sequence_pd(tune_run_number=tune_run_number, start=start, end=end)
+        tune_run_group = self.load_tune_run_group(tune_run_number)
+        if end is None:
+            end = count_steps_in_sequence(tune_run_group["tune_sequence"])
+        if with_covariance:
+            covariance_sequence_pd = self.load_covariance_sequence_pd(tune_run_number=tune_run_number, start=start, end=end)
         for parameter in self.parameter_names:
             plt.figure(figure_number)
             figure_number += 1
             for gate in self.tunable_gate_names:
-                plt.plot(gradient_sequence_pd[gate][parameter])
+                if with_covariance:
+                    plt.errorbar(x=list(range(start, end)), y=gradient_sequence_pd[gate][parameter],
+                                 yerr=np.sqrt(covariance_sequence_pd[parameter.decode("ascii") + "_" + gate.decode("ascii")][
+                                     parameter.decode("ascii") + "_" + gate.decode("ascii")]))
+                else:
+                    plt.plot(gradient_sequence_pd[gate][parameter])
             plt.legend([gate_name.decode("ascii") for gate_name in self.tunable_gate_names])
             plt.title(parameter.decode("ascii"))
             plt.show()
+
+    def load_covariance_sequence_pd(self, tune_run_number=1, start: int=0, end: int=None):
+        self.load_parameter_names(tune_run_number=tune_run_number)
+        tune_run_group = self.load_tune_run_group(tune_run_number)
+        if end is None:
+            end = count_steps_in_sequence(tune_run_group["tune_sequence"])
+        covariance_index = []
+        for parameter in self.parameter_names:
+            for gate in self.tunable_gate_names:
+                covariance_index += [parameter.decode("ascii") + "_" + gate.decode("ascii")]
+        covariance_sequence_pd = pd.DataFrame(index=covariance_index, columns=covariance_index)
+        for index in covariance_index:
+            for index2 in covariance_index:
+                covariance_sequence_pd[index][index2] = np.zeros((end - start, ))
+        for step in range(start, end):
+            gradient, heuristic_covariance, heuristic_noise = self.load_gradient_tunerun(step_number=step,
+                                                                                    tune_run_number=tune_run_number)
+            for parameter in range(len(self.parameter_names)):
+                for gate in range(len(self.tunable_gate_names)):
+                    for parameter2 in range(len(self.parameter_names)):
+                        for gate2 in range(len(self.tunable_gate_names)):
+                            index_number = gate + parameter * len(self.tunable_gate_names)
+                            index_number2 = gate2 + parameter2 * len(self.tunable_gate_names)
+                            covariance_sequence_pd[covariance_index[index_number2]][covariance_index[index_number]][
+                                step] = heuristic_covariance[index_number, index_number2]
+        return covariance_sequence_pd
 
     def load_gate_voltages_and_parameters(self, data_group: h5py.Group) -> (pd.Series, pd.Series):
         if data_group.__contains__("gate_voltages"):
