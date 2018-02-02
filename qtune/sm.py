@@ -200,7 +200,10 @@ class LegacyDQD(BasicDQD):
             parameters = measurement.parameter.copy()
             parameters['file_name'] = "lead_scan" + measurement.get_file_name()
             return np.asarray(self._matlab.engine.qtune.LeadScan(parameters))
-
+        elif measurement == "load_scan":
+            parameters = measurement.parameter.copy()
+            parameters["file_name"] = "load_scan" + measurement.get_file_name()
+            return np.asarray(self._matlab.engine.qtune.LoadScan(parameters))
         else:
             raise ValueError('Unknown measurement: {}'.format(measurement))
 
@@ -297,3 +300,86 @@ class SMLeadTunnelTimeByLeadScan(Evaluator):
                 storing_dataset.attrs["parameter_time_rise"] = np.nan
                 storing_dataset.attrs["parameter_time_fall"] = np.nan
         return pd.Series([t_rise, t_fall, failed], ['parameter_time_rise', 'parameter_time_fall', 'failed'])
+
+
+class SMLoadTime(Evaluator):
+    def __init__(self, dqd: BasicDQD, matlab_instance: SpecialMeasureMatlab,
+                 parameters: pd.Series() = pd.Series([np.nan], ['parameter_time_load']),
+                 load_scan: Measurement = None):
+        if load_scan is None:
+            load_scan = dqd.measurements[3]
+        super().__init__(dqd, load_scan, parameters)
+        self.matlab = matlab_instance
+
+    def evaluate(self, storing_group: h5py.Group) -> pd.Series:
+        data = self.experiment.measure(self.measurements)
+        fitresult = self.matlab.engine.qtune.load_fit(self.matlab.to_matlab(data))
+        parameter_time_load = fitresult['parameter_time_load']
+        failed = fitresult['failed']
+        self.parameters['parameter_time_load'] = parameter_time_load
+        if storing_group is not None:
+            storing_dataset = storing_group.create_dataset("evaluator_SMLoadTime", data=data)
+            storing_dataset.attrs["parameter_time_load"] = parameter_time_load
+            if failed:
+                storing_dataset.attrs["parameter_time_load"] = np.nan
+        return pd.Series([parameter_time_load, failed], ['parameter_time_load', 'failed'])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

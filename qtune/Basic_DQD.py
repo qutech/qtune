@@ -13,10 +13,11 @@ class BasicDQD(Experiment):
                                       center=0., range=2e-3, N_points=100, ramptime=.02,
                                       N_average=20, AWGorDecaDAC='DecaDAC')
     default_lead_scan = Measurement('lead_scan', gate='B', AWGorDecaDAC='DecaDAC')
+    default_load_scan = Measurement("load_scan")
 
     @property
     def measurements(self) -> Tuple[Measurement, ...]:
-        return self.default_line_scan, self.default_detune_scan, self.default_lead_scan
+        return self.default_line_scan, self.default_detune_scan, self.default_lead_scan, self.default_load_scan
 
     def tune_qpc(self, qpc_position=None, tuning_range=3e-3):
         raise NotImplementedError()
@@ -48,6 +49,10 @@ class TestDQD(BasicDQD):
 
     def tune_qpc(self, qpc_position=None, tuning_range=4e-3):
         self._qpc_tuned = True
+        return [], pd.Series(data=[[self.gate_voltages["SB"]]], index=["qpc"])
+
+    def read_qpc_voltage(self):
+        return pd.Series(data=[[self.gate_voltages["SB"]]], index=["qpc"])
 
     def measure(self,
                 measurement: Measurement) -> np.ndarray:
@@ -107,50 +112,7 @@ class TestDQD(BasicDQD):
             for i in range(200, 400):
                 y[i] = -1.*(np.cosh(2. / 2. / simulated_fall_time) - np.exp(
                     (6. - 2. * x[i]) / 2. / simulated_fall_time)) / np.sinh(2. / 2. / simulated_fall_time)
-
-            return y
+            y0 = np.zeros(shape=y.shape)
+            return np.concatenate((y0, y), axis=0)
         else:
             raise ValueError('Unknown measurement: {}'.format(measurement))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
