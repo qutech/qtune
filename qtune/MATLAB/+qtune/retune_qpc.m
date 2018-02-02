@@ -2,6 +2,9 @@ function [ new_qpc_position ] = retune_qpc( input_args )
 %UNTITLED5 Summary of this function goes here
 %   Detailed explanation goes here
 global sensor_pretuned
+global pretuned_point
+global tunedata
+gatechannel= tunedata.gatechan;
 
 current_qpc_position = input_args.qpc_position;
 range = input_args.tuning_range;
@@ -24,6 +27,9 @@ plot(x(2:end), smoothed);
 hold on;
 scatter(x(idx+1), smoothed(idx), 'ro');
 if abs(x(idx)-sensor_pretuned)> 50e-3
+	for i = 1:8
+      smset(gatechannel(i),pretuned_point(i))
+  end
 	smset('SDB2', sensor_pretuned);
 	error('The sensing dot is being tuned more than 50mV away from its original position!')
 %     disp('The sensing dot is being tuned more than 50mV away from its original position!')
