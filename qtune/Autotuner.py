@@ -398,14 +398,102 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
             prediction_gradient, prediction_covariance, prediction_noise = load_gradient_data(
                 filename=filename,
                 filepath=filepath)
+            self.charge_diagram_number += 1
         save_group = self.hdf5file.create_group(
                 'tunerun_' + str(self.tune_run_number) + r'/charge_diagram_' + str(self.charge_diagram_number)
                 + "/predictor")
-        save_gradient_data(save_group=save_group, gradient=prediction_gradient,
-                           heuristic_covariance=prediction_covariance, heuristic_noise=prediction_noise)
+        save_gradient_data(save_group=save_group, gradient=np.asarray(prediction_gradient, dtype="f"),
+                           heuristic_covariance=np.asarray(prediction_covariance, dtype="f"),
+                           heuristic_noise=np.asarray(prediction_noise, dtype="f"))
         self.charge_diagram.initialize_prediction_kalman(gradient=prediction_gradient, covariance=prediction_covariance,
                                                          noise=prediction_noise)
         self.logout_of_savefile()
+
+
+    def evaluate_gradient_min_cov(self, delta_u=5e-3, n_steps=10, n_noise=5):
+        self.gradient_number += 1
+        self.login_savefile()
+        gradient_group = self.current_tunerun_group.create_group("gradient_setup_" + str(self.gradient_number))
+        gradient_kalman_group = gradient_group.create_group("gradient_kalman")
+        gradient_kalman_group.attrs["n_noise_measurements"] = n_noise
+        gradient_kalman_group.attrs["n_minimization_measurements"] = n_steps
+        gradient_kalman_group.attrs["delta_u"] = delta_u
+        parameters = self.parameters
+        parameters = parameters.sort_index()
+        parameter_names = parameters.index.tolist()
+        parameter_names = np.asarray(parameter_names, dtype='S30')
+        gradient_group.create_dataset("parameter_names", data=parameter_names)
+
+        parameter_for_noise = pd.Series()
+        for parameter in self.parameters.index:
+            parameter_for_noise[parameter] = np.zeros((n_noise, ))
+        noise_group = gradient_kalman_group.create_group("noise_estimation")
+        for i in range(n_noise):
+            step_group = noise_group.create_group("measurement_" + str(i))
+            evaluation_result = self.evaluate_parameters(step_group)
+            for parameter in self.parameters.index:
+                parameter_for_noise[parameter][i] = evaluation_result[parameter]
+        parameter_mean = pd.Series(index=self.parameters.index)
+        parameter_std = pd.Series(index=self.parameters.index)
+        for parameter in self.parameters.index:
+            parameter_mean[parameter] = np.nanmean(parameter_for_noise[parameter])
+            parameter_std[parameter] = np.nanstd(parameter_for_noise[parameter])
+        parameter_std = parameter_std.sort_index()
+        parameter_noise = np.zeros((len(parameter_std.index), len(parameter_std.index)))
+        for i in range(len(parameter_std.index)):
+            parameter_noise[i, i] = parameter_std[i] * parameter_std[i]
+
+        temp_kalman = GradKalmanFilter(nGates=len(self.tunable_gates.index), nParams=len(self.parameters.index),
+                                       initR=parameter_noise)
+        current_voltages = self.read_tunable_gate_voltages()
+        minimization_group = gradient_kalman_group.create_group("covariance_minimization")
+        for i in range(n_steps):
+            measurement_group = minimization_group.create_group("step_" + str(i))
+            d_voltage_vector = temp_kalman.sugg_dU
+            d_voltage_vector = d_voltage_vector / np.linalg.norm(d_voltage_vector) * delta_u
+            d_voltage_pd = pd.Series(data=d_voltage_vector, index=self.tunable_gates)
+            new_voltage = current_voltages.add(d_voltage_pd)
+            self.shift_gate_voltages(new_voltage.copy())
+            evaluation_result = self.evaluate_parameters(measurement_group)
+            d_parameter = evaluation_result.add(-1.*parameter_mean)
+            d_parameter = d_parameter.sort_index()
+            d_parameter_vector = d_parameter.as_matrix()
+            temp_kalman.update(dU=d_voltage_vector, dT=d_parameter_vector)
+            self.shift_gate_voltages(current_voltages.copy())
+        gradient = temp_kalman.grad
+        covariance = temp_kalman.cov
+        noise = parameter_noise
+        save_gradient_data(gradient_group, gradient=gradient, heuristic_covariance=covariance, heuristic_noise=noise)
+        return gradient, covariance, noise
+
+
+    def set_gate_voltages(self, new_voltages: pd.Series):
+        for voltage in new_voltages:
+            if math.isnan(voltage):
+                return
+        current_voltages = self.read_tunable_gate_voltages()
+        for key in current_voltages.index:
+            if key not in new_voltages.index:
+                new_voltages[key] = current_voltages[key]
+        d_voltages = new_voltages.add(-1. * current_voltages)
+        self.experiment.set_gate_voltages(new_gate_voltages=new_voltages.copy())
+        self.charge_diagram.prediction_center_diagram(d_voltages.copy())
+
+    def shift_gate_voltages(self, new_voltages: pd.Series, step_size=5e-3):
+        current_voltages = self.read_tunable_gate_voltages()
+        for key in current_voltages.index:
+            if key not in new_voltages.index:
+                new_voltages[key] = current_voltages[key]
+        d_voltages_series = new_voltages.add(-1. * current_voltages)
+        d_voltage_abs = d_voltages_series.as_matrix()
+        d_voltage_abs = np.linalg.norm(d_voltage_abs)
+        if d_voltage_abs > step_size:
+            voltage_step = d_voltages_series * step_size / d_voltage_abs
+            self.set_gate_voltages(new_voltages=voltage_step.add(current_voltages, fill_value=0))
+
+            self.shift_gate_voltages(new_voltages=new_voltages, step_size=step_size)
+        else:
+            self.set_gate_voltages(new_voltages=new_voltages)
 
     def autotune(self, number_steps=1000, step_size: float=10e-3, supervised: bool=False) -> bool:
         self.login_savefile()
@@ -445,11 +533,11 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
                 if d_voltages_norm > step_size:
                     d_voltages = d_voltages * step_size / d_voltages_norm
                     new_voltages = current_voltages.add(d_voltages)
-            try:
-                self.shift_gate_voltages(new_voltages=new_voltages)
-            except:
-                print("The gates could not be shifted. Maybe the solver wants to go to extreme values!")
-                return False
+#            try:
+            self.shift_gate_voltages(new_voltages=new_voltages)
+#            except:
+#                print("The gates could not be shifted. Maybe the solver wants to go to extreme values!")
+#                return False
             current_step_group = tune_sequence_group.create_group("step_" + str(counter))
             full_current_voltages = self.experiment.read_gate_voltages()[self.gates.index]
             save_gate_voltages(current_step_group, full_current_voltages)
@@ -569,24 +657,5 @@ def convert_gradient_heuristic_data(gradient: pd.DataFrame, gradient_std: pd.Dat
     else:
         evaluation_noise = None
     return gradient_matrix, covariance, evaluation_noise
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
