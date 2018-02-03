@@ -6,6 +6,7 @@ scan = qtune.makePythonChargeLineScan(args.center, args.range, args.gate, args.N
 data = smrun(scan, args.file_name);
 
 data=mean(data{1});
-
+figure(3668)
+plot(data)
 end
 

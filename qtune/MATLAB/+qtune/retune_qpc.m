@@ -21,7 +21,7 @@ x = current_qpc_position + linspace(-5e-3, 5e-3, 1280);
 x = x(50:end-50);
 
 [~, idx] = min(smoothed);
-
+figure(32939);
 subplot(122);
 plot(x(2:end), smoothed);
 hold on;
