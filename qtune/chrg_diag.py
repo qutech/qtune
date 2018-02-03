@@ -207,13 +207,25 @@ class PredictionChargeDiagram(ChargeDiagram):
         actual_qpc_shift = float(actual_qpc_voltage["qpc"][0]) - current_qpc_position
         neg_position_shift = np.asarray([-1. * d_parameter_vector[0], -1. * d_parameter_vector[1]])
         correction = np.linalg.solve(self.grad_kalman.grad, neg_position_shift)
-        correction_pd = pd.Series(data=correction, index=["BA", "BB"])
-        new_voltages = self.dqd.read_gate_voltages().add(correction_pd, fill_value=0)
-        self.dqd.set_gate_voltages(new_voltages)
+        self.track_qpc_while_shifting(d_voltages=correction)
+        # correction_pd = pd.Series(data=correction, index=["BA", "BB"])
+        # new_voltages = self.dqd.read_gate_voltages().add(correction_pd, fill_value=0)
+        # self.dqd.set_gate_voltages(new_voltages)
         actual_position = np.asarray(self.measure_positions())
         total_position_shift = actual_position - self.central_position - neg_position_shift
         total_shift = [total_position_shift[0], total_position_shift[1], actual_qpc_shift]
         self.grad_kalman_prediction.update(dU=d_voltages_vector, dT=total_shift)
 
         self.center_diagram(remeasure_positions=False)
+
+    def track_qpc_while_shifting(self, d_voltages):
+        current_voltages = self.dqd.read_gate_voltages()
+        d_voltages_norm = np.linalg.norm(d_voltages)
+        n_steps = int(np.ceil(d_voltages_norm / 2.5e-3))
+        for i in range(n_steps):
+            voltage_step = d_voltages / float(n_steps) * (1. + float(i))
+            voltage_step_pd = pd.Series(data=voltage_step, index=["BA", "BB"])
+            new_voltages = current_voltages.add(voltage_step_pd, fill_value=0)
+            self.dqd.set_gate_voltages(new_voltages)
+            self.dqd.tune_qpc()
 
