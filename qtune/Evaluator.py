@@ -94,6 +94,33 @@ class InterDotTCByLineScan(Evaluator):
         return pd.Series((tc, failed), ('parameter_tunnel_coupling', 'failed'))
 
 
+class LoadTime(Evaluator):
+    def __init__(self, dqd: BasicDQD, parameters: pd.Series() = pd.Series((np.nan,), ('parameter_load_time',)),
+                 load_scan: Measurement = None):
+        if load_scan is None:
+            load_scan = dqd.measurements[3]
+        super().__init__(dqd, load_scan, parameters)
+
+    def evaluate(self, storing_group: h5py.Group) -> pd.Series:
+        data = self.experiment.measure(self.measurements)
+        n_points = data.shape[1]
+        plt.ion()
+        plt.figure(81)
+        plt.clf()
+        plt.figure(81)
+        fitresult = fit_load_time(data=data, n_points=n_points, )
+        plt.pause(0.05)
+        parameter_time_load = fitresult['parameter_time_load']
+        failed = fitresult['failed']
+        self.parameters['parameter_time_load'] = parameter_time_load
+        if storing_group is not None:
+            storing_dataset = storing_group.create_dataset("evaluator_SMLoadTime", data=data)
+            storing_dataset.attrs["parameter_time_load"] = parameter_time_load
+            if failed:
+                storing_dataset.attrs["parameter_time_load"] = np.nan
+        return pd.Series([parameter_time_load, failed], ['parameter_time_load', 'failed'])
+
+
 def fit_lead_times(data: np.ndarray, **kwargs):
     ydata = data[1, :] - data[0, :]
     samprate = 1e8
@@ -174,19 +201,43 @@ def fit_inter_dot_coupling(data, **kwargs):
     ydata = np.squeeze(data)
     m_last_part, b_last_part = np.polyfit(xdata[int(round(0.75*npoints)):npoints-1], ydata[int(round(0.75*npoints)):npoints-1], 1)
     m_first_part, b_first_part = np.polyfit(xdata[0:int(round(0.25*npoints))], ydata[0:int(round(0.25*npoints))], 1)
-    hight = (b_last_part + m_last_part * xdata[npoints - 1]) - (b_first_part + m_first_part * xdata[npoints - 1])
+    height = (b_last_part + m_last_part * xdata[npoints - 1]) - (b_first_part + m_first_part * xdata[npoints - 1])
     position = qtune.chrg_diag.find_lead_transition(data=ydata - xdata * m_first_part, center=center, scan_range=scan_range, npoints=npoints,
                                     width=scan_range / 12.)
-    p0 = [b_first_part, m_first_part, hight, position, scan_range / 8.]
+    p0 = [b_first_part, m_first_part, height, position, scan_range / 8.]
     plt.plot(xdata, ydata, "b.")
     plt.plot(xdata, func_inter_dot_coupling(xdata, p0[0], p0[1], p0[2], p0[3], p0[4]), "k--")
     popt, pcov = optimize.curve_fit(f=func_inter_dot_coupling, p0=p0, xdata=xdata, ydata=ydata)
     plt.plot(xdata, func_inter_dot_coupling(xdata, popt[0], popt[1], popt[2], popt[3], popt[4]), "r")
     plt.draw()
-    fit_result = pd.Series(data=[popt[4], failed], index=["tc", "failed"])
+    width_in_mus = popt[4] * 1e6
+    fit_result = pd.Series(data=[width_in_mus, failed], index=["tc", "failed"])
     return fit_result
 
 
 def func_inter_dot_coupling(xdata, offset: float, slope: float, height: float, position: float, width: float):
     return offset + slope * xdata + .5 * height * (1 + np.tanh((xdata - position) / width))
 
+def fit_load_time(data, **kwargs):
+    failed = 0
+    n_points = kwargs["n_points"]
+    ydata = data[0, 1:n_points ]
+    xdata = data[1, 1:n_points ]
+    min = np.nanmin(ydata)
+    max = np.nanmin(ydata)
+    initial_curvature = 10
+    p0 = [min, max - min, initial_curvature]
+    popt, pcov = optimize.curve_fit(f=func_load_time, p0=p0, xdata=xdata, ydata=ydata)
+    if popt[2]<0.:
+        initial_curvature = 200
+        p0 = [min, max - min, initial_curvature]
+        popt, pcov = optimize.curve_fit(f=func_load_time, p0=p0, xdata=xdata, ydata=ydata)
+    plt.plot(xdata, ydata, "b.")
+    plt.plot(xdata, func_load_time(xdata, p0[0], p0[1], p0[2]), "k--")
+    plt.plot(xdata, func_load_time(xdata, popt[0], popt[1], popt[2]), "r")
+    plt.draw()
+    fit_result = pd.Series(data=[popt[2], failed], index=["parameter_time_load", "failed"])
+    return fit_result
+
+def func_load_time(xdata, offset: float, height: float, curvature: float):
+    return offset + height * np.exp(-1. * xdata / curvature)
