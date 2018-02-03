@@ -17,15 +17,15 @@ from qtune.util import find_lead_transition
 
 class ChargeDiagram:
     charge_line_scan_lead_A = Measurement('line_scan', center=0., range=4e-3,
-                                          gate='RFA', N_points=1280,
-                                          ramptime=.0005,
-                                          N_average=3,
+                                          gate='RFA', N_points=320,
+                                          ramptime=.001,
+                                          N_average=7,
                                           AWGorDecaDAC='DecaDAC')
 
     charge_line_scan_lead_B = Measurement('line_scan', center=0., range=4e-3,
-                                          gate='RFB', N_points=1280,
-                                          ramptime=.0005,
-                                          N_average=3,
+                                          gate='RFB', N_points=320,
+                                          ramptime=.001,
+                                          N_average=7,
                                           AWGorDecaDAC='DecaDAC')
 
     def __init__(self, dqd: BasicDQD, central_position=np.asarray([-0.15e-3, -0.77e-3]),

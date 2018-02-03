@@ -11,7 +11,7 @@ class BasicDQD(Experiment):
                                     N_average=3, AWGorDecaDAC='DecaDAC')
     default_detune_scan = Measurement('detune_scan',
                                       center=0., range=2e-3, N_points=100, ramptime=.02,
-                                      N_average=20, AWGorDecaDAC='DecaDAC')
+                                      N_average=10, AWGorDecaDAC='DecaDAC')
     default_lead_scan = Measurement('lead_scan', gate='B', AWGorDecaDAC='DecaDAC')
     default_load_scan = Measurement("load_scan")
 
