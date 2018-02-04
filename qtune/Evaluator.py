@@ -95,7 +95,7 @@ class InterDotTCByLineScan(Evaluator):
 
 
 class LoadTime(Evaluator):
-    def __init__(self, dqd: BasicDQD, parameters: pd.Series() = pd.Series((np.nan,), ('parameter_load_time',)),
+    def __init__(self, dqd: BasicDQD, parameters: pd.Series() = pd.Series((np.nan,), ('parameter_time_load',)),
                  load_scan: Measurement = None):
         if load_scan is None:
             load_scan = dqd.measurements[3]

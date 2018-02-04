@@ -161,9 +161,20 @@ class Autotuner:
                 run_subgroup = gradient_group.create_group("positive_detune_run_" + gate + "_" + str(i))
                 save_gate_voltages(run_subgroup, self.experiment.read_gate_voltages()[self.gates.index])
                 evaluation_result = self.evaluate_parameters(run_subgroup)
-                for r in evaluation_result.index.tolist():
-                    (positive_detune_parameter[r])[i] = evaluation_result[r]
-
+                for result in evaluation_result.index.tolist():
+                    try:
+                        (positive_detune_parameter[result])[i] = evaluation_result[result]
+                    except KeyError:
+                        print("the parameter is ")
+                        print(result)
+                        print("We are trying to load it from:")
+                        print(evaluation_result)
+                        print("and we want to savi it in")
+                        print(positive_detune_parameter)
+                        print("at position")
+                        print(i)
+                        x = input("since this wasnt possible, we will save nan. type anything to continue!")
+                        (positive_detune_parameter[result])[i] = np.nan
             new_gate_positions = current_gate_positions.add(detuning.multiply(-1.), fill_value=0)
             self.shift_gate_voltages(new_gate_positions)
 
@@ -428,11 +439,24 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
         for parameter in self.parameters.index:
             parameter_for_noise[parameter] = np.zeros((n_noise, ))
         noise_group = gradient_kalman_group.create_group("noise_estimation")
+        save_gate_voltages(save_group=noise_group, gate_voltages=self.experiment.read_gate_voltages()[self.gates.index])
         for i in range(n_noise):
             step_group = noise_group.create_group("measurement_" + str(i))
             evaluation_result = self.evaluate_parameters(step_group)
             for parameter in self.parameters.index:
-                parameter_for_noise[parameter][i] = evaluation_result[parameter]
+                try:
+                    parameter_for_noise[parameter][i] = evaluation_result[parameter]
+                except KeyError:
+                    print("the parameter is ")
+                    print(parameter)
+                    print("We are trying to load it from:")
+                    print(evaluation_result)
+                    print("and we want to savi it in")
+                    print(positive_detune_parameter)
+                    print("at position")
+                    print(i)
+                    x = input("since this wasnt possible, we will save nan. type anything to continue!")
+                    (positive_detune_parameter[result])[i] = np.nan
         parameter_mean = pd.Series(index=self.parameters.index)
         parameter_std = pd.Series(index=self.parameters.index)
         for parameter in self.parameters.index:
@@ -443,29 +467,42 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
         for i in range(len(parameter_std.index)):
             parameter_noise[i, i] = parameter_std[i] * parameter_std[i]
 
-        temp_kalman = GradKalmanFilter(nGates=len(self.tunable_gates.index), nParams=len(self.parameters.index),
-                                       initR=parameter_noise)
+        maximum_parameter = parameter_mean.max()
+        initial_covariance = np.identity(
+            self.tunable_gates.size * self.parameters.size) * maximum_parameter * maximum_parameter
+
+        temp_kalman = GradKalmanFilter(nGates=self.tunable_gates.size, nParams=self.parameters.size,
+                                       initP=initial_covariance, initR=parameter_noise)
         current_voltages = self.read_tunable_gate_voltages()
+        full_current_voltages = self.experiment.read_gate_voltages()[self.gates.index]
         minimization_group = gradient_kalman_group.create_group("covariance_minimization")
         for i in range(n_steps):
             measurement_group = minimization_group.create_group("step_" + str(i))
             d_voltage_vector = temp_kalman.sugg_dU
             d_voltage_vector = d_voltage_vector / np.linalg.norm(d_voltage_vector) * delta_u
-            d_voltage_pd = pd.Series(data=d_voltage_vector, index=self.tunable_gates)
+            tunable_gates = self.tunable_gates.sort_index()
+            d_voltage_pd = pd.Series(data=d_voltage_vector, index=tunable_gates.index)
             new_voltage = current_voltages.add(d_voltage_pd)
             self.shift_gate_voltages(new_voltage.copy())
+            save_gate_voltages(save_group=measurement_group,
+                               gate_voltages=self.experiment.read_gate_voltages()[self.gates.index])
             evaluation_result = self.evaluate_parameters(measurement_group)
             d_parameter = evaluation_result.add(-1.*parameter_mean)
             d_parameter = d_parameter.sort_index()
             d_parameter_vector = d_parameter.as_matrix()
             temp_kalman.update(dU=d_voltage_vector, dT=d_parameter_vector)
-            self.shift_gate_voltages(current_voltages.copy())
+
+            d_voltage_with_b_gates = (self.experiment.read_gate_voltages()[self.gates.index]).add(-1. * full_current_voltages)
+            self.charge_diagram.track_qpc_while_shifting(-1. * d_voltage_with_b_gates)
+            save_gradient_data(measurement_group, gradient=temp_kalman.grad, heuristic_covariance=temp_kalman.cov,
+                               heuristic_noise=parameter_noise)
+        self.shift_gate_voltages(current_voltages.copy())
         gradient = temp_kalman.grad
         covariance = temp_kalman.cov
         noise = parameter_noise
         save_gradient_data(gradient_group, gradient=gradient, heuristic_covariance=covariance, heuristic_noise=noise)
+        self.logout_of_savefile()
         return gradient, covariance, noise
-
 
     def set_gate_voltages(self, new_voltages: pd.Series):
         for voltage in new_voltages:
@@ -570,25 +607,25 @@ def manual_check(new_voltages: pd.Series, current_voltages: pd.Series, d_voltage
     elif action == "C":
         decision = input("Would you like to multiply the step with a constant? (Y/N)")
         if decision == "Y":
-            multiplicator = input("Please enter the multiplicator.")
-            multiplicator = float(multiplicator)
-            second_check = input("Are you sure, that you want to multiply with:" + str(multiplicator) + "? (Y/N)")
+            multiplicand = input("Please enter the multiplicand.")
+            multiplicand = float(multiplicand)
+            second_check = input("Are you sure, that you want to multiply with:" + str(multiplicand) + "? (Y/N)")
             if second_check == "Y":
-                mult_d_voltages = d_voltages * multiplicator
+                mult_d_voltages = d_voltages * multiplicand
                 new_voltages = current_voltages.add(mult_d_voltages, fill_value=0.)
                 return new_voltages
             elif second_check == "N":
                 print("Restart the check.")
-                return manual_check(new_voltages, current_voltages, d_voltages)
+                return manual_check(new_voltages, current_voltages, d_voltages, parameters)
             else:
                 print("Invalid input! Restart")
-                return manual_check(new_voltages, current_voltages, d_voltages)
+                return manual_check(new_voltages, current_voltages, d_voltages, parameters)
         elif decision == "N":
             print("No other possibilities have been implemented up to now. Restart!")
-            return manual_check(new_voltages, current_voltages, d_voltages)
+            return manual_check(new_voltages, current_voltages, d_voltages, parameters)
         else:
             print("Invalid input! Restart")
-            return manual_check(new_voltages, current_voltages, d_voltages)
+            return manual_check(new_voltages, current_voltages, d_voltages, parameters)
     elif action == "S":
         second_check = input(
             "Are you sure, you want to stop the tuning? In this case write STOP. Otherwise write cancel.")
@@ -596,13 +633,13 @@ def manual_check(new_voltages: pd.Series, current_voltages: pd.Series, d_voltage
             raise KeyboardInterrupt
         elif second_check == "cancel":
             print("OK, the check will be restarted.")
-            return manual_check(new_voltages, current_voltages, d_voltages)
+            return manual_check(new_voltages, current_voltages, d_voltages, parameters)
         else:
             print("Invalid input! Restart")
-            return manual_check(new_voltages, current_voltages, d_voltages)
+            return manual_check(new_voltages, current_voltages, d_voltages, parameters)
     else:
         print("Invalid input! Restart")
-        return manual_check(new_voltages, current_voltages, d_voltages)
+        return manual_check(new_voltages, current_voltages, d_voltages, parameters)
 
 
 def load_gradient_data(filename: str, filepath: str=None):
@@ -657,5 +694,3 @@ def convert_gradient_heuristic_data(gradient: pd.DataFrame, gradient_std: pd.Dat
     else:
         evaluation_noise = None
     return gradient_matrix, covariance, evaluation_noise
-
-
