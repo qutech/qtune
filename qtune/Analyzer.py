@@ -379,6 +379,13 @@ class Analyzer:
                 if isinstance(first_step_group[element], h5py.Dataset) and "evaluator_" in element:
                     list_evaluator_names += [element, ]
             self.evaluator_names = list_evaluator_names
+        elif tune_run_group.__contains__("gradient_setup_1/gradient_kalman"):
+            first_measurement_group = tune_run_group["gradient_setup_1/gradient_kalman/noise_estimation/measurement_0"]
+            list_evaluator_names = []
+            for element in first_measurement_group:
+                if isinstance(first_measurement_group[element], h5py.Dataset) and "evaluator_" in element:
+                    list_evaluator_names += [element, ]
+            self.evaluator_names = list_evaluator_names
         else:
             first_gradient_group = self.load_gradient_group(gradient_number=1, tune_run_number=tune_run_number)
             run_group = first_gradient_group["negative_detune_run_" + self.tunable_gate_names[0].decode("ascii") + "_0"]
@@ -421,6 +428,79 @@ class Analyzer:
                 plt.ylabel(evaluator)
                 plt.pause(0.05)
 
+    def load_noise_estimation(self, noise_estimation_group: h5py.Group, n_noise_measurements: int):
+        gate_voltages = noise_estimation_group["gate_voltages"][:]
+        gate_voltages_pd = pd.Series(data=gate_voltages, index = self.gate_names)
+        parameter_sequence_pd = pd.Series()
+        for parameter in self.parameter_names:
+            parameter_sequence_pd[parameter.decode("ascii")] = np.zeros((n_noise_measurements, ))
+        for i in range(n_noise_measurements):
+            measurement_group = noise_estimation_group["measurement_" + str(i)]
+            for evaluator in self.evaluator_names:
+                evaluator_data_set = measurement_group[evaluator]
+                for attribute in evaluator_data_set.attrs.keys():
+                    if "parameter_" in attribute:
+                        parameter_sequence_pd[attribute][i] = evaluator_data_set.attrs[attribute]
+        return parameter_sequence_pd, gate_voltages_pd
+
+    def load_covariance_minimization(self, min_cov_group: h5py.Group, n_minimization_measurements: int):
+        gate_voltage_sequence_pd = pd.Series()
+        for gate in self.gate_names:
+            gate_voltage_sequence_pd[gate] = np.zeros((n_noise_measurements,))
+        for i in range(n_minimization_measurements):
+            step_group = min_cov_group["step_" + str(i)]
+            gate_voltages_pd = pd.Series(data=step_group["gate_voltages"][:], index=self.gate_names)
+            for gate in self.gate_names:
+                gate_voltage_sequence_pd[gate][i] = gate_voltages_pd[gate]
+        parameter_sequence_pd = pd.Series()
+        for parameter in self.parameter_names:
+            parameter_sequence_pd[parameter.decode("ascii")] = np.zeros((n_noise_measurements,))
+        for i in range(n_minimization_measurements):
+            step_group = min_cov_group["step_" + str(i)]
+            for evaluator in self.evaluator_names:
+                evaluator_data_set = step_group[evaluator]
+                for attribute in evaluator_data_set.attrs.keys():
+                    if "parameter_" in attribute:
+                        parameter_sequence_pd[attribute][i] = evaluator_data_set.attrs[attribute]
+        gradient_sequence_pd = pd.DataFrame(None, index=self.parameter_names, columns=self.tunable_gate_names)
+        for parameter in self.parameter_names:
+            for gate in self.tunable_gate_names:
+                gradient_sequence_pd[gate][parameter] = np.zeros((n_minimization_measurements,))
+        covariance_index = []
+        for parameter in self.parameter_names:
+            for gate in self.tunable_gate_names:
+                covariance_index += [parameter.decode("ascii") + "_" + gate.decode("ascii")]
+        covariance_sequence_pd = pd.DataFrame(index=covariance_index, columns=covariance_index)
+        for index in covariance_index:
+            for index2 in covariance_index:
+                covariance_sequence_pd[index][index2] = np.zeros((n_minimization_measurements, ))
+        for i in range(n_minimization_measurements):
+            step_group = min_cov_group["step_" + str(i)]
+            gradient_pd = pd.DataFrame(data=step_group["gradient"][:], index=self.parameter_names,
+                                       columns=self.tunable_gate_names)
+            covariance_pd = pd.DataFrame(data=step_group["covariance"][:], index=covariance_index,
+                                         columns=covariance_index)
+            for parameter in self.parameter_names:
+                for gate in self.tunable_gate_names:
+                    gradient_sequence_pd[gate][parameter][i] = gradient_pd[gate][parameter]
+            for index in covariance_index:
+                for index2 in covariance_index:
+                    covariance_sequence_pd[index][index2][i] = covariance_pd[index][index2]
+        return gradient_sequence_pd, covariance_sequence_pd, parameter_sequence_pd, gate_voltage_sequence_pd
+
+    def load_min_cov_calculation(self, gradient_number: int = 1, tune_run_number: int = 0):
+        self.load_evaluator_names(tune_run_number=tune_run_number)
+        gradient_group = self.load_gradient_group(gradient_number=gradient_number, tune_run_number=tune_run_number)
+        gradient_kalman_group = gradient_group["gradient_kalman"]
+        n_noise_measurements = gradient_kalman_group.attrs["n_noise_measurements"]
+        noise_estimation_group = gradient_kalman_group["noise_estimation"]
+        noise_parameter_sequence_pd = self.load_noise_estimation(noise_estimation_group=noise_estimation_group,
+                                                                 n_noise_measurements=n_noise_measurements)
+        n_minimization_measurements = gradient_kalman_group.attrs["n_minimization_measurements"]
+        min_cov_group = gradient_kalman_group["covariance_minimization"]
+        gradient_sequence_pd, covariance_sequence_pd, parameter_sequence_pd, gate_voltage_sequence_pd = self.load_covariance_minimization(
+            min_cov_group=min_cov_group, n_minimization_measurements=n_minimization_measurements)
+        return noise_parameter_sequence_pd, gradient_sequence_pd, covariance_sequence_pd, parameter_sequence_pd, gate_voltage_sequence_pd
 
     def load_single_values_gradient_calculation(self, gradient_number: int = 1, tune_run_number: int = 0) -> (
             pd.Series, int, float):
@@ -552,7 +632,7 @@ def print_group_content(data_group: h5py.Group):
     for element in data_group.attrs:
         print(element)
         print(data_group.attrs[element])
-        print("\n")
+#        print("\n")
 
 
 def load_single_evaluation_from_group(data_group: h5py.Group, evaluator_name: str=None, evaluator_number: int =-1):
