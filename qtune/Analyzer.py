@@ -120,6 +120,14 @@ class Analyzer:
                     gradient_sequence_pd[gate][parameter][counter] = gradient_pd[gate][parameter]
         return gradient_sequence_pd
 
+    def load_noise_from_gradient_pd(self, tune_run_number=1, gradient_number: int=1):
+        self.load_parameter_names(tune_run_number=tune_run_number)
+        tune_run_group = self.load_tune_run_group(tune_run_number)
+        gradient_group = tune_run_group["gradient_setup_" + str(gradient_number)]
+        noise = gradient_group["heuristic_noise"][:]
+        noise_pd = pd.DataFrame(data=noise, index=self.parameter_names, columns=self.parameter_names)
+        return noise_pd
+
     def plot_gradient_sequence(self, tune_run_number=1, figure_number=60, start=0, end=None, with_covariance: bool=True):
         gradient_sequence_pd = self.load_gradient_sequence_pd(tune_run_number=tune_run_number, start=start, end=end)
         tune_run_group = self.load_tune_run_group(tune_run_number)
@@ -224,14 +232,22 @@ class Analyzer:
         gradient_sequence_pd = self.load_gradient_sequence_pd(tune_run_number=tune_run_number, start=start, end=end)
         return desired_values_pd, gate_voltages_sequence_pd, parameters_sequence_pd, gradient_sequence_pd
 
-    def plot_kalman_tune_run(self, tune_run_number=1, start: int=0, end: int=None):
+    def plot_kalman_tune_run(self, tune_run_number=1, start: int=0, end: int=None, gradient_number: int=1,
+                             gradient_tune_run: int=0):
+        if end is None:
+            tune_run_group = self.root_group["tunerun_" + str(tune_run_number)]
+            end = count_steps_in_sequence(tune_run_group["tune_sequence"])
         desired_values_pd, gate_voltages_sequence_pd, parameters_sequence_pd, gradient_sequence_pd = \
             self.load_kalman_tune_run(tune_run_number, start, end)
+        noise_pd = self.load_noise_from_gradient_pd(tune_run_number=gradient_tune_run, gradient_number=gradient_number)
         number_parameter = len(self.parameter_names)
         plt.figure(1)
         for i in range(number_parameter):
-            plt.subplot(3, 1, i+1)
-            plt.plot(parameters_sequence_pd[self.parameter_names[i]], "r")
+            plt.subplot(number_parameter, 1, i+1)
+            plt.errorbar(x=list(range(start, end)), y=parameters_sequence_pd[self.parameter_names[i]],
+                         yerr=np.full((end - start,),
+                                      np.sqrt(noise_pd[self.parameter_names[i]][self.parameter_names[i]])))
+#            plt.plot(parameters_sequence_pd[self.parameter_names[i]], "r")
             plt.axhline(desired_values_pd[self.parameter_names[i]])
             plt.ylabel(self.parameter_names[i].decode("ascii"))
         plt.figure(2)
@@ -245,6 +261,75 @@ class Analyzer:
         plt.title("Change in Gate Voltages")
         plt.show()
         return
+
+    def plot_concatenate_kalman_tune_run(self, tune_run_numbers):
+        number_runs = len(tune_run_numbers)
+        desired_values_pd_concatenated_temp, gate_voltages_sequence_pd_concatenated, parameters_sequence_pd_concatenated, \
+        gradient_sequence_pd_concatenated = \
+            self.load_kalman_tune_run(tune_run_number=tune_run_numbers[0])
+
+        desired_values_pd_concatenated = pd.Series()
+        for parameter in self.parameter_names:
+            desired_values_pd_concatenated[parameter] = [desired_values_pd_concatenated_temp[parameter]]
+        number_steps = [count_steps_in_sequence(self.root_group["tunerun_" + str(tune_run_numbers[0]) + "/tune_sequence"]) - 1]
+        for i in range(1, number_runs):
+            desired_values_pd, gate_voltages_sequence_pd, parameters_sequence_pd, gradient_sequence_pd = \
+                self.load_kalman_tune_run(tune_run_number=tune_run_numbers[i])
+
+            for gate in self.gate_names:
+                gate_voltages_sequence_pd_concatenated[gate] = np.concatenate([gate_voltages_sequence_pd_concatenated[gate], gate_voltages_sequence_pd[gate]], 0)
+
+            number_steps = np.concatenate([number_steps, [count_steps_in_sequence(self.root_group["tunerun_" + str(tune_run_numbers[i]) + "/tune_sequence"])]], 0)
+            for parameter in self.parameter_names:
+                parameters_sequence_pd_concatenated[parameter] = np.concatenate([parameters_sequence_pd_concatenated[parameter], parameters_sequence_pd[parameter]], 0)
+
+                desired_values_pd_concatenated[parameter] = np.concatenate([np.reshape(desired_values_pd_concatenated[parameter], i), np.reshape(desired_values_pd[parameter], 1)], 0)
+                for gate in self.tunable_gate_names:
+                    gradient_sequence_pd_concatenated[gate][parameter] = np.concatenate([gradient_sequence_pd_concatenated[gate][parameter], gradient_sequence_pd[gate][parameter]], 0)
+        plt.figure(1)
+        for i in range(1, number_runs):
+            number_steps[i] = number_steps[i] + number_steps[i - 1]
+        print(number_steps)
+        number_parameter = len(self.parameter_names)
+        for i in range(number_parameter):
+            plt.subplot(number_parameter, 1, i + 1)
+            plt.plot(parameters_sequence_pd_concatenated[self.parameter_names[i]], "r")
+            start_desired_val_range = 0.01
+            y_des_val = [desired_values_pd_concatenated[self.parameter_names[i]][0], desired_values_pd_concatenated[self.parameter_names[i]][0]]
+            x_des_val = [start_desired_val_range, number_steps[0]]
+            start_desired_val_range = number_steps[0] + 0.01
+            for run in range(1, number_runs):
+                y_des_val = np.concatenate([y_des_val, [desired_values_pd_concatenated[self.parameter_names[i]][run], desired_values_pd_concatenated[self.parameter_names[i]][run]]], 0)
+                x_des_val = np.concatenate([x_des_val, [start_desired_val_range, number_steps[run]]], 0)
+                start_desired_val_range = number_steps[run] + 0.01
+            plt.plot(x_des_val, y_des_val, "b")
+#            plt.axhline(desired_values_pd[self.parameter_names[i]])
+            for j in range(number_runs):
+                plt.axvline(x=number_steps[j])
+            plt.ylabel(self.parameter_names[i].decode("ascii"))
+            plt.draw()
+        figure_number = 2
+        gate_colours = {"BA" : 'b',"BB" : 'g', "N" : 'r',"SA" : 'c',"SB" : 'm',"T" : 'k'}
+        tunable_gate_colours = {"N" : 'r',"SA" : 'c',"SB" : 'm',"T" : 'y'}
+        for parameter in self.parameter_names:
+            plt.figure(figure_number)
+            figure_number += 1
+            for gate in self.tunable_gate_names:
+                plt.plot(gradient_sequence_pd_concatenated[gate][parameter], gate_colours[gate.decode("ascii")], label=gate.decode("ascii"))
+                for j in range(number_runs):
+                   plt.axvline(x=number_steps[j])
+            plt.legend(self.tunable_gate_names)
+
+        plt.figure(figure_number)
+        figure_number += 1
+        for gate in self.gate_names:
+            for j in range(number_runs):
+                plt.axvline(number_steps[j])
+            plt.plot(gate_voltages_sequence_pd_concatenated[gate] - gate_voltages_sequence_pd_concatenated[gate][0], gate_colours[gate.decode("ascii")], label=gate.decode("ascii"))
+            plt.legend()
+#            plt.legend(self.gate_names)
+            plt.title("Changes in gate voltages")
+
 
     def load_raw_measurement_pd(self, step_group):
         raw_measurement_pd = pd.Series()
@@ -422,9 +507,10 @@ class Analyzer:
         plt.ion()
         for i in range(start, end):
             for evaluator in self.evaluator_names:
-                plot_raw_measurement(evaluator, raw_data=raw_measurement_sequence_pd[i][evaluator],
+                if plot_raw_measurement(evaluator, raw_data=raw_measurement_sequence_pd[i][evaluator],
                                      attribute_info=attribute_info_sequence_pd[i][evaluator],
-                                     figure_number=figure_numer)
+                                     figure_number=figure_numer) == "Stop":
+                    return
                 plt.ylabel(evaluator)
                 plt.pause(0.05)
 
@@ -446,7 +532,7 @@ class Analyzer:
     def load_covariance_minimization(self, min_cov_group: h5py.Group, n_minimization_measurements: int):
         gate_voltage_sequence_pd = pd.Series()
         for gate in self.gate_names:
-            gate_voltage_sequence_pd[gate] = np.zeros((n_noise_measurements,))
+            gate_voltage_sequence_pd[gate] = np.zeros((n_minimization_measurements,))
         for i in range(n_minimization_measurements):
             step_group = min_cov_group["step_" + str(i)]
             gate_voltages_pd = pd.Series(data=step_group["gate_voltages"][:], index=self.gate_names)
@@ -454,7 +540,7 @@ class Analyzer:
                 gate_voltage_sequence_pd[gate][i] = gate_voltages_pd[gate]
         parameter_sequence_pd = pd.Series()
         for parameter in self.parameter_names:
-            parameter_sequence_pd[parameter.decode("ascii")] = np.zeros((n_noise_measurements,))
+            parameter_sequence_pd[parameter.decode("ascii")] = np.zeros((n_minimization_measurements,))
         for i in range(n_minimization_measurements):
             step_group = min_cov_group["step_" + str(i)]
             for evaluator in self.evaluator_names:
@@ -478,7 +564,7 @@ class Analyzer:
             step_group = min_cov_group["step_" + str(i)]
             gradient_pd = pd.DataFrame(data=step_group["gradient"][:], index=self.parameter_names,
                                        columns=self.tunable_gate_names)
-            covariance_pd = pd.DataFrame(data=step_group["covariance"][:], index=covariance_index,
+            covariance_pd = pd.DataFrame(data=step_group["heuristic_covariance"][:], index=covariance_index,
                                          columns=covariance_index)
             for parameter in self.parameter_names:
                 for gate in self.tunable_gate_names:
@@ -494,13 +580,41 @@ class Analyzer:
         gradient_kalman_group = gradient_group["gradient_kalman"]
         n_noise_measurements = gradient_kalman_group.attrs["n_noise_measurements"]
         noise_estimation_group = gradient_kalman_group["noise_estimation"]
-        noise_parameter_sequence_pd = self.load_noise_estimation(noise_estimation_group=noise_estimation_group,
+        noise_parameter_sequence_pd, noise_gate_voltages_pd = self.load_noise_estimation(noise_estimation_group=noise_estimation_group,
                                                                  n_noise_measurements=n_noise_measurements)
         n_minimization_measurements = gradient_kalman_group.attrs["n_minimization_measurements"]
         min_cov_group = gradient_kalman_group["covariance_minimization"]
-        gradient_sequence_pd, covariance_sequence_pd, parameter_sequence_pd, gate_voltage_sequence_pd = self.load_covariance_minimization(
-            min_cov_group=min_cov_group, n_minimization_measurements=n_minimization_measurements)
-        return noise_parameter_sequence_pd, gradient_sequence_pd, covariance_sequence_pd, parameter_sequence_pd, gate_voltage_sequence_pd
+        gradient_sequence_pd, covariance_sequence_pd, parameter_sequence_pd, gate_voltage_sequence_pd = \
+            self.load_covariance_minimization(min_cov_group=min_cov_group,
+                                              n_minimization_measurements=n_minimization_measurements)
+        return noise_parameter_sequence_pd, noise_gate_voltages_pd, gradient_sequence_pd, covariance_sequence_pd, \
+               parameter_sequence_pd, gate_voltage_sequence_pd, n_noise_measurements, n_minimization_measurements
+
+    def plot_min_cov_calculation(self, gradient_number: int = 1, tune_run_number: int = 0, figure_number: int=80):
+        noise_parameter_sequence_pd, noise_gate_voltages_pd, gradient_sequence_pd, covariance_sequence_pd, \
+        parameter_sequence_pd, gate_voltage_sequence_pd, n_noise_measurements, n_minimization_measurements = \
+            self.load_min_cov_calculation(gradient_number=gradient_number, tune_run_number=tune_run_number)
+
+        for parameter in noise_parameter_sequence_pd.index:
+            plt.figure(figure_number)
+            plt.close()
+            plt.figure(figure_number)
+            plt.plot(noise_parameter_sequence_pd[parameter])
+            plt.title(parameter)
+            figure_number += 1
+
+        for parameter in self.parameter_names:
+            plt.figure(figure_number)
+            plt.close()
+            plt.figure(figure_number)
+            figure_number += 1
+            for gate in self.tunable_gate_names:
+                    plt.errorbar(x=list(range(n_minimization_measurements)), y=gradient_sequence_pd[gate][parameter],
+                                 yerr=np.sqrt(covariance_sequence_pd[parameter.decode("ascii") + "_" + gate.decode("ascii")][
+                                     parameter.decode("ascii") + "_" + gate.decode("ascii")]))
+            plt.legend([gate_name.decode("ascii") for gate_name in self.tunable_gate_names])
+            plt.title(parameter.decode("ascii"))
+            plt.show()
 
     def load_single_values_gradient_calculation(self, gradient_number: int = 1, tune_run_number: int = 0) -> (
             pd.Series, int, float):
@@ -598,7 +712,6 @@ class Analyzer:
                             n_lines_per_measurement = np.shape(raw_measurement_positive_detune_pd[gate][parameter])[
                                                           0] / n_repetitions
                         gradient_pd[gate][parameter][i] = fit_functions[evaluator_number]
-
 
 
 def count_steps_in_sequence(sequence_group: h5py.Group):
@@ -709,7 +822,7 @@ def func_lead_times(x, hight: float, t_fall: float, t_rise: float, begin_rise: f
 
 
 def plot_raw_measurement(evaluator, raw_data, attribute_info, figure_number):
-    if evaluator == "evaluator_SMLeadTunnelTimeByLeadScan":
+    if evaluator == "evaluator_SMLeadTunnelTimeByLeadScan" or evaluator == "evaluator_LeadTunnelTimeByLeadScan":
         plt.figure(figure_number)
         plt.plot(raw_data[0])
         plt.plot(raw_data[1])
@@ -717,9 +830,11 @@ def plot_raw_measurement(evaluator, raw_data, attribute_info, figure_number):
         plt.draw()
         plt.pause(0.05)
         plt.figure(figure_number + 1)
+        plt.close()
+        plt.figure(figure_number + 1)
         qtune.Evaluator.fit_lead_times(raw_data)
         plt.pause(0.05)
-    elif evaluator == "evaluator_SMInterDotTCByLineScan":
+    elif evaluator == "evaluator_SMInterDotTCByLineScan" or evaluator == "evaluator_InterDotTCByLineScan":
         plt.figure(figure_number)
         ydata = np.squeeze(raw_data)
         scan_range = attribute_info["scan_range"]
@@ -727,13 +842,20 @@ def plot_raw_measurement(evaluator, raw_data, attribute_info, figure_number):
         center = attribute_info["center"]  # TODO: change for real center
         qtune.Evaluator.fit_inter_dot_coupling(data=ydata, center=center, scan_range=scan_range, npoints=npoints)
         plt.pause(0.05)
+    elif evaluator == "evaluator_SMLoadTime" or evaluator == "evaluator_LoadTime":
+        plt.figure(figure_number + 2)
+        plt.close()
+        plt.figure(figure_number + 2)
+        fitresult = qtune.Evaluator.fit_load_time(data=raw_data)
+        print(fitresult["parameter_time_load"])
+        plt.pause(0.05)
     else:
         print("No plotting implemented for this evaluator.")
     decision_continue = input("Type STOP to stop. Type anything else to continue.")
     if decision_continue == "STOP":
         plt.close(figure_number)
         plt.close(figure_number + 1)
-        return
+        return "Stop"
     else:
         plt.close(figure_number)
         plt.close(figure_number + 1)
