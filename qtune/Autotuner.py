@@ -32,10 +32,12 @@ class Autotuner:
         self.evaluation_std = None
         self.tune_run_number = 0
         self.gradient_number = 0
+        self.parameter_evaluation_number = 0
         self.charge_diagram_number = 0
         self.filename = data_directory + r'\Autotuner_' + time_string() + ".hdf5"
         self.hdf5file = h5py.File(self.filename, 'w-')
         tunerun_group = self.hdf5file.create_group('tunerun_' + str(self.tune_run_number))
+        self.hdf5file.create_group("parameter_evaluation")
         self.current_tunerun_group = tunerun_group
 
 
@@ -116,6 +118,15 @@ class Autotuner:
                 parameters[r] = evaluation_result[r]
         self.parameters = copy.deepcopy(parameters.sort_index())
         return parameters
+
+    def evaluate_and_save_parameters(self):
+        self.login_savefile()
+        self.parameter_evaluation_number += 1
+        evaluation_group = self.hdf5file["parameter_evaluation"]
+        storage_group = evaluation_group.create_group(
+            "parameter_evaluation_" + str(self.parameter_evaluation_number))
+        self.evaluate_parameters(storing_group=storage_group)
+        self.logout_of_savefile()
 
     def tuning_complete(self) -> bool:
         complete = True
@@ -392,6 +403,19 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
                                       alpha=alpha)
         self.logout_of_savefile()
 
+    def load_step_set_solver(self, kalman_solver: KalmanSolver,  desired_values: pd.Series = None,
+                             alpha=1.02, filename: str = None,
+                             tuning_accuracy: pd.Series = pd.Series(), tune_run_numer: int=1, step_number: int=1):
+        filepath = "tunerun_" + str(tune_run_numer) + "/step_" + step_number
+        root_group = h5py.File(filename, 'r')
+        gate_voltages = pd.Series(data=root_group[filepath + "/gate_voltages"][:], index=self.gates.index)
+        current_gate_voltages = self.experiment.read_gate_voltages()[self.gates.index]
+        voltage_difference = gate_voltages.add(-1. * current_gate_voltages, fill_value=0.)
+        self.charge_diagram.track_qpc_while_shifting(voltage_difference)
+        self.set_solver(kalman_solver=kalman_solver, gradient=None, evaluators=pd.Series(), gradient_std=None,
+                        evaluation_std=None, alpha=alpha, load_data=True, filename=filename, filepath=filepath,
+                        tuning_accuracy=tuning_accuracy, desired_values=desired_values)
+
     def initialize_prediction_kalman(self, prediction_gradient=None, prediction_covariance=None, prediction_noise=None,
                                      heuristic_measurement: bool=False, n_repetitions: int=5, delta_u: float=2e-3,
                                      filename: str=None, filepath: str = "tunerun_0/charge_diagram_1/predictor",
@@ -582,7 +606,7 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
             d_parameter = new_parameters - parameters
             new_gradient, new_covariance, failed = self.solver.update_after_step(d_voltages_series=d_voltages,
                                                                                  d_parameter_series=d_parameter)
-            save_gradient_data(current_step_group, new_gradient, new_covariance, None)
+            save_gradient_data(current_step_group, new_gradient, new_covariance, self.solver.grad_kalman.filter.R)
             parameters = new_parameters
             counter += 1
         print("Congratulations! The tuning run is complete or the maximum number is steps has been reached. ")
@@ -650,7 +674,11 @@ def load_gradient_data(filename: str, filepath: str=None):
         data_group = root_group[filepath]
     gradient = data_group['gradient'][:]
     heuristic_covariance = data_group['heuristic_covariance'][:]
-    heuristic_noise = data_group['heuristic_noise'][:]
+    if data_group.__contains__('heuristic_noise'):
+        heuristic_noise = data_group['heuristic_noise'][:]
+    else:
+        heuristic_noise = None
+    root_group.close()
     return gradient, heuristic_covariance, heuristic_noise
 
 
