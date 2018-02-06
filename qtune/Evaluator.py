@@ -114,7 +114,7 @@ class LoadTime(Evaluator):
         failed = fitresult['failed']
         self.parameters['parameter_time_load'] = parameter_time_load
         if storing_group is not None:
-            storing_dataset = storing_group.create_dataset("evaluator_SMLoadTime", data=data)
+            storing_dataset = storing_group.create_dataset("evaluator_LoadTime", data=data)
             storing_dataset.attrs["parameter_time_load"] = parameter_time_load
             if failed:
                 storing_dataset.attrs["parameter_time_load"] = np.nan
@@ -220,15 +220,17 @@ def func_inter_dot_coupling(xdata, offset: float, slope: float, height: float, p
 
 def fit_load_time(data, **kwargs):
     failed = 0
-    n_points = kwargs["n_points"]
-    ydata = data[0, 1:n_points ]
-    xdata = data[1, 1:n_points ]
+    n_points = data.shape[1]
+    ydata = data[0, 1:n_points]
+    xdata = data[1, 1:n_points]
     min = np.nanmin(ydata)
     max = np.nanmin(ydata)
     initial_curvature = 10
     p0 = [min, max - min, initial_curvature]
-    popt, pcov = optimize.curve_fit(f=func_load_time, p0=p0, xdata=xdata, ydata=ydata)
-    if popt[2]<0.:
+    bounds = ([-np.inf, -np.inf, 2.],
+              [np.inf, np.inf, 100.])
+    popt, pcov = optimize.curve_fit(f=func_load_time, p0=p0, bounds=bounds, xdata=xdata, ydata=ydata)
+    if popt[2] < 0.:
         initial_curvature = 200
         p0 = [min, max - min, initial_curvature]
         popt, pcov = optimize.curve_fit(f=func_load_time, p0=p0, xdata=xdata, ydata=ydata)
