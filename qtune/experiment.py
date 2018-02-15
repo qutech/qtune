@@ -11,6 +11,9 @@ GateIdentifier = str
 
 
 class Measurement(str):
+    """
+    This class saves all necessary information for a measurement.
+    """
     def __new__(cls, name, **kwargs):
         return super().__new__(cls, name)
 
@@ -24,6 +27,10 @@ class Measurement(str):
 
 
 class Experiment:
+    """
+    Basic class implementing the structure of an experiment consisting of gates whose voltages can be set and read.
+    Additionally we require the possibility to conduct measurements.
+    """
     @property
     def measurements(self) -> Tuple[Measurement, ...]:
         raise NotImplementedError()

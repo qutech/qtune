@@ -6,6 +6,9 @@ from qtune.Evaluator import Evaluator
 
 
 class Solver:
+    """
+    The solver class implements an algorithm to minimise the difference of the parameters to the target values.
+    """
     def __init__(self, gate_names=None, gradient=None, evaluators: Tuple[Evaluator, ...] = (),
                  desired_values: pd.Series = pd.Series()):
         self.gradient = gradient
@@ -46,6 +49,9 @@ class Solver:
 
 
 class KalmanSolver(Solver):
+    """
+    Solver using the Kalman filter to update the gradient.
+    """
     def __init__(self, gate_names=None, gradient=None, evaluators: Tuple[Evaluator, ...] = (),
                  desired_values: pd.Series = pd.Series(), covariance=None, noise=None, alpha=1.02):
         super().__init__(gate_names=gate_names, gradient=gradient, desired_values=desired_values, evaluators=evaluators)
@@ -90,6 +96,9 @@ class KalmanSolver(Solver):
 
 
 class KalmanNewtonSolver(KalmanSolver):
+    """
+    Uses the Newton algorithm to compute the voltage steps and the Kalman filter to update the gradient.
+    """
     def __init__(self, gate_names=None, gradient=None, evaluators: Tuple[Evaluator, ...] = (),
                  desired_values: pd.Series = pd.Series(), covariance=None, noise=None, alpha=1.02):
         super().__init__(gate_names=gate_names, gradient=gradient, evaluators=evaluators, desired_values=desired_values,

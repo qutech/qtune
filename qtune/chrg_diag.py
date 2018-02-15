@@ -16,6 +16,11 @@ from qtune.util import find_lead_transition
 
 
 class ChargeDiagram:
+    """
+    The charge diagram is meant to ensure that the charge diagram remains centered. Two gates are used as plunger to
+    shift the energy levels in the dots until a predefined centered position is reached. The influence of the plunger
+    gates on the charge diagrams position is saved a gradient which is updated every step by a Kalman filter.
+    """
     charge_line_scan_lead_A = Measurement('line_scan', center=0., range=4e-3,
                                           gate='RFA', N_points=320,
                                           ramptime=.001,
@@ -27,6 +32,10 @@ class ChargeDiagram:
                                           ramptime=.001,
                                           N_average=7,
                                           AWGorDecaDAC='DecaDAC')
+
+    delta_u_gradient_calculation = 3e-3
+    centering_accuracy = .2e-3
+    centering_plunger_step_size = 3e-3
 
     def __init__(self, dqd: BasicDQD, central_position=np.asarray([-0.15e-3, -0.77e-3]),
                  charge_line_scan_lead_A: Measurement = None,
@@ -68,14 +77,16 @@ class ChargeDiagram:
     def calculate_gradient(self):
         current_gate_voltages = self.dqd.read_gate_voltages()
 
-        BA_eps = pd.Series(3e-3, ['BA'])
-        BB_eps = pd.Series(3e-3, ['BB'])
+        delta_u = self.delta_u_gradient_calculation
 
-        BA_inc = current_gate_voltages.add(BA_eps, fill_value=0)
-        BA_dec = current_gate_voltages.add(-BA_eps, fill_value=0)
+        BA_eps = pd.Series(delta_u, ['BA'])
+        BB_eps = pd.Series(delta_u, ['BB'])
 
-        BB_inc = current_gate_voltages.add(BB_eps, fill_value=0)
-        BB_dec = current_gate_voltages.add(-BB_eps, fill_value=0)
+        BA_inc = current_gate_voltages.add(BA_eps, fill_value=0.)
+        BA_dec = current_gate_voltages.add(-BA_eps, fill_value=0.)
+
+        BB_inc = current_gate_voltages.add(BB_eps, fill_value=0.)
+        BB_dec = current_gate_voltages.add(-BB_eps, fill_value=0.)
 
         self.dqd.set_gate_voltages(BA_inc)
         pos_A_BA_inc, pos_B_BA_inc = self.measure_positions()
@@ -90,10 +101,10 @@ class ChargeDiagram:
         pos_A_BB_dec, pos_B_BB_dec = self.measure_positions()
 
         gradient = np.zeros((2, 2), dtype=float)
-        gradient[0, 0] = (pos_A_BA_inc - pos_A_BA_dec) / 3e-3
-        gradient[0, 1] = (pos_A_BB_inc - pos_A_BB_dec) / 3e-3
-        gradient[1, 0] = (pos_B_BA_inc - pos_B_BA_dec) / 3e-3
-        gradient[1, 1] = (pos_B_BB_inc - pos_B_BB_dec) / 3e-3
+        gradient[0, 0] = (pos_A_BA_inc - pos_A_BA_dec) / delta_u
+        gradient[0, 1] = (pos_A_BB_inc - pos_A_BB_dec) / delta_u
+        gradient[1, 0] = (pos_B_BA_inc - pos_B_BA_dec) / delta_u
+        gradient[1, 1] = (pos_B_BB_inc - pos_B_BB_dec) / delta_u
 
         self.dqd.set_gate_voltages(current_gate_voltages)
 
@@ -105,15 +116,17 @@ class ChargeDiagram:
         self.grad_kalman = GradKalmanFilter(2, 2, initX=initX, initP=initP, initR=initR, alpha=alpha)
 
     def center_diagram(self, remeasure_positions: bool=True):
+        centering_accuracy = self.centering_accuracy
+        centering_step_size = self.centering_plunger_step_size
         if remeasure_positions:
             positions = np.asarray((self.measure_positions()))
         else:
             positions = np.asarray([self.position_lead_A, self.position_lead_B])
-        while np.linalg.norm(positions - self.central_position) > 0.2e-3:
+        while np.linalg.norm(positions - self.central_position) > centering_accuracy:
             current_position = np.asarray((self.position_lead_A, self.position_lead_B))
             du = np.linalg.solve(self.grad_kalman.grad, current_position - self.central_position)
-            if np.linalg.norm(du) > 3e-3:
-                du = du*3e-3/np.linalg.norm(du)
+            if np.linalg.norm(du) > centering_step_size:
+                du = du*centering_step_size/np.linalg.norm(du)
 
             diff = pd.Series(-1*du, ['BA', 'BB'])
             new_gate_voltages = self.dqd.read_gate_voltages().add(diff, fill_value=0)
@@ -125,13 +138,19 @@ class ChargeDiagram:
 
 
 class PredictionChargeDiagram(ChargeDiagram):
+    """
+    Adds a prediction feature to the charge diagram. The prediction charge diagram also tracks the influence of the
+    tunable gates on the qpc and charge diagram positions. The gradient is updated by the Kalman filter. This allows
+    to shift the tunable gates faster.
+    """
     def __init__(self, dqd: BasicDQD, tunable_gates: pd.Series, central_position=np.asarray([-0.15e-3, -0.77e-3]),
-                 charge_line_scan_lead_A: Measurement = None,
-                 charge_line_scan_lead_B: Measurement = None):
+                 charge_line_scan_lead_A: Measurement=None, charge_line_scan_lead_B: Measurement=None):
         super().__init__(dqd=dqd, central_position=central_position, charge_line_scan_lead_A=charge_line_scan_lead_A,
                          charge_line_scan_lead_B=charge_line_scan_lead_B)
         self.tunable_gates = tunable_gates
-        self.grad_kalman_prediction = GradKalmanFilter(nGates=4, nParams=3, initX=np.zeros((3, 4), dtype=float))
+        number_tunable_gates = tunable_gates.size
+        self.grad_kalman_prediction = GradKalmanFilter(nGates=number_tunable_gates, nParams=3,
+                                                       initX=np.zeros((3, 4), dtype=float))
 
     def calculate_prediction_gradient(self, n_repetitions: int=5, delta_u: float=2e-3):
         if self.tunable_gates is None:
@@ -194,6 +213,12 @@ class PredictionChargeDiagram(ChargeDiagram):
                                                        initR=noise, alpha=alpha)
 
     def prediction_center_diagram(self, d_voltages: pd.Series):
+        """
+        First, a prediction step is done to compensate the shift on the qpc, and charge diagram position after setting
+        the tunable gates. Then the charge diagram is centered with the plunger gates.
+        :param d_voltages: Voltage step on the tunable gates
+        :return:
+        """
         for key in d_voltages.index:
             if key not in self.tunable_gates.index:
                 d_voltages = d_voltages.drop(key)

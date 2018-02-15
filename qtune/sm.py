@@ -145,6 +145,10 @@ class SpecialMeasureMatlab:
 
 
 class LegacyDQD(BasicDQD):
+    """
+    Implementation of the means to control a dqd aided by matlab functions. Necessary due to the Matlab legacy and to be
+    replaced by Q-codes.
+    """
     def __init__(self, matlab_instance: SpecialMeasureMatlab):
         super().__init__()
         self._matlab = matlab_instance
@@ -209,6 +213,10 @@ class LegacyDQD(BasicDQD):
 
 
 class LegacyChargeDiagram(ChargeDiagram):
+    """
+    Charge diagram class using Matlab functions to detect lead transitions. Already to be replaced by the python
+    version.
+    """
     def __init__(self, dqd: LegacyDQD,
                  matlab_engine: SpecialMeasureMatlab,
                  charge_line_scan_lead_A: Measurement = None,
@@ -247,6 +255,11 @@ class LegacyChargeDiagram(ChargeDiagram):
 
 
 class SMInterDotTCByLineScan(Evaluator):
+    """
+    Adiabaticly sweeps the detune over the transition between the (2,0) and the (1,1) region. An Scurve is fitted and
+    the width calculated as parameter for the inter dot coupling. Fitted with Matlab functions. Already replaced by a
+    python version.
+    """
     def __init__(self, dqd: BasicDQD, matlab_instance: SpecialMeasureMatlab,
                  parameters: pd.Series() = pd.Series((np.nan, ), ('parameter_tunnel_coupling', )), line_scan: Measurement=None):
         if line_scan is None:
@@ -276,6 +289,11 @@ class SMInterDotTCByLineScan(Evaluator):
 
 
 class SMLeadTunnelTimeByLeadScan(Evaluator):
+    """
+    RF gates pulse over the transition between the (2,0) and the (1,0) region. Then exponential functions are fitted
+    to calculate the time required for an electron to tunnel through the lead. Fitted with Matlab functions. Already
+    replaced by a python version.
+    """
     def __init__(self, dqd: BasicDQD, matlab_instance: SpecialMeasureMatlab,
                  parameters: pd.Series() = pd.Series([np.nan, np.nan], ['parameter_time_rise', 'parameter_time_fall']),
                  lead_scan: Measurement = None):
@@ -303,6 +321,10 @@ class SMLeadTunnelTimeByLeadScan(Evaluator):
 
 
 class SMLoadTime(Evaluator):
+    """
+    Measures the time required to reload a (2,0) singlet state. Fits an exponential function. Fitted with Matlab
+    functions. Already replaced by a python version.
+    """
     def __init__(self, dqd: BasicDQD, matlab_instance: SpecialMeasureMatlab,
                  parameters: pd.Series() = pd.Series([np.nan], ['parameter_time_load']),
                  load_scan: Measurement = None):

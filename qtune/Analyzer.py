@@ -271,21 +271,29 @@ class Analyzer:
         desired_values_pd_concatenated = pd.Series()
         for parameter in self.parameter_names:
             desired_values_pd_concatenated[parameter] = [desired_values_pd_concatenated_temp[parameter]]
-        number_steps = [count_steps_in_sequence(self.root_group["tunerun_" + str(tune_run_numbers[0]) + "/tune_sequence"]) - 1]
+        number_steps = [
+            count_steps_in_sequence(self.root_group["tunerun_" + str(tune_run_numbers[0]) + "/tune_sequence"]) - 1]
         for i in range(1, number_runs):
             desired_values_pd, gate_voltages_sequence_pd, parameters_sequence_pd, gradient_sequence_pd = \
                 self.load_kalman_tune_run(tune_run_number=tune_run_numbers[i])
 
             for gate in self.gate_names:
-                gate_voltages_sequence_pd_concatenated[gate] = np.concatenate([gate_voltages_sequence_pd_concatenated[gate], gate_voltages_sequence_pd[gate]], 0)
+                gate_voltages_sequence_pd_concatenated[gate] = np.concatenate(
+                    [gate_voltages_sequence_pd_concatenated[gate], gate_voltages_sequence_pd[gate]], 0)
 
-            number_steps = np.concatenate([number_steps, [count_steps_in_sequence(self.root_group["tunerun_" + str(tune_run_numbers[i]) + "/tune_sequence"])]], 0)
+            number_steps = np.concatenate([number_steps, [count_steps_in_sequence(
+                self.root_group["tunerun_" + str(tune_run_numbers[i]) + "/tune_sequence"])]], 0)
             for parameter in self.parameter_names:
-                parameters_sequence_pd_concatenated[parameter] = np.concatenate([parameters_sequence_pd_concatenated[parameter], parameters_sequence_pd[parameter]], 0)
+                parameters_sequence_pd_concatenated[parameter] = np.concatenate(
+                    [parameters_sequence_pd_concatenated[parameter], parameters_sequence_pd[parameter]], 0)
 
-                desired_values_pd_concatenated[parameter] = np.concatenate([np.reshape(desired_values_pd_concatenated[parameter], i), np.reshape(desired_values_pd[parameter], 1)], 0)
+                desired_values_pd_concatenated[parameter] = np.concatenate(
+                    [np.reshape(desired_values_pd_concatenated[parameter], i),
+                     np.reshape(desired_values_pd[parameter], 1)], 0)
                 for gate in self.tunable_gate_names:
-                    gradient_sequence_pd_concatenated[gate][parameter] = np.concatenate([gradient_sequence_pd_concatenated[gate][parameter], gradient_sequence_pd[gate][parameter]], 0)
+                    gradient_sequence_pd_concatenated[gate][parameter] = np.concatenate(
+                        [gradient_sequence_pd_concatenated[gate][parameter], gradient_sequence_pd[gate][parameter]],
+                        0)
         plt.figure(1)
         for i in range(1, number_runs):
             number_steps[i] = number_steps[i] + number_steps[i - 1]
@@ -294,42 +302,136 @@ class Analyzer:
         for i in range(number_parameter):
             plt.subplot(number_parameter, 1, i + 1)
             plt.plot(parameters_sequence_pd_concatenated[self.parameter_names[i]], "r")
+            plt.title("Parameters")
             start_desired_val_range = 0.01
-            y_des_val = [desired_values_pd_concatenated[self.parameter_names[i]][0], desired_values_pd_concatenated[self.parameter_names[i]][0]]
+            y_des_val = [desired_values_pd_concatenated[self.parameter_names[i]][0],
+                         desired_values_pd_concatenated[self.parameter_names[i]][0]]
             x_des_val = [start_desired_val_range, number_steps[0]]
             start_desired_val_range = number_steps[0] + 0.01
             for run in range(1, number_runs):
-                y_des_val = np.concatenate([y_des_val, [desired_values_pd_concatenated[self.parameter_names[i]][run], desired_values_pd_concatenated[self.parameter_names[i]][run]]], 0)
+                y_des_val = np.concatenate([y_des_val,
+                                            [desired_values_pd_concatenated[self.parameter_names[i]][run],
+                                             desired_values_pd_concatenated[self.parameter_names[i]][run]]], 0)
                 x_des_val = np.concatenate([x_des_val, [start_desired_val_range, number_steps[run]]], 0)
                 start_desired_val_range = number_steps[run] + 0.01
             plt.plot(x_des_val, y_des_val, "b")
-#            plt.axhline(desired_values_pd[self.parameter_names[i]])
-            for j in range(number_runs):
+            #            plt.axhline(desired_values_pd[self.parameter_names[i]])
+            for j in range(number_runs - 1):
                 plt.axvline(x=number_steps[j])
             plt.ylabel(self.parameter_names[i].decode("ascii"))
             plt.draw()
         figure_number = 2
-        gate_colours = {"BA" : 'b',"BB" : 'g', "N" : 'r',"SA" : 'c',"SB" : 'm',"T" : 'k'}
-        tunable_gate_colours = {"N" : 'r',"SA" : 'c',"SB" : 'm',"T" : 'y'}
+        gate_colours = {"BA": 'b', "BB": 'g', "N": 'r', "SA": 'c', "SB": 'm', "T": 'k'}
+        tunable_gate_colours = {"N": 'r', "SA": 'c', "SB": 'm', "T": 'y'}
         for parameter in self.parameter_names:
             plt.figure(figure_number)
             figure_number += 1
             for gate in self.tunable_gate_names:
-                plt.plot(gradient_sequence_pd_concatenated[gate][parameter], gate_colours[gate.decode("ascii")], label=gate.decode("ascii"))
+                plt.plot(gradient_sequence_pd_concatenated[gate][parameter], gate_colours[gate.decode("ascii")],
+                         label=gate.decode("ascii"))
                 for j in range(number_runs):
-                   plt.axvline(x=number_steps[j])
-            plt.legend(self.tunable_gate_names)
+                    plt.axvline(x=number_steps[j])
+            plt.legend()
+            plt.title("Gradient elements in the line " + parameter.decode("ascii"))
 
         plt.figure(figure_number)
         figure_number += 1
         for gate in self.gate_names:
             for j in range(number_runs):
-                plt.axvline(number_steps[j])
-            plt.plot(gate_voltages_sequence_pd_concatenated[gate] - gate_voltages_sequence_pd_concatenated[gate][0], gate_colours[gate.decode("ascii")], label=gate.decode("ascii"))
-            plt.legend()
-#            plt.legend(self.gate_names)
-            plt.title("Changes in gate voltages")
+                plt.axvline(x=number_steps[j])
+            plt.plot(gate_voltages_sequence_pd_concatenated[gate] - gate_voltages_sequence_pd_concatenated[gate][0],
+                     gate_colours[gate.decode("ascii")], label=gate.decode("ascii"))
+        plt.legend()
+        plt.title("Changes in gate voltages")
 
+    def plot_concatenate_kalman_tune_run_long_run(self, tune_run_numbers):
+        """"""
+        number_runs = len(tune_run_numbers)
+        desired_values_pd_concatenated_temp, gate_voltages_sequence_pd_concatenated, parameters_sequence_pd_concatenated, \
+        gradient_sequence_pd_concatenated = \
+            self.load_kalman_tune_run(tune_run_number=tune_run_numbers[0])
+
+        desired_values_pd_concatenated = pd.Series()
+        for parameter in self.parameter_names:
+            desired_values_pd_concatenated[parameter] = [desired_values_pd_concatenated_temp[parameter]]
+        number_steps = [
+            count_steps_in_sequence(self.root_group["tunerun_" + str(tune_run_numbers[0]) + "/tune_sequence"]) - 1]
+        for i in range(1, number_runs):
+            desired_values_pd, gate_voltages_sequence_pd, parameters_sequence_pd, gradient_sequence_pd = \
+                self.load_kalman_tune_run(tune_run_number=tune_run_numbers[i])
+
+            for gate in self.gate_names:
+                gate_voltages_sequence_pd_concatenated[gate] = np.concatenate(
+                    [gate_voltages_sequence_pd_concatenated[gate], gate_voltages_sequence_pd[gate]], 0)
+
+            number_steps = np.concatenate([number_steps, [count_steps_in_sequence(
+                self.root_group["tunerun_" + str(tune_run_numbers[i]) + "/tune_sequence"])]], 0)
+            for parameter in self.parameter_names:
+                parameters_sequence_pd_concatenated[parameter] = np.concatenate(
+                    [parameters_sequence_pd_concatenated[parameter], parameters_sequence_pd[parameter]], 0)
+
+                desired_values_pd_concatenated[parameter] = np.concatenate(
+                    [np.reshape(desired_values_pd_concatenated[parameter], i),
+                     np.reshape(desired_values_pd[parameter], 1)], 0)
+                for gate in self.tunable_gate_names:
+                    gradient_sequence_pd_concatenated[gate][parameter] = np.concatenate(
+                        [gradient_sequence_pd_concatenated[gate][parameter], gradient_sequence_pd[gate][parameter]],
+                        0)
+        plt.figure(1)
+        for i in range(1, number_runs):
+            number_steps[i] = number_steps[i] + number_steps[i - 1]
+        print(number_steps)
+        number_parameter = len(self.parameter_names)
+        for i in range(number_parameter):
+            plt.subplot(number_parameter, 1, i + 1)
+            plt.plot(parameters_sequence_pd_concatenated[self.parameter_names[i]], "r")
+            plt.title("Parameters")
+            start_desired_val_range = 0.01
+            y_des_val = [desired_values_pd_concatenated[self.parameter_names[i]][0],
+                         desired_values_pd_concatenated[self.parameter_names[i]][0]]
+            x_des_val = [start_desired_val_range, number_steps[0]]
+            start_desired_val_range = number_steps[0] + 0.01
+            for run in range(1, number_runs):
+                y_des_val = np.concatenate([y_des_val,
+                                            [desired_values_pd_concatenated[self.parameter_names[i]][run],
+                                             desired_values_pd_concatenated[self.parameter_names[i]][run]]], 0)
+                x_des_val = np.concatenate([x_des_val, [start_desired_val_range, number_steps[run]]], 0)
+                start_desired_val_range = number_steps[run] + 0.01
+            plt.plot(x_des_val, y_des_val, "b")
+            #            plt.axhline(desired_values_pd[self.parameter_names[i]])
+            for j in range(number_runs - 1):
+                if j != 1:
+                    plt.axvline(x=number_steps[j])
+                    #                plt.axvline(x=number_steps[j])
+            plt.ylabel(self.parameter_names[i].decode("ascii"))
+            plt.draw()
+        figure_number = 2
+        gate_colours = {"BA": 'b', "BB": 'g', "N": 'r', "SA": 'c', "SB": 'm', "T": 'k'}
+        tunable_gate_colours = {"N": 'r', "SA": 'c', "SB": 'm', "T": 'y'}
+        for parameter in self.parameter_names:
+            plt.figure(figure_number)
+            figure_number += 1
+            for gate in self.tunable_gate_names:
+                plt.plot(gradient_sequence_pd_concatenated[gate][parameter], gate_colours[gate.decode("ascii")],
+                         label=gate.decode("ascii"))
+                for j in range(number_runs):
+                    if j != 1:
+                        plt.axvline(x=number_steps[j])
+                        #                plt.axvline(x=number_steps[j])
+            plt.legend()
+            plt.title("Gradient elements in the line " + parameter.decode("ascii"))
+
+        plt.figure(figure_number)
+        figure_number += 1
+        for gate in self.gate_names:
+            for j in range(number_runs):
+                if j != 1:
+                    plt.axvline(x=number_steps[j])
+                    #                plt.axvline(x=number_steps[j])
+            plt.plot(gate_voltages_sequence_pd_concatenated[gate] - gate_voltages_sequence_pd_concatenated[gate][0],
+                     gate_colours[gate.decode("ascii")], label=gate.decode("ascii"))
+        plt.legend()
+        plt.title("Changes in gate voltages")
 
     def load_raw_measurement_pd(self, step_group):
         raw_measurement_pd = pd.Series()

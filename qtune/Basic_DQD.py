@@ -6,6 +6,10 @@ from qtune.experiment import Experiment, Measurement
 
 
 class BasicDQD(Experiment):
+    """
+    The BasicDQD class implements the characteristics of a double quantum dot experiment. It saves the default scans
+    which are useful for fine tuning any double quantum dot.
+    """
     default_line_scan = Measurement('line_scan',
                                     center=0., range=3e-3, gate='RFA', N_points=1280, ramptime=.0005,
                                     N_average=3, AWGorDecaDAC='DecaDAC')
@@ -27,6 +31,9 @@ class BasicDQD(Experiment):
 
 
 class TestDQD(BasicDQD):
+    """
+    A test version for dry runs and debugging. Experimental data is simulated.
+    """
     def __init__(self, initial_voltages=None, gate_names=None):
         if initial_voltages is None:
             initial_voltages = [1., 1., 1., 1., 1., 1., 0., 0.]

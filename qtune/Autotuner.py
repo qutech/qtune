@@ -13,7 +13,11 @@ from qtune.sm import LegacyDQD
 from qtune.GradKalman import GradKalmanFilter
 from qtune.Evaluator import Evaluator
 
+
 class Autotuner:
+    """
+    The auto tuner class combines the evaluator and solver classes to tune an experiment.
+    """
     def __init__(self, experiment: Experiment, solver: Solver = None, evaluators: Tuple[Evaluator, ...] = (),
                  desired_values: pd.Series = pd.Series(), tuning_accuracy: pd.Series = pd.Series(),
                  data_directory: str = ''):
@@ -144,6 +148,12 @@ class Autotuner:
 
     def evaluate_gradient_covariance_noise(self, delta_u=4e-3, n_repetitions=3) -> Tuple[
         pd.DataFrame, pd.DataFrame, pd.Series]:
+        """
+        Estimates the gradient with finite differences and computes estimates for the covariance and noise.
+        :param delta_u: difference in the finite differences
+        :param n_repetitions: number of times the finite differences are measured and computed
+        :return:
+        """
         self.gradient_number += 1
         self.login_savefile()
         gradient_group = self.current_tunerun_group.create_group("gradient_setup_" + str(self.gradient_number))
@@ -253,6 +263,9 @@ class Autotuner:
 
 
 class ChargeDiagramAutotuner(Autotuner):
+    """
+    The charge diagram auto tuner is written for experiments who require a charge diagram, to be centered.
+    """
     def __init__(self, dqd: BasicDQD, solver: Solver = None, evaluators: Tuple[Evaluator, ...] = (),
                  desired_values: pd.Series = pd.Series(), tuning_accuracy: pd.Series = pd.Series(),
                  charge_diagram_gradient=None, charge_diagram_covariance=None, charge_diagram_noise=None,
@@ -343,6 +356,10 @@ class ChargeDiagramAutotuner(Autotuner):
 
 
 class CDKalmanAutotuner(ChargeDiagramAutotuner):
+    """
+    A charge diagram auto tuner which is written for solver using the Kalman filter (who need voltage information for
+    an update).
+    """
     def __init__(self, dqd: LegacyDQD, solver: Solver = None, evaluators: Tuple[Evaluator, ...] = (),
                  desired_values: pd.Series = pd.Series(), tuning_accuracy: pd.Series = pd.Series(),
                  charge_diagram_gradient=None, charge_diagram_covariance=None, charge_diagram_noise=None,
@@ -363,6 +380,23 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
                    desired_values: pd.Series = pd.Series(), gradient_std: pd.DataFrame = None,
                    evaluation_std: pd.Series = None, alpha=1.02, load_data=False, filename: str = None,
                    filepath: str = "tunerun_0/gradient_setup_1", tuning_accuracy: pd.Series = pd.Series()):
+        """
+        Adds a solver to the auto tuner.
+        :param kalman_solver: The solver to be added
+        :param gradient: the gradient matrix
+        :param evaluators: List of evaluators, if they have not been added yet
+        :param desired_values: The target values of the tune run
+        :param gradient_std:  The standard deviation of the matrix elements
+        :param evaluation_std: The standard deviation of the evaluators
+        :param alpha: memory loss factor. If alpha is set to 1 there is no memory loss. If alpha is greater then one
+        the Covariance rises accordingly
+        :param load_data: True if the gradient data shall be loaded
+        :param filename: The name of the HDF5 file out of which the data shall be laoded
+        :param filepath: The position of the gradient, covariance and noise in the HDF5 library
+        :param tuning_accuracy: Termination condition of the autotuner. The algorithm stops if the parameters are within
+        the tuning_accuracy of the desired_values.
+        :return:
+        """
         self.login_savefile()
         if len(tuning_accuracy.index) != 0:
             self.tuning_accuracy = tuning_accuracy.sort_index()
@@ -406,6 +440,18 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
     def load_step_set_solver(self, kalman_solver: KalmanSolver,  desired_values: pd.Series = None,
                              alpha=1.02, filename: str = None,
                              tuning_accuracy: pd.Series = pd.Series(), tune_run_numer: int=1, step_number: int=1):
+        """
+        Not implemented yet!
+        This function loads the configurations of an autotuner at a specific step.
+        :param kalman_solver:
+        :param desired_values:
+        :param alpha:
+        :param filename:
+        :param tuning_accuracy:
+        :param tune_run_numer:
+        :param step_number:
+        :return:
+        """
         filepath = "tunerun_" + str(tune_run_numer) + "/step_" + step_number
         root_group = h5py.File(filename, 'r')
         gate_voltages = pd.Series(data=root_group[filepath + "/gate_voltages"][:], index=self.gates.index)
@@ -420,6 +466,19 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
                                      heuristic_measurement: bool=False, n_repetitions: int=5, delta_u: float=2e-3,
                                      filename: str=None, filepath: str = "tunerun_0/charge_diagram_1/predictor",
                                      load_file: bool=False):
+        """
+        Initialises the Kalman filter for the prediction gradient of the prediction charge diagram class.
+        :param prediction_gradient: numpy array, gradient matrix if one has already been computed
+        :param prediction_covariance: numpy array, covariance matrix if one has already been computed
+        :param prediction_noise: numpy array, noise matrix if one has already been computed
+        :param heuristic_measurement: True if the gradient shall be calculated
+        :param n_repetitions: number of times the finite differences are computed
+        :param delta_u: voltage distance of finite differences
+        :param filename: If the gradient is to be loaded, it will be loaded from this file.
+        :param filepath: The path of the HDF5 file where the gradient is found
+        :param load_file: True if the gradient shall be loaded.
+        :return:
+        """
         self.login_savefile()
         if heuristic_measurement:
             gradient_pd, gradient_std_pd, measurement_std_pd = self.charge_diagram.calculate_prediction_gradient(
@@ -444,8 +503,17 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
                                                          noise=prediction_noise)
         self.logout_of_savefile()
 
-
     def evaluate_gradient_min_cov(self, delta_u=5e-3, n_steps=10, n_noise=5):
+        """
+        Alternative function calculating the gradient by minimising the covariance matrix. First the parameters are
+        evaluated n_noise times to calculate the standard deviation of the measurements. Then the gradient is updated
+        by steps in direction of the 'greatest uncertainty', the eigenvector of the covariance matrix with the largest
+        eigenvalue.
+        :param delta_u: distance in the minimisation steps
+        :param n_steps: number of minimisation steps
+        :param n_noise: number of noise measurements
+        :return:
+        """
         self.gradient_number += 1
         self.login_savefile()
         gradient_group = self.current_tunerun_group.create_group("gradient_setup_" + str(self.gradient_number))
@@ -475,12 +543,12 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
                     print(parameter)
                     print("We are trying to load it from:")
                     print(evaluation_result)
-                    print("and we want to savi it in")
-                    print(positive_detune_parameter)
+                    print("and we want to save it in")
+                    print(parameter_for_noise)
                     print("at position")
                     print(i)
                     x = input("since this wasnt possible, we will save nan. type anything to continue!")
-                    (positive_detune_parameter[result])[i] = np.nan
+                    (parameter_for_noise[parameter])[i] = np.nan
         parameter_mean = pd.Series(index=self.parameters.index)
         parameter_std = pd.Series(index=self.parameters.index)
         for parameter in self.parameters.index:
@@ -557,6 +625,14 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
             self.set_gate_voltages(new_voltages=new_voltages)
 
     def autotune(self, number_steps=1000, step_size: float=10e-3, supervised: bool=False) -> bool:
+        """
+        The actual fine tuning algorithm. One step consists of evaluating the parameters and changing the gate
+        voltages accordingly.
+        :param number_steps: The maximal number of steps to be done by the auto tuner
+        :param step_size: The maximal size of one change in gate voltages
+        :param supervised: Enables the 'supervised mod' where the user can change every step, the program wants to go.
+        :return:
+        """
         self.login_savefile()
         counter = 0
         if not self.ready_to_tune():

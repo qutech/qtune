@@ -10,6 +10,9 @@ import matplotlib.pyplot as plt
 
 
 class Evaluator:
+    """
+    The evaluator classes conduct measurements, calculate the parameters with the scan data and save the results in the HDF5 library.
+    """
     def __init__(self, experiment: Experiment, measurements: Tuple[Measurement, ...], parameters: pd.Series):
         self.experiment = experiment
         self.measurements = measurements
@@ -33,6 +36,10 @@ class TestEvaluator(Evaluator):
 
 
 class LeadTunnelTimeByLeadScan(Evaluator):
+    """
+    RF gates pulse over the transition between the (2,0) and the (1,0) region. Then exponential functions are fitted
+    to calculate the time required for an electron to tunnel through the lead.
+    """
     def __init__(self, dqd: BasicDQD,
                  parameters: pd.Series() = pd.Series([np.nan, np.nan], ['parameter_time_rise', 'parameter_time_fall']),
                  lead_scan: Measurement = None):
@@ -64,6 +71,10 @@ class LeadTunnelTimeByLeadScan(Evaluator):
 
 
 class InterDotTCByLineScan(Evaluator):
+    """
+    Adiabaticly sweeps the detune over the transition between the (2,0) and the (1,1) region. An Scurve is fitted and
+    the width calculated as parameter for the inter dot coupling.
+    """
     def __init__(self, dqd: BasicDQD, parameters: pd.Series() = pd.Series((np.nan,), ('parameter_tunnel_coupling',)),
                  line_scan: Measurement = None):
         if line_scan is None:
@@ -95,6 +106,9 @@ class InterDotTCByLineScan(Evaluator):
 
 
 class LoadTime(Evaluator):
+    """
+    Measures the time required to reload a (2,0) singlet state. Fits an exponential function.
+    """
     def __init__(self, dqd: BasicDQD, parameters: pd.Series() = pd.Series((np.nan,), ('parameter_time_load',)),
                  load_scan: Measurement = None):
         if load_scan is None:
