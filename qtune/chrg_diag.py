@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from typing import Tuple
 from qtune.experiment import Measurement
-from qtune.Basic_DQD import BasicDQD
+from qtune.basic_dqd import BasicDQD
 from qtune.GradKalman import GradKalmanFilter
 from qtune.util import find_lead_transition
 

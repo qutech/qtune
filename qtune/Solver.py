@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from typing import Tuple
 from qtune.GradKalman import GradKalmanFilter
-from qtune.Evaluator import Evaluator
+from qtune.evaluator import Evaluator
 
 
 class Solver:

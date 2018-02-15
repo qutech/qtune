@@ -6,12 +6,12 @@ import math
 from typing import Tuple
 from qtune.util import time_string
 from qtune.experiment import Experiment
-from qtune.Solver import Solver, KalmanSolver
-from qtune.Basic_DQD import BasicDQD
+from qtune.solver import Solver, KalmanSolver
+from qtune.basic_dqd import BasicDQD
 from qtune.chrg_diag import ChargeDiagram, PredictionChargeDiagram
 from qtune.sm import LegacyDQD
 from qtune.GradKalman import GradKalmanFilter
-from qtune.Evaluator import Evaluator
+from qtune.evaluator import Evaluator
 
 
 class Autotuner:

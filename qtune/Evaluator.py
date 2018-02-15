@@ -1,5 +1,5 @@
 from qtune.experiment import Experiment, Measurement
-from qtune.Basic_DQD import TestDQD, BasicDQD
+from qtune.basic_dqd import TestDQD, BasicDQD
 import qtune.chrg_diag
 from typing import Tuple
 import pandas as pd

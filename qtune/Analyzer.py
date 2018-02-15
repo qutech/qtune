@@ -4,7 +4,7 @@ import h5py
 from scipy import optimize
 from qtune.util import find_lead_transition
 import matplotlib.pyplot as plt
-import qtune.Evaluator
+import qtune.evaluator
 
 known_evaluators = pd.Series([["parameter_tunnel_coupling"], ["parameter_time_rise", "parameter_time_fall"]],
                              ["evaluator_SMInterDotTCByLineScan", "evaluator_SMLeadTunnelTimeByLeadScan"])
