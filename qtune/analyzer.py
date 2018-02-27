@@ -5,6 +5,7 @@ from scipy import optimize
 from qtune.util import find_lead_transition
 import matplotlib.pyplot as plt
 import qtune.evaluator
+from qtune.GradKalman import GradKalmanFilter
 
 known_evaluators = pd.Series([["parameter_tunnel_coupling"], ["parameter_time_rise", "parameter_time_fall"]],
                              ["evaluator_SMInterDotTCByLineScan", "evaluator_SMLeadTunnelTimeByLeadScan"])
@@ -117,7 +118,7 @@ class Analyzer:
             gradient_pd = self.load_gradient_pd(gradient_number=counter, tune_run_number=tune_run_number)
             for parameter in self.parameter_names:
                 for gate in self.tunable_gate_names:
-                    gradient_sequence_pd[gate][parameter][counter] = gradient_pd[gate][parameter]
+                    gradient_sequence_pd[gate][parameter][counter-start] = gradient_pd[gate][parameter]
         return gradient_sequence_pd
 
     def load_noise_from_gradient_pd(self, tune_run_number=1, gradient_number: int=1):
@@ -140,13 +141,22 @@ class Analyzer:
             figure_number += 1
             for gate in self.tunable_gate_names:
                 if with_covariance:
-                    plt.errorbar(x=list(range(start, end)), y=gradient_sequence_pd[gate][parameter],
-                                 yerr=np.sqrt(covariance_sequence_pd[parameter.decode("ascii") + "_" + gate.decode("ascii")][
+                    plt.errorbar(x=list(range(start, end)), y=1e-3 * gradient_sequence_pd[gate][parameter],
+                                 yerr=1e-3 * np.sqrt(covariance_sequence_pd[parameter.decode("ascii") + "_" + gate.decode("ascii")][
                                      parameter.decode("ascii") + "_" + gate.decode("ascii")]))
+                    plt.ylabel(gradient_plot_ylabel(parameter.decode("ascii")), fontsize=22)
+                    plt.xlabel("Measurement Number", fontsize=22)
+                    plt.gca().tick_params("x", labelsize=22)
+                    plt.gca().tick_params("y", labelsize=22)
+                    fig = plt.gcf()
+                    fig.set_size_inches(9.5, 8)
                 else:
                     plt.plot(gradient_sequence_pd[gate][parameter])
-            plt.legend([gate_name.decode("ascii") for gate_name in self.tunable_gate_names])
-            plt.title(parameter.decode("ascii"))
+            plt.legend([gate_name.decode("ascii") for gate_name in self.tunable_gate_names], fontsize=22)
+            plt.title(
+                "Gradient elements in the line " + parameter_plot_name(parameter.decode("ascii"),
+                                                                       with_unit=False),
+                fontsize=24)
             plt.show()
 
     def load_covariance_sequence_pd(self, tune_run_number=1, start: int=0, end: int=None):
@@ -172,7 +182,7 @@ class Analyzer:
                             index_number = gate + parameter * len(self.tunable_gate_names)
                             index_number2 = gate2 + parameter2 * len(self.tunable_gate_names)
                             covariance_sequence_pd[covariance_index[index_number2]][covariance_index[index_number]][
-                                step] = heuristic_covariance[index_number, index_number2]
+                                step - start] = heuristic_covariance[index_number, index_number2]
         return covariance_sequence_pd
 
     def load_gate_voltages_and_parameters(self, data_group: h5py.Group) -> (pd.Series, pd.Series):
@@ -215,9 +225,9 @@ class Analyzer:
             gate_voltages_pd, parameters_pd = self.load_gate_voltages_and_parameters(
                 tune_sequence_group["step_" + str(counter)])
             for gate in self.gate_names:
-                gate_voltages_sequence_pd[gate][counter] = gate_voltages_pd[gate]
+                gate_voltages_sequence_pd[gate][counter - start] = gate_voltages_pd[gate]
             for parameter in self.parameter_names:
-                parameters_sequence_pd[parameter][counter] = parameters_pd[parameter]
+                parameters_sequence_pd[parameter][counter - start] = parameters_pd[parameter]
         return gate_voltages_sequence_pd, parameters_sequence_pd
 
     def load_desired_values(self, tune_run_number):
@@ -249,7 +259,14 @@ class Analyzer:
                                       np.sqrt(noise_pd[self.parameter_names[i]][self.parameter_names[i]])))
 #            plt.plot(parameters_sequence_pd[self.parameter_names[i]], "r")
             plt.axhline(desired_values_pd[self.parameter_names[i]])
-            plt.ylabel(self.parameter_names[i].decode("ascii"))
+            if i == 0:
+                plt.title("Parameters", fontsize=24)
+            plt.ylabel(parameter_plot_name(self.parameter_names[i].decode("ascii")), fontsize=22)
+            plt.gca().tick_params("x", labelsize=22)
+            plt.gca().tick_params("y", labelsize=22)
+        plt.xlabel("Measurement Number", fontsize=22)
+        fig = plt.gcf()
+        fig.set_size_inches(8.5, 8)
         plt.figure(2)
         for gate in self.gate_names:
             plt.plot(gate_voltages_sequence_pd[gate])
@@ -262,13 +279,94 @@ class Analyzer:
         plt.show()
         return
 
-    def plot_concatenate_kalman_tune_run(self, tune_run_numbers):
+    def calculate_kalman_gradient(self, gate_voltages_sequence_pd, parameters_sequence_pd, initial_grad, initial_cov,
+                                  initial_noise, number_steps, alpha, with_relative_error=False, relative_error=0.0004,
+                                  residuals=None):
+        kalman = GradKalmanFilter(self.tunable_gate_names.size, self.parameter_names.size, initX=initial_grad,
+                                  initP=initial_cov, initR=initial_noise, alpha=alpha)
+        covariance_index = []
+        for parameter in self.parameter_names:
+            for gate in self.tunable_gate_names:
+                covariance_index += [parameter.decode("ascii") + "_" + gate.decode("ascii")]
+        gradient_sequence_pd = pd.DataFrame(index=self.parameter_names, columns=self.tunable_gate_names)
+        covariance_sequence_pd = pd.DataFrame(index=covariance_index, columns=covariance_index)
+        for gate in self.tunable_gate_names:
+            for parameter in self. parameter_names:
+                gradient_sequence_pd[gate][parameter] = np.zeros((number_steps + 1, ))
+
+        for cov_index1 in covariance_index:
+            for cov_index2 in covariance_index:
+                covariance_sequence_pd[cov_index1][cov_index2] = np.zeros((number_steps + 1, ))
+        d_voltage_pd = pd.Series()
+        d_parameters_pd = pd.Series()
+        for i in range(number_steps):
+
+            gradient_pd_temp = pd.DataFrame(kalman.grad, index=self.parameter_names,
+                                                     columns=self.tunable_gate_names)
+            covariance_pd_temp = pd.DataFrame(kalman.cov, index=covariance_index, columns=covariance_index)
+
+            for gate in self.tunable_gate_names:
+                for parameter in self.parameter_names:
+                    gradient_sequence_pd[gate][parameter][i] = gradient_pd_temp[gate][parameter]
+
+            for cov_index1 in covariance_index:
+                for cov_index2 in covariance_index:
+                    covariance_sequence_pd[cov_index1][cov_index2][i] = covariance_pd_temp[cov_index1][
+                        cov_index2]
+
+            for gate in self.tunable_gate_names:
+                d_voltage_pd[gate] = gate_voltages_sequence_pd[gate][i+1] - gate_voltages_sequence_pd[gate][i]
+            for parameter in self.parameter_names:
+                d_parameters_pd[parameter] = parameters_sequence_pd[parameter][i + 1] - \
+                                             parameters_sequence_pd[parameter][i]
+            d_voltage_pd = d_voltage_pd.sort_index()
+            d_parameters_pd = d_parameters_pd.sort_index()
+
+
+
+            if with_relative_error:
+                r = np.copy(kalman.filter.R)
+                expected_d_parameter = np.dot(kalman.grad, d_voltage_pd.as_matrix())
+                for j in range(self.parameter_names.size):
+                    r[j, j] += relative_error * parameters_sequence_pd[j][i + 1] * parameters_sequence_pd[j][i + 1] \
+                               + .0025 * (d_parameters_pd[j] - expected_d_parameter[j]) * (
+                    d_parameters_pd[j] - expected_d_parameter[j])
+                kalman.update(d_voltage_pd.as_matrix(), d_parameters_pd.as_matrix(), R=r, hack=False)
+            elif residuals is not None:
+                r = np.copy(kalman.filter.R)
+                residuals = residuals.sort_index()
+                for j in range(self.parameter_names.size):
+                    r[j, j] += 2e7 * residuals[j][i + 1]
+                kalman.update(d_voltage_pd.as_matrix(), d_parameters_pd.as_matrix(), R=r, hack=False)
+            else:
+                kalman.update(d_voltage_pd.as_matrix(), d_parameters_pd.as_matrix(), hack=False)
+
+        gradient_pd_temp = pd.DataFrame(kalman.grad, index=self.parameter_names,
+                                                 columns=self.tunable_gate_names)
+        covariance_pd_temp = pd.DataFrame(kalman.cov, index=covariance_index, columns=covariance_index)
+
+        for gate in self.tunable_gate_names:
+            for parameter in self.parameter_names:
+                gradient_sequence_pd[gate][parameter][number_steps] = gradient_pd_temp[gate][parameter]
+
+        for cov_index1 in covariance_index:
+            for cov_index2 in covariance_index:
+                covariance_sequence_pd[cov_index1][cov_index2][number_steps] = covariance_pd_temp[cov_index1][
+                    cov_index2]
+
+        return gradient_sequence_pd, covariance_sequence_pd
+
+    def plot_concatenate_kalman_tune_run(self, tune_run_numbers, with_covariance=True, with_offset=True,
+                                         recalculate_gradient=True, alpha=1.02, recalculate_parameters=True):
         number_runs = len(tune_run_numbers)
         desired_values_pd_concatenated_temp, gate_voltages_sequence_pd_concatenated, parameters_sequence_pd_concatenated, \
         gradient_sequence_pd_concatenated = \
             self.load_kalman_tune_run(tune_run_number=tune_run_numbers[0])
-
+        covariance_sequence_pd_concatenated = self.load_covariance_sequence_pd(tune_run_number=tune_run_numbers[0])
         desired_values_pd_concatenated = pd.Series()
+        if recalculate_parameters:
+            parameters_sequence_pd_concatenated, residuals_pd_concatenated = self.recalculate_parameters(
+                tune_run_numbers[0])
         for parameter in self.parameter_names:
             desired_values_pd_concatenated[parameter] = [desired_values_pd_concatenated_temp[parameter]]
         number_steps = [
@@ -276,7 +374,12 @@ class Analyzer:
         for i in range(1, number_runs):
             desired_values_pd, gate_voltages_sequence_pd, parameters_sequence_pd, gradient_sequence_pd = \
                 self.load_kalman_tune_run(tune_run_number=tune_run_numbers[i])
-
+            covariance_sequence_pd = self.load_covariance_sequence_pd(tune_run_number=tune_run_numbers[i])
+            if recalculate_parameters:
+                parameters_sequence_pd, residuals_pd = self.recalculate_parameters(tune_run_numbers[i])
+                for parameter in self.parameter_names:
+                    residuals_pd_concatenated[parameter] = np.concatenate(
+                        [residuals_pd_concatenated[parameter], residuals_pd[parameter]], 0)
             for gate in self.gate_names:
                 gate_voltages_sequence_pd_concatenated[gate] = np.concatenate(
                     [gate_voltages_sequence_pd_concatenated[gate], gate_voltages_sequence_pd[gate]], 0)
@@ -294,15 +397,88 @@ class Analyzer:
                     gradient_sequence_pd_concatenated[gate][parameter] = np.concatenate(
                         [gradient_sequence_pd_concatenated[gate][parameter], gradient_sequence_pd[gate][parameter]],
                         0)
-        plt.figure(1)
+                    covariance_sequence_pd_concatenated[parameter.decode("ascii") + "_" + gate.decode("ascii")]\
+                    [parameter.decode("ascii") + "_" + gate.decode("ascii")] = \
+                        np.concatenate([covariance_sequence_pd_concatenated\
+                        [parameter.decode("ascii") + "_" + gate.decode("ascii")]
+                        [parameter.decode("ascii") + "_" + gate.decode("ascii")],
+                        covariance_sequence_pd[parameter.decode("ascii") + "_" + gate.decode("ascii")]\
+                        [parameter.decode("ascii") + "_" + gate.decode("ascii")]], 0)
+
         for i in range(1, number_runs):
             number_steps[i] = number_steps[i] + number_steps[i - 1]
+
+        gate_colours = {"BA": 'b', "BB": 'g', "N": 'r', "SA": 'c', "SB": 'm', "T": 'k'}
+        tunable_gate_colours = {"N": 'r', "SA": 'c', "SB": 'm', "T": 'k'}
+
+        if recalculate_gradient:
+            initial_gradient, initial_heuristic_covariance, initial_heuristic_noise = self.load_gradient_setup(
+                gradient_number=1, tune_run_number=0)
+#            initial_heuristic_covariance = 5. * initial_heuristic_covariance
+            if recalculate_parameters:
+                gradient_sequence_pd_recalculated, covariance_sequence_pd_recalculated = self.calculate_kalman_gradient(
+                    gate_voltages_sequence_pd_concatenated, parameters_sequence_pd_concatenated, initial_grad=initial_gradient,
+                    initial_cov=initial_heuristic_covariance, initial_noise=initial_heuristic_noise,
+                    number_steps=number_steps[number_runs-1], alpha=alpha, residuals=residuals_pd_concatenated)
+            else:
+                gradient_sequence_pd_recalculated, covariance_sequence_pd_recalculated = self.calculate_kalman_gradient(
+                    gate_voltages_sequence_pd_concatenated, parameters_sequence_pd_concatenated,
+                    initial_grad=initial_gradient,
+                    initial_cov=initial_heuristic_covariance, initial_noise=initial_heuristic_noise,
+                    number_steps=number_steps[number_runs - 1], alpha=alpha)
+
+            figure_number = 30
+            for parameter in self.parameter_names:
+                plt.figure(figure_number)
+                figure_number += 1
+                for gate in self.tunable_gate_names:
+                    plt.errorbar(x=list(range(number_steps[number_runs - 1] + 1)),
+                                 y=1e-3 * gradient_sequence_pd_recalculated[gate][parameter],
+                                 yerr=1e-3 * np.sqrt(
+                                     covariance_sequence_pd_recalculated[
+                                         parameter.decode("ascii") + "_" + gate.decode("ascii")][
+                                         parameter.decode("ascii") + "_" + gate.decode("ascii")]),
+                                 label=gate.decode("ascii"), color=tunable_gate_colours[gate.decode("ascii")])
+                    plt.gca().tick_params("x", labelsize=16)
+                    plt.gca().tick_params("y", labelsize=16)
+#                    plt.xlim(-2, 20)
+#                    plt.ylim(-20, 3)
+                    plt.title(
+                        "Recalculated gradient row: " + parameter_plot_name(
+                            parameter.decode("ascii"), with_unit=False) + r"; with $\alpha = $" + str(alpha),
+                        fontsize=18)
+                    for j in range(number_runs - 1):
+                        if j != 1:
+                            plt.axvline(x=number_steps[j])
+                    plt.legend(fontsize=16)
+                    plt.ylabel(gradient_plot_ylabel(parameter.decode("ascii")), fontsize=16)
+                    plt.xlabel("Measurement Number", fontsize=16)
+                    fig = plt.gcf()
+                    fig.set_size_inches(9.5, 8)
+        figure_number = 1
+        plt.figure(figure_number)
+
         print(number_steps)
         number_parameter = len(self.parameter_names)
         for i in range(number_parameter):
+            if recalculate_parameters:
+                plt.figure(figure_number + 1)
+                plt.subplot(number_parameter, 1, i + 1)
+                plt.plot(residuals_pd_concatenated[self.parameter_names[i]], "r")
+                if i == 0:
+                    plt.title("Residuals", fontsize=18)
+                for j in range(number_runs - 1):
+                    if j != 1:
+                        plt.axvline(x=number_steps[j])
+                plt.ylabel(parameter_plot_name(self.parameter_names[i].decode("ascii")), fontsize=16)
+
+            plt.figure(figure_number)
             plt.subplot(number_parameter, 1, i + 1)
             plt.plot(parameters_sequence_pd_concatenated[self.parameter_names[i]], "r")
-            plt.title("Parameters")
+            plt.gca().tick_params("x", labelsize=16)
+            plt.gca().tick_params("y", labelsize=16)
+            if i == 0:
+                plt.title("Parameters", fontsize=18)
             start_desired_val_range = 0.01
             y_des_val = [desired_values_pd_concatenated[self.parameter_names[i]][0],
                          desired_values_pd_concatenated[self.parameter_names[i]][0]]
@@ -315,34 +491,116 @@ class Analyzer:
                 x_des_val = np.concatenate([x_des_val, [start_desired_val_range, number_steps[run]]], 0)
                 start_desired_val_range = number_steps[run] + 0.01
             plt.plot(x_des_val, y_des_val, "b")
-            #            plt.axhline(desired_values_pd[self.parameter_names[i]])
             for j in range(number_runs - 1):
-                plt.axvline(x=number_steps[j])
-            plt.ylabel(self.parameter_names[i].decode("ascii"))
-            plt.draw()
-        figure_number = 2
-        gate_colours = {"BA": 'b', "BB": 'g', "N": 'r', "SA": 'c', "SB": 'm', "T": 'k'}
-        tunable_gate_colours = {"N": 'r', "SA": 'c', "SB": 'm', "T": 'y'}
+                if j != 1:
+                    plt.axvline(x=number_steps[j])
+            plt.ylabel(parameter_plot_name(self.parameter_names[i].decode("ascii")), fontsize=16)
+        plt.xlabel("Measurement Number", fontsize=16)
+        fig = plt.gcf()
+        fig.set_size_inches(8.5, 8)
+        plt.draw()
+
+        figure_number += 2
+
         for parameter in self.parameter_names:
             plt.figure(figure_number)
             figure_number += 1
             for gate in self.tunable_gate_names:
-                plt.plot(gradient_sequence_pd_concatenated[gate][parameter], gate_colours[gate.decode("ascii")],
-                         label=gate.decode("ascii"))
+                if with_covariance:
+                    plt.errorbar(x=list(range(number_steps[number_runs - 1] + 1)), y=1e-3 * gradient_sequence_pd_concatenated[gate][parameter],
+                                 yerr=1e-3 * np.sqrt(
+                                     covariance_sequence_pd_concatenated[parameter.decode("ascii") + "_" + gate.decode("ascii")][
+                                         parameter.decode("ascii") + "_" + gate.decode("ascii")]),
+                                label=gate.decode("ascii"), color=tunable_gate_colours[gate.decode("ascii")])
+                    plt.gca().tick_params("x", labelsize=16)
+                    plt.gca().tick_params("y", labelsize=16)
+
+#                    plt.xlim(-2, 20)
+#                    plt.ylim(-20, 3)
+
+                else:
+                    plt.plot(gradient_sequence_pd_concatenated[gate][parameter], gate_colours[gate.decode("ascii")],
+                             label=gate.decode("ascii"))
+                    plt.gca().tick_params("x", labelsize=16)
+                    plt.gca().tick_params("y", labelsize=16)
+
                 for j in range(number_runs):
-                    plt.axvline(x=number_steps[j])
+                    if j != 1:
+                        plt.axvline(x=number_steps[j])
             plt.legend()
-            plt.title("Gradient elements in the line " + parameter.decode("ascii"))
+            plt.title(
+                "Gradient elements in the matrix row: " + parameter_plot_name(parameter.decode("ascii"), with_unit=False),
+                fontsize=18)
+            plt.legend(fontsize=16)
+            plt.ylabel(gradient_plot_ylabel(parameter.decode("ascii")), fontsize=16)
+            plt.xlabel("Measurement Number", fontsize=16)
+            fig = plt.gcf()
+            fig.set_size_inches(9.5, 8)
 
         plt.figure(figure_number)
         figure_number += 1
+        offset = 0.
         for gate in self.gate_names:
             for j in range(number_runs):
-                plt.axvline(x=number_steps[j])
-            plt.plot(gate_voltages_sequence_pd_concatenated[gate] - gate_voltages_sequence_pd_concatenated[gate][0],
-                     gate_colours[gate.decode("ascii")], label=gate.decode("ascii"))
-        plt.legend()
-        plt.title("Changes in gate voltages")
+                if j != 1:
+                    plt.axvline(x=number_steps[j])
+            if with_offset:
+                plt.plot(1000. * (
+                gate_voltages_sequence_pd_concatenated[gate] - gate_voltages_sequence_pd_concatenated[gate][0] +
+                offset), gate_colours[gate.decode("ascii")], label=gate.decode("ascii"))
+                plt.gca().tick_params("x", labelsize=16)
+                plt.gca().tick_params("y", labelsize=16)
+                offset += 20e-3
+            else:
+                plt.plot(
+                    1000. * (
+                    gate_voltages_sequence_pd_concatenated[gate] - gate_voltages_sequence_pd_concatenated[gate][0]),
+                    gate_colours[gate.decode("ascii")], label=gate.decode("ascii"))
+                plt.gca().tick_params("x", labelsize=16)
+                plt.gca().tick_params("y", labelsize=16)
+            fig = plt.gcf()
+            fig.set_size_inches(8.5, 8)
+        plt.legend(fontsize=16)
+        plt.xlabel("Measurement Number", fontsize=16)
+        if with_offset:
+            plt.ylabel("Voltage difference with offset [mV]", fontsize=16)
+        else:
+            plt.ylabel("Voltage difference [mV]", fontsize=16)
+        plt.title("Changes in gate voltages", fontsize=18)
+
+    def recalculate_parameters(self, tune_run_number, start=0, end=None):
+        self.load_evaluator_names(tune_run_number=tune_run_number)
+        self.load_parameter_names(tune_run_number=tune_run_number)
+        tune_run_group = self.load_tune_run_group(tune_run_number=tune_run_number)
+        tune_sequence_group = tune_run_group["tune_sequence"]
+        if end is None:
+            end = count_steps_in_sequence(tune_sequence_group)
+        parameters_pd = pd.Series()
+        residuals_pd = pd.Series()
+        for parameter in self.parameter_names:
+            parameters_pd[parameter] = np.zeros((end-start, ))
+            residuals_pd[parameter] = np.zeros((end-start, ))
+            
+        for i in range(start, end):
+            for evaluator in self.evaluator_names:
+                raw_data = tune_sequence_group["step_" + str(i) + "/" + evaluator][:]
+                if evaluator == "evaluator_SMInterDotTCByLineScan" or evaluator == "evaluator_InterDotTCByLineScan":
+                    ydata = np.squeeze(raw_data)
+                    scan_range = tune_sequence_group["step_" + str(i) + "/" + evaluator].attrs["scan_range"]
+                    npoints = len(ydata)
+                    center = 0.  # TODO: change for real center
+                    fitresult = qtune.evaluator.fit_inter_dot_coupling(data=ydata, plot_fit=False, center=center, scan_range=scan_range,
+                                                                       npoints=npoints)
+                    parameters_pd[b'parameter_tunnel_coupling'][i] = fitresult["tc"]
+                    residuals_pd[b'parameter_tunnel_coupling'][i] = fitresult["residual"]
+                elif evaluator == "evaluator_SMLoadTime" or evaluator == "evaluator_LoadTime":
+                    fitresult = qtune.evaluator.fit_load_time(data=raw_data, plot_fit=False)
+                    parameters_pd[b'parameter_time_load'][i] = fitresult["parameter_time_load"]
+                    residuals_pd[b'parameter_time_load'][i] = fitresult["residual"]
+                else:
+                    print("No plotting implemented for this evaluator.")
+
+        return parameters_pd, residuals_pd
 
     def plot_concatenate_kalman_tune_run_long_run(self, tune_run_numbers):
         """"""
@@ -404,6 +662,7 @@ class Analyzer:
                     plt.axvline(x=number_steps[j])
                     #                plt.axvline(x=number_steps[j])
             plt.ylabel(self.parameter_names[i].decode("ascii"))
+            plt.xlabel("Measurement Number")
             plt.draw()
         figure_number = 2
         gate_colours = {"BA": 'b', "BB": 'g', "N": 'r', "SA": 'c', "SB": 'm', "T": 'k'}
@@ -609,12 +868,14 @@ class Analyzer:
         plt.ion()
         for i in range(start, end):
             for evaluator in self.evaluator_names:
+                plt.ylabel(evaluator)
+                plt.pause(0.05)
+                print(i)
                 if plot_raw_measurement(evaluator, raw_data=raw_measurement_sequence_pd[i][evaluator],
                                      attribute_info=attribute_info_sequence_pd[i][evaluator],
                                      figure_number=figure_numer) == "Stop":
                     return
-                plt.ylabel(evaluator)
-                plt.pause(0.05)
+
 
     def load_noise_estimation(self, noise_estimation_group: h5py.Group, n_noise_measurements: int):
         gate_voltages = noise_estimation_group["gate_voltages"][:]
@@ -934,30 +1195,49 @@ def plot_raw_measurement(evaluator, raw_data, attribute_info, figure_number):
         plt.figure(figure_number + 1)
         plt.close()
         plt.figure(figure_number + 1)
-        qtune.Evaluator.fit_lead_times(raw_data)
+        qtune.evaluator.fit_lead_times(raw_data)
         plt.pause(0.05)
     elif evaluator == "evaluator_SMInterDotTCByLineScan" or evaluator == "evaluator_InterDotTCByLineScan":
+        plt.figure(figure_number)
+        plt.close()
         plt.figure(figure_number)
         ydata = np.squeeze(raw_data)
         scan_range = attribute_info["scan_range"]
         npoints = len(ydata)
         center = attribute_info["center"]  # TODO: change for real center
-        qtune.Evaluator.fit_inter_dot_coupling(data=ydata, center=center, scan_range=scan_range, npoints=npoints)
+        qtune.evaluator.fit_inter_dot_coupling(data=ydata, center=center, scan_range=scan_range, npoints=npoints)
         plt.pause(0.05)
     elif evaluator == "evaluator_SMLoadTime" or evaluator == "evaluator_LoadTime":
-        plt.figure(figure_number + 2)
+        plt.figure(figure_number)
         plt.close()
-        plt.figure(figure_number + 2)
-        fitresult = qtune.Evaluator.fit_load_time(data=raw_data)
-        print(fitresult["parameter_time_load"])
+        plt.figure(figure_number)
+        qtune.evaluator.fit_load_time(data=raw_data)
         plt.pause(0.05)
     else:
         print("No plotting implemented for this evaluator.")
     decision_continue = input("Type STOP to stop. Type anything else to continue.")
     if decision_continue == "STOP":
-        plt.close(figure_number)
-        plt.close(figure_number + 1)
+#        plt.close(figure_number)
+#        plt.close(figure_number + 1)
         return "Stop"
+
+
+
+def parameter_plot_name(name: str, with_unit: bool=True):
+    if with_unit:
+        if name == "parameter_time_load":
+            return "Singlet load time $[ns]$"
+        if name == "parameter_tunnel_coupling":
+            return "Tunnel coupling $[\mu V]$"
     else:
-        plt.close(figure_number)
-        plt.close(figure_number + 1)
+        if name == "parameter_time_load":
+            return "Singlet load time"
+        if name == "parameter_tunnel_coupling":
+            return "Tunnel coupling"
+
+
+def gradient_plot_ylabel(parameter: str):
+    if parameter == "parameter_time_load":
+        return "Gradient elements $[ns /m V]$"
+    if parameter == "parameter_tunnel_coupling":
+        return "Gradient elements $[\mu V /m V]$"

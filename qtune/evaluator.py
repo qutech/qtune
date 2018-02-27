@@ -206,7 +206,7 @@ def func_lead_times_v2(x, hight: float, t_fall: float, t_rise: float, begin_rise
     return y
 
 
-def fit_inter_dot_coupling(data, **kwargs):
+def fit_inter_dot_coupling(data, plot_fit=True, **kwargs):
     failed = 0
     center = kwargs["center"]
     scan_range = kwargs["scan_range"]
@@ -219,41 +219,66 @@ def fit_inter_dot_coupling(data, **kwargs):
     position = qtune.chrg_diag.find_lead_transition(data=ydata - xdata * m_first_part, center=center, scan_range=scan_range, npoints=npoints,
                                     width=scan_range / 12.)
     p0 = [b_first_part, m_first_part, height, position, scan_range / 8.]
-    plt.plot(xdata, ydata, "b.")
-    plt.plot(xdata, func_inter_dot_coupling(xdata, p0[0], p0[1], p0[2], p0[3], p0[4]), "k--")
+    if plot_fit:
+        plt.plot(1e3 * xdata, ydata, "b.", label="Data")
+    #plt.plot(1e3 * xdata, func_inter_dot_coupling(xdata, p0[0], p0[1], p0[2], p0[3], p0[4]), "k--", label="Fit Initial Values")
     popt, pcov = optimize.curve_fit(f=func_inter_dot_coupling, p0=p0, xdata=xdata, ydata=ydata)
-    plt.plot(xdata, func_inter_dot_coupling(xdata, popt[0], popt[1], popt[2], popt[3], popt[4]), "r")
-    plt.draw()
+    if plot_fit:
+        plt.plot(1e3 * xdata, func_inter_dot_coupling(xdata, popt[0], popt[1], popt[2], popt[3], popt[4]), "r", label="Fit")
+        plt.xlabel("Detuning $\epsilon$ [mV]", fontsize=22)
+        plt.ylabel("Signal [a.u.]", fontsize=22)
+        plt.gca().tick_params("x", labelsize=22)
+        plt.gca().tick_params("y", labelsize=0)
+        plt.legend(fontsize=16)
+        fig = plt.gcf()
+        fig.set_size_inches(8.5, 8)
+        plt.show()
+    residuals = ydata - func_inter_dot_coupling(xdata, popt[0], popt[1], popt[2], popt[3], popt[4])
+    residual = np.nanmean(np.square(residuals)) / popt[2] * 20
     width_in_mus = popt[4] * 1e6
-    fit_result = pd.Series(data=[width_in_mus, failed], index=["tc", "failed"])
+    fit_result = pd.Series(data=[width_in_mus, failed, residual], index=["tc", "failed", "residual"])
     return fit_result
 
 
 def func_inter_dot_coupling(xdata, offset: float, slope: float, height: float, position: float, width: float):
     return offset + slope * xdata + .5 * height * (1 + np.tanh((xdata - position) / width))
 
-def fit_load_time(data, **kwargs):
+
+def fit_load_time(data, plot_fit=True, **kwargs):
     failed = 0
     n_points = data.shape[1]
     ydata = data[0, 1:n_points]
     xdata = data[1, 1:n_points]
     min = np.nanmin(ydata)
-    max = np.nanmin(ydata)
-    initial_curvature = 10
+    max = np.nanmax(ydata)
+    initial_curvature = 10.
     p0 = [min, max - min, initial_curvature]
-    bounds = ([-np.inf, -np.inf, 2.],
+    bounds = ([-np.inf, -np.inf, 10.],
               [np.inf, np.inf, 100.])
+    plt.plot(xdata, func_load_time(xdata, p0[0], p0[1], p0[2]), "k--", label="Fit Starting Values")
     popt, pcov = optimize.curve_fit(f=func_load_time, p0=p0, bounds=bounds, xdata=xdata, ydata=ydata)
     if popt[2] < 0.:
         initial_curvature = 200
         p0 = [min, max - min, initial_curvature]
+        if plot_fit:
+            plt.plot(xdata, func_load_time(xdata, p0[0], p0[1], p0[2]), "k--")
         popt, pcov = optimize.curve_fit(f=func_load_time, p0=p0, xdata=xdata, ydata=ydata)
-    plt.plot(xdata, ydata, "b.")
-    plt.plot(xdata, func_load_time(xdata, p0[0], p0[1], p0[2]), "k--")
-    plt.plot(xdata, func_load_time(xdata, popt[0], popt[1], popt[2]), "r")
-    plt.draw()
-    fit_result = pd.Series(data=[popt[2], failed], index=["parameter_time_load", "failed"])
+    if plot_fit:
+        plt.plot(xdata, ydata, "b.", label="Data")
+        plt.plot(xdata, func_load_time(xdata, popt[0], popt[1], popt[2]), "r", label="Fit")
+        plt.xlabel("Reload time [ns]", fontsize=22)
+        plt.gca().tick_params("x", labelsize=22)
+        plt.gca().tick_params("y", labelsize=14)
+        plt.ylabel("Signal [a.u.]", fontsize=22)
+        plt.legend(fontsize=16)
+        fig = plt.gcf()
+        fig.set_size_inches(8.5, 8)
+        plt.show()
+    residual = ydata - func_load_time(xdata, popt[0], popt[1], popt[2])
+    residual = np.nanmean(np.square(residual)) / np.ptp(ydata)
+    fit_result = pd.Series(data=[popt[2], failed, residual], index=["parameter_time_load", "failed", "residual"])
     return fit_result
+
 
 def func_load_time(xdata, offset: float, height: float, curvature: float):
     return offset + height * np.exp(-1. * xdata / curvature)
