@@ -336,8 +336,14 @@ class Analyzer:
                 r = np.copy(kalman.filter.R)
                 residuals = residuals.sort_index()
                 for j in range(self.parameter_names.size):
-                    r[j, j] += 2e7 * residuals[j][i + 1]
-                kalman.update(d_voltage_pd.as_matrix(), d_parameters_pd.as_matrix(), R=r, hack=False)
+                    #r[j, j] += 2e7 * residuals[j][i + 1]
+                    r[j, j] = 0.1 * r[j, j] + residuals[j][i] + residuals[j][i + 1]
+                try:
+                    kalman.update(d_voltage_pd.as_matrix(), d_parameters_pd.as_matrix(), R=r, hack=False)
+                except:
+                    print(r)
+
+
             else:
                 kalman.update(d_voltage_pd.as_matrix(), d_parameters_pd.as_matrix(), hack=False)
 
@@ -365,7 +371,7 @@ class Analyzer:
         covariance_sequence_pd_concatenated = self.load_covariance_sequence_pd(tune_run_number=tune_run_numbers[0])
         desired_values_pd_concatenated = pd.Series()
         if recalculate_parameters:
-            parameters_sequence_pd_concatenated, residuals_pd_concatenated = self.recalculate_parameters(
+            parameters_sequence_pd_concatenated_recalc, residuals_pd_concatenated = self.recalculate_parameters(
                 tune_run_numbers[0])
         for parameter in self.parameter_names:
             desired_values_pd_concatenated[parameter] = [desired_values_pd_concatenated_temp[parameter]]
@@ -376,10 +382,13 @@ class Analyzer:
                 self.load_kalman_tune_run(tune_run_number=tune_run_numbers[i])
             covariance_sequence_pd = self.load_covariance_sequence_pd(tune_run_number=tune_run_numbers[i])
             if recalculate_parameters:
-                parameters_sequence_pd, residuals_pd = self.recalculate_parameters(tune_run_numbers[i])
+                parameters_sequence_pd_recalc, residuals_pd = self.recalculate_parameters(tune_run_numbers[i])
                 for parameter in self.parameter_names:
                     residuals_pd_concatenated[parameter] = np.concatenate(
                         [residuals_pd_concatenated[parameter], residuals_pd[parameter]], 0)
+                    parameters_sequence_pd_concatenated_recalc[parameter] = np.concatenate(
+                        [parameters_sequence_pd_concatenated_recalc[parameter],
+                         parameters_sequence_pd_recalc[parameter]], 0)
             for gate in self.gate_names:
                 gate_voltages_sequence_pd_concatenated[gate] = np.concatenate(
                     [gate_voltages_sequence_pd_concatenated[gate], gate_voltages_sequence_pd[gate]], 0)
@@ -417,9 +426,10 @@ class Analyzer:
 #            initial_heuristic_covariance = 5. * initial_heuristic_covariance
             if recalculate_parameters:
                 gradient_sequence_pd_recalculated, covariance_sequence_pd_recalculated = self.calculate_kalman_gradient(
-                    gate_voltages_sequence_pd_concatenated, parameters_sequence_pd_concatenated, initial_grad=initial_gradient,
+                    gate_voltages_sequence_pd_concatenated, parameters_sequence_pd_concatenated_recalc,
+                    initial_grad=initial_gradient,
                     initial_cov=initial_heuristic_covariance, initial_noise=initial_heuristic_noise,
-                    number_steps=number_steps[number_runs-1], alpha=alpha, residuals=residuals_pd_concatenated)
+                    number_steps=number_steps[number_runs - 1], alpha=alpha, residuals=residuals_pd_concatenated)
             else:
                 gradient_sequence_pd_recalculated, covariance_sequence_pd_recalculated = self.calculate_kalman_gradient(
                     gate_voltages_sequence_pd_concatenated, parameters_sequence_pd_concatenated,
@@ -441,12 +451,14 @@ class Analyzer:
                                  label=gate.decode("ascii"), color=tunable_gate_colours[gate.decode("ascii")])
                     plt.gca().tick_params("x", labelsize=16)
                     plt.gca().tick_params("y", labelsize=16)
-#                    plt.xlim(-2, 20)
+                    plt.xlim(9.5, 22.5)
 #                    plt.ylim(-20, 3)
-                    plt.title(
-                        "Recalculated gradient row: " + parameter_plot_name(
-                            parameter.decode("ascii"), with_unit=False) + r"; with $\alpha = $" + str(alpha),
-                        fontsize=18)
+#                    plt.title(
+#                        "Recalculated gradient row: " + parameter_plot_name(
+#                            parameter.decode("ascii"), with_unit=False) + r"; with $\alpha = $" + str(alpha),
+#                        fontsize=18)
+                    plt.title("Gradient row: " + parameter_plot_name(parameter.decode("ascii"), with_unit=False),
+                              fontsize=18)
                     for j in range(number_runs - 1):
                         if j != 1:
                             plt.axvline(x=number_steps[j])
@@ -464,13 +476,33 @@ class Analyzer:
             if recalculate_parameters:
                 plt.figure(figure_number + 1)
                 plt.subplot(number_parameter, 1, i + 1)
-                plt.plot(residuals_pd_concatenated[self.parameter_names[i]], "r")
+                #plt.plot(residuals_pd_concatenated[self.parameter_names[i]], "r")
+                plt.errorbar(x=list(range(number_steps[number_runs - 1] + 1)),
+                             y=parameters_sequence_pd_concatenated_recalc[self.parameter_names[i]],
+                             yerr=np.sqrt(residuals_pd_concatenated[self.parameter_names[i]]), color="r")
+                plt.xlim(9.5, 22.5)
                 if i == 0:
-                    plt.title("Residuals", fontsize=18)
+                    #plt.title("Recalculated Parameters with Residuals", fontsize=18)
+                    plt.title("Parameters", fontsize=18)
                 for j in range(number_runs - 1):
                     if j != 1:
                         plt.axvline(x=number_steps[j])
                 plt.ylabel(parameter_plot_name(self.parameter_names[i].decode("ascii")), fontsize=16)
+                if i == number_parameter - 1:
+                    plt.xlabel("Measurement Number", fontsize=16)
+                y_des_val = [desired_values_pd_concatenated[self.parameter_names[i]][0],
+                             desired_values_pd_concatenated[self.parameter_names[i]][0]]
+
+                start_desired_val_range = 0.01
+                x_des_val = [start_desired_val_range, number_steps[0]]
+                start_desired_val_range = number_steps[0] + 0.01
+                for run in range(1, number_runs):
+                    y_des_val = np.concatenate([y_des_val,
+                                                [desired_values_pd_concatenated[self.parameter_names[i]][run],
+                                                 desired_values_pd_concatenated[self.parameter_names[i]][run]]], 0)
+                    x_des_val = np.concatenate([x_des_val, [start_desired_val_range, number_steps[run]]], 0)
+                    start_desired_val_range = number_steps[run] + 0.01
+                plt.plot(x_des_val, y_des_val, "b")
 
             plt.figure(figure_number)
             plt.subplot(number_parameter, 1, i + 1)
@@ -515,7 +547,7 @@ class Analyzer:
                     plt.gca().tick_params("x", labelsize=16)
                     plt.gca().tick_params("y", labelsize=16)
 
-#                    plt.xlim(-2, 20)
+                    plt.xlim(9.5, 22.5)
 #                    plt.ylim(-20, 3)
 
                 else:
@@ -562,11 +594,12 @@ class Analyzer:
             fig.set_size_inches(8.5, 8)
         plt.legend(fontsize=16)
         plt.xlabel("Measurement Number", fontsize=16)
+        plt.xlim(9.5, 22.5)
         if with_offset:
-            plt.ylabel("Voltage difference with offset [mV]", fontsize=16)
+            plt.ylabel("Voltage Difference with offset [mV]", fontsize=16)
         else:
-            plt.ylabel("Voltage difference [mV]", fontsize=16)
-        plt.title("Changes in gate voltages", fontsize=18)
+            plt.ylabel("Voltage Difference [mV]", fontsize=16)
+        plt.title("Changes in Gate Voltages", fontsize=18)
 
     def recalculate_parameters(self, tune_run_number, start=0, end=None):
         self.load_evaluator_names(tune_run_number=tune_run_number)

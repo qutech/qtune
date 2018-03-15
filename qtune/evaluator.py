@@ -234,7 +234,7 @@ def fit_inter_dot_coupling(data, plot_fit=True, **kwargs):
         fig.set_size_inches(8.5, 8)
         plt.show()
     residuals = ydata - func_inter_dot_coupling(xdata, popt[0], popt[1], popt[2], popt[3], popt[4])
-    residual = np.nanmean(np.square(residuals)) / popt[2] * 20
+    residual = np.nanmean(np.square(residuals)) / (popt[2] * popt[2]) * 5e5
     width_in_mus = popt[4] * 1e6
     fit_result = pd.Series(data=[width_in_mus, failed, residual], index=["tc", "failed", "residual"])
     return fit_result
@@ -254,8 +254,8 @@ def fit_load_time(data, plot_fit=True, **kwargs):
     initial_curvature = 10.
     p0 = [min, max - min, initial_curvature]
     bounds = ([-np.inf, -np.inf, 10.],
-              [np.inf, np.inf, 100.])
-    plt.plot(xdata, func_load_time(xdata, p0[0], p0[1], p0[2]), "k--", label="Fit Starting Values")
+              [np.inf, np.inf, 400.])
+#    plt.plot(xdata, func_load_time(xdata, p0[0], p0[1], p0[2]), "k--", label="Fit Starting Values")
     popt, pcov = optimize.curve_fit(f=func_load_time, p0=p0, bounds=bounds, xdata=xdata, ydata=ydata)
     if popt[2] < 0.:
         initial_curvature = 200
@@ -268,14 +268,15 @@ def fit_load_time(data, plot_fit=True, **kwargs):
         plt.plot(xdata, func_load_time(xdata, popt[0], popt[1], popt[2]), "r", label="Fit")
         plt.xlabel("Reload time [ns]", fontsize=22)
         plt.gca().tick_params("x", labelsize=22)
-        plt.gca().tick_params("y", labelsize=14)
+        plt.gca().tick_params("y", labelsize=0)
         plt.ylabel("Signal [a.u.]", fontsize=22)
         plt.legend(fontsize=16)
         fig = plt.gcf()
         fig.set_size_inches(8.5, 8)
         plt.show()
     residual = ydata - func_load_time(xdata, popt[0], popt[1], popt[2])
-    residual = np.nanmean(np.square(residual)) / np.ptp(ydata)
+    #residual = np.nanmean(np.square(residual)) / np.ptp(ydata)
+    residual = np.nanmean(np.square(residual)) / (popt[1] * popt[1]) * 1500.
     fit_result = pd.Series(data=[popt[2], failed, residual], index=["parameter_time_load", "failed", "residual"])
     return fit_result
 
