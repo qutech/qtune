@@ -1,5 +1,6 @@
 function scan = makePythonLineScan(cntr, range, nrepetitions, ramptime, npoints, AWGorDecaDAC)
 global smdata
+global tunedata
 if strcmp(AWGorDecaDAC,'DecaDAC')
 inst_index = sminstlookup('ATS9440Python');
 config = AlazarDefaultSettings(inst_index);
@@ -60,8 +61,10 @@ scan.loops(2).rng = [];
 scan.loops(2).prefn(1).fn = @smaconfigwrap;
 scan.loops(2).prefn(1).args = {smdata.inst(inst_index).cntrlfn,[inst_index 0 4]};
 elseif strcmp(AWGorDecaDAC,'AWG')
-    warning('The charge line scan via AWG has not been implemented yet! You will recieve a DecaDAC scan!!!')
-    scan = qtune.makePythonLineScan(center, range, gate, npoints, ramptime, numb_rep, 'DecaDAC');
+
+    %tunedata.line.fastscan.loops(1).prefn(1).args{1} = awgseqind('new_line');
+    scan = tunedata.line.fastscan;
+    
 else
     warning('the variable AWGorDecaDAC must be AWG or DecaDAC! You will recieve a DecaDAC scan!!!')
     scan = qtune.makePythonLineScan(center, range, gate, npoints, ramptime, numb_rep, 'DecaDAC');
