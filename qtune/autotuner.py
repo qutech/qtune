@@ -119,9 +119,30 @@ class Autotuner:
                 evaluation_result = evaluation_result.drop(['failed'])
 
             for r in evaluation_result.index.tolist():
-                parameters[r] = evaluation_result[r]
+                if not r == "residual":
+                    parameters[r] = evaluation_result[r]
         self.parameters = copy.deepcopy(parameters.sort_index())
         return parameters
+
+    def evaluate_parameters_residuals(self, storing_group: h5py.Group=None) -> (pd.Series, pd.Series):
+        parameters = pd.Series()
+        residuals = pd.Series()
+        for e in self.evaluators:
+            evaluation_result = e.evaluate(storing_group)
+
+            if evaluation_result['failed']:
+                evaluation_result = evaluation_result.drop(['failed'])
+                for r in evaluation_result.index.tolist():
+                    evaluation_result[r] = np.nan
+            else:
+                evaluation_result = evaluation_result.drop(['failed'])
+
+            for r in evaluation_result.index.tolist():
+                if not r == "resiudal":
+                    parameters[r] = evaluation_result[r]
+                    residuals[r] = evaluation_result["residual"]
+        self.parameters = copy.deepcopy(parameters.sort_index())
+        return parameters, residuals
 
     def evaluate_and_save_parameters(self):
         self.login_savefile()
@@ -647,7 +668,7 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
         current_step_group = tune_sequence_group.create_group("step_" + str(counter))
         save_gate_voltages(current_step_group, self.experiment.read_gate_voltages()[self.gates.index])
         save_gradient_data(current_step_group, self.solver.grad_kalman.grad, self.solver.grad_kalman.cov, None)
-        parameters = self.evaluate_parameters(current_step_group)
+        parameters, residuals_first = self.evaluate_parameters_residuals(current_step_group)
         parameters = parameters.sort_index()
         parameter_names = parameters.index.tolist()
         parameter_names = np.asarray(parameter_names, dtype='S30')
@@ -678,12 +699,15 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
             current_step_group = tune_sequence_group.create_group("step_" + str(counter))
             full_current_voltages = self.experiment.read_gate_voltages()[self.gates.index]
             save_gate_voltages(current_step_group, full_current_voltages)
-            new_parameters = self.evaluate_parameters(current_step_group).sort_index()
+            new_parameters, residuals_second = self.evaluate_parameters(current_step_group).sort_index()
             d_parameter = new_parameters - parameters
+            residuals = residuals_first + residuals_second
             new_gradient, new_covariance, failed = self.solver.update_after_step(d_voltages_series=d_voltages,
-                                                                                 d_parameter_series=d_parameter)
+                                                                                 d_parameter_series=d_parameter,
+                                                                                 residuals_series=residuals)
             save_gradient_data(current_step_group, new_gradient, new_covariance, self.solver.grad_kalman.filter.R)
             parameters = new_parameters
+            residuals_first = residuals_second
             counter += 1
         print("Congratulations! The tuning run is complete or the maximum number is steps has been reached. ")
         self.logout_of_savefile()

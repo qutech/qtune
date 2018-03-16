@@ -70,7 +70,8 @@ class KalmanSolver(Solver):
                                             initR=noise, alpha=alpha)
         self.gradient = gradient
 
-    def update_after_step(self, d_voltages_series: pd.Series, d_parameter_series: pd.Series=None):
+    def update_after_step(self, d_voltages_series: pd.Series, d_parameter_series: pd.Series = None,
+                          residuals_series: pd.Series = None):
         if d_parameter_series is None:
             current_parameter = self.parameter
             for e in self.evaluators:
@@ -90,7 +91,13 @@ class KalmanSolver(Solver):
         d_voltages_series = d_voltages_series.sort_index()
         d_voltages_vector = np.asarray(d_voltages_series.values)
         d_voltages_vector = d_voltages_vector.T
-        self.grad_kalman.update(d_voltages_vector, d_parameter_vector, hack=False)
+
+        r = np.copy(self.grad_kalman.filter.R)
+        residuals = residuals_series.sort_index()
+        for j in range(self.parameter.size):
+            r[j, j] = 0.1 * r[j, j] + residuals[j]
+
+        self.grad_kalman.update(d_voltages_vector, d_parameter_vector, R=r, hack=False)
         self.gradient = self.grad_kalman.grad
         return self.grad_kalman.grad, self.grad_kalman.cov, False
 

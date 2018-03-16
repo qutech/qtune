@@ -93,6 +93,7 @@ class InterDotTCByLineScan(Evaluator):
 #        plt.pause(0.05)
         tc = fitresult['tc']
         failed = bool(fitresult['failed'])
+        residual = fitresult["residual"]
         self.parameters['parameter_tunnel_coupling'] = tc
         if storing_group is not None:
             storing_dataset = storing_group.create_dataset("evaluator_SMInterDotTCByLineScan", data=ydata)
@@ -100,9 +101,11 @@ class InterDotTCByLineScan(Evaluator):
             storing_dataset.attrs["scan_range"] = scan_range
             storing_dataset.attrs["npoints"] = npoints
             storing_dataset.attrs["parameter_tunnel_coupling"] = tc
+            storing_dataset.attrs["residual"] = residual
             if failed:
                 storing_dataset.attrs["parameter_tunnel_coupling"] = np.nan
-        return pd.Series((tc, failed), ('parameter_tunnel_coupling', 'failed'))
+                storing_dataset.attrs["residual"] = np.nan
+        return pd.Series((tc, failed, residual), ('parameter_tunnel_coupling', 'failed', "residual"))
 
 
 class LoadTime(Evaluator):
@@ -126,13 +129,16 @@ class LoadTime(Evaluator):
         plt.pause(0.05)
         parameter_time_load = fitresult['parameter_time_load']
         failed = fitresult['failed']
+        residual = fitresult["residual"]
         self.parameters['parameter_time_load'] = parameter_time_load
         if storing_group is not None:
             storing_dataset = storing_group.create_dataset("evaluator_LoadTime", data=data)
             storing_dataset.attrs["parameter_time_load"] = parameter_time_load
+            storing_dataset.attrs["residual"] = residual
             if failed:
                 storing_dataset.attrs["parameter_time_load"] = np.nan
-        return pd.Series([parameter_time_load, failed], ['parameter_time_load', 'failed'])
+                storing_dataset.attrs["residual"] = np.nan
+        return pd.Series([parameter_time_load, failed, residual], ['parameter_time_load', 'failed', "residual"])
 
 
 def fit_lead_times(data: np.ndarray, **kwargs):
@@ -212,8 +218,8 @@ def fit_inter_dot_coupling(data, plot_fit=True, **kwargs):
     scan_range = kwargs["scan_range"]
     npoints = kwargs["npoints"]
     xdata = np.linspace(center - scan_range, center + scan_range, npoints)
-    ydata = np.mean(data, 0)
-    ydata = np.squeeze(ydata)
+#    ydata = np.squeeze(np.mean(data, 0))
+    ydata = np.squeeze(data)
     m_last_part, b_last_part = np.polyfit(xdata[int(round(0.75*npoints)):npoints-1], ydata[int(round(0.75*npoints)):npoints-1], 1)
     m_first_part, b_first_part = np.polyfit(xdata[0:int(round(0.25*npoints))], ydata[0:int(round(0.25*npoints))], 1)
     height = (b_last_part + m_last_part * xdata[npoints - 1]) - (b_first_part + m_first_part * xdata[npoints - 1])
@@ -255,7 +261,7 @@ def fit_load_time(data, plot_fit=True, **kwargs):
     initial_curvature = 10.
     p0 = [min, max - min, initial_curvature]
     bounds = ([-np.inf, -np.inf, 10.],
-              [np.inf, np.inf, 400.])
+              [np.inf, np.inf, 120.])
 #    plt.plot(xdata, func_load_time(xdata, p0[0], p0[1], p0[2]), "k--", label="Fit Starting Values")
     popt, pcov = optimize.curve_fit(f=func_load_time, p0=p0, bounds=bounds, xdata=xdata, ydata=ydata)
     if popt[2] < 0.:
