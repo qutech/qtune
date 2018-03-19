@@ -138,7 +138,7 @@ class Autotuner:
                 evaluation_result = evaluation_result.drop(['failed'])
 
             for r in evaluation_result.index.tolist():
-                if not r == "resiudal":
+                if not r == "residual":
                     parameters[r] = evaluation_result[r]
                     residuals[r] = evaluation_result["residual"]
         self.parameters = copy.deepcopy(parameters.sort_index())
@@ -699,7 +699,7 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
             current_step_group = tune_sequence_group.create_group("step_" + str(counter))
             full_current_voltages = self.experiment.read_gate_voltages()[self.gates.index]
             save_gate_voltages(current_step_group, full_current_voltages)
-            new_parameters, residuals_second = self.evaluate_parameters(current_step_group).sort_index()
+            new_parameters, residuals_second = self.evaluate_parameters_residuals(current_step_group)
             d_parameter = new_parameters - parameters
             residuals = residuals_first + residuals_second
             new_gradient, new_covariance, failed = self.solver.update_after_step(d_voltages_series=d_voltages,

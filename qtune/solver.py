@@ -81,7 +81,8 @@ class KalmanSolver(Solver):
                 evaluation_result.drop(['failed'])
                 evaluated_parameters = evaluation_result.index.tolist()
                 for i in evaluated_parameters:
-                    self.parameter[i] = evaluation_result[i]
+                    if i != "residual":
+                        self.parameter[i] = evaluation_result[i]
                 self.parameter = self.parameter.sort_index()
 
             d_parameter_series = self.parameter.add(-1.*current_parameter)

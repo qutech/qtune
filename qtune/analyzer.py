@@ -451,14 +451,14 @@ class Analyzer:
                                  label=gate.decode("ascii"), color=tunable_gate_colours[gate.decode("ascii")])
                     plt.gca().tick_params("x", labelsize=16)
                     plt.gca().tick_params("y", labelsize=16)
-                    plt.xlim(9.5, 22.5)
+#                    plt.xlim(9.5, 22.5)
 #                    plt.ylim(-20, 3)
-#                    plt.title(
-#                        "Recalculated gradient row: " + parameter_plot_name(
-#                            parameter.decode("ascii"), with_unit=False) + r"; with $\alpha = $" + str(alpha),
-#                        fontsize=18)
-                    plt.title("Gradient row: " + parameter_plot_name(parameter.decode("ascii"), with_unit=False),
-                              fontsize=18)
+                    plt.title(
+                        "Recalculated gradient row: " + parameter_plot_name(
+                            parameter.decode("ascii"), with_unit=False) + r"; with $\alpha = $" + str(alpha),
+                        fontsize=18)
+#                    plt.title("Gradient row: " + parameter_plot_name(parameter.decode("ascii"), with_unit=False),
+#                              fontsize=18)
                     for j in range(number_runs - 1):
                         if j != 1:
                             plt.axvline(x=number_steps[j])
@@ -480,7 +480,7 @@ class Analyzer:
                 plt.errorbar(x=list(range(number_steps[number_runs - 1] + 1)),
                              y=parameters_sequence_pd_concatenated_recalc[self.parameter_names[i]],
                              yerr=np.sqrt(residuals_pd_concatenated[self.parameter_names[i]]), color="r")
-                plt.xlim(9.5, 22.5)
+#                plt.xlim(9.5, 22.5)
                 if i == 0:
                     #plt.title("Recalculated Parameters with Residuals", fontsize=18)
                     plt.title("Parameters", fontsize=18)
@@ -547,7 +547,7 @@ class Analyzer:
                     plt.gca().tick_params("x", labelsize=16)
                     plt.gca().tick_params("y", labelsize=16)
 
-                    plt.xlim(9.5, 22.5)
+#                    plt.xlim(9.5, 22.5)
 #                    plt.ylim(-20, 3)
 
                 else:
@@ -594,7 +594,7 @@ class Analyzer:
             fig.set_size_inches(8.5, 8)
         plt.legend(fontsize=16)
         plt.xlabel("Measurement Number", fontsize=16)
-        plt.xlim(9.5, 22.5)
+#        plt.xlim(9.5, 22.5)
         if with_offset:
             plt.ylabel("Voltage Difference with offset [mV]", fontsize=16)
         else:
@@ -620,7 +620,10 @@ class Analyzer:
                 if evaluator == "evaluator_SMInterDotTCByLineScan" or evaluator == "evaluator_InterDotTCByLineScan":
                     ydata = np.squeeze(raw_data)
                     scan_range = tune_sequence_group["step_" + str(i) + "/" + evaluator].attrs["scan_range"]
-                    npoints = len(ydata)
+                    if len(ydata.shape) == 1:
+                        npoints = len(ydata)
+                    else:
+                        npoints = ydata.shape[1]
                     center = 0.  # TODO: change for real center
                     fitresult = qtune.evaluator.fit_inter_dot_coupling(data=ydata, plot_fit=False, center=center, scan_range=scan_range,
                                                                        npoints=npoints)
@@ -1236,7 +1239,10 @@ def plot_raw_measurement(evaluator, raw_data, attribute_info, figure_number):
         plt.figure(figure_number)
         ydata = np.squeeze(raw_data)
         scan_range = attribute_info["scan_range"]
-        npoints = len(ydata)
+        if len(ydata.shape) == 1:
+            npoints = len(ydata)
+        else:
+            npoints = ydata.shape[1]
         center = attribute_info["center"]  # TODO: change for real center
         qtune.evaluator.fit_inter_dot_coupling(data=ydata, center=center, scan_range=scan_range, npoints=npoints)
         plt.pause(0.05)

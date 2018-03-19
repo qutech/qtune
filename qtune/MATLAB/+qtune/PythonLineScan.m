@@ -6,6 +6,6 @@ scan = qtune.makePythonLineScan(args.center, args.range, args.N_average, args.ra
 data = smrun(scan, args.file_name);
 
 %data=mean(data{1});
-data=data{1}
+data=data{1};
 end
 

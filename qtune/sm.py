@@ -16,9 +16,9 @@ import numpy as np
 from qtune.experiment import *
 from qtune.util import time_string
 from qtune.GradKalman import GradKalmanFilter
-from qtune.Basic_DQD import BasicDQD
+from qtune.basic_dqd import BasicDQD
 from qtune.chrg_diag import ChargeDiagram
-from qtune.Solver import Evaluator
+from qtune.solver import Evaluator
 
 
 def redirect_output(func):
