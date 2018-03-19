@@ -85,11 +85,12 @@ class InterDotTCByLineScan(Evaluator):
         ydata = self.experiment.measure(self.measurements)
         center = self.measurements.parameter['center']
         scan_range = self.measurements.parameter['range']
-        npoints = self. measurements.parameter['N_points']
+#        npoints = self.measurements.parameter['N_points']
+        npoints = ydata.shape[1]
         plt.ion()
         plt.figure(51)
         plt.clf()
-        fitresult = fit_inter_dot_coupling(data=ydata, center=center, scan_range=scan_range, npoints=npoints)
+        fitresult = fit_inter_dot_coupling(data=ydata.copy(), center=center, scan_range=scan_range, npoints=npoints)
 #        plt.pause(0.05)
         tc = fitresult['tc']
         failed = bool(fitresult['failed'])
@@ -218,8 +219,10 @@ def fit_inter_dot_coupling(data, plot_fit=True, **kwargs):
     scan_range = kwargs["scan_range"]
     npoints = kwargs["npoints"]
     xdata = np.linspace(center - scan_range, center + scan_range, npoints)
-#    ydata = np.squeeze(np.mean(data, 0))
-    ydata = np.squeeze(data)
+    if len(data.shape) == 1:
+        ydata = np.squeeze(data)
+    else:
+        ydata = np.squeeze(np.mean(data, 0))
     m_last_part, b_last_part = np.polyfit(xdata[int(round(0.75*npoints)):npoints-1], ydata[int(round(0.75*npoints)):npoints-1], 1)
     m_first_part, b_first_part = np.polyfit(xdata[0:int(round(0.25*npoints))], ydata[0:int(round(0.25*npoints))], 1)
     height = (b_last_part + m_last_part * xdata[npoints - 1]) - (b_first_part + m_first_part * xdata[npoints - 1])
@@ -230,6 +233,22 @@ def fit_inter_dot_coupling(data, plot_fit=True, **kwargs):
         plt.plot(1e3 * xdata, ydata, "b.", label="Data")
     #plt.plot(1e3 * xdata, func_inter_dot_coupling(xdata, p0[0], p0[1], p0[2], p0[3], p0[4]), "k--", label="Fit Initial Values")
     popt, pcov = optimize.curve_fit(f=func_inter_dot_coupling, p0=p0, xdata=xdata, ydata=ydata)
+
+    weights = np.ones(100)
+    position_point = int((popt[3] + scan_range) / 2. / scan_range * npoints)
+    heavy_range = 0.23
+    if position_point < heavy_range * npoints:
+        begin_weight = 0
+    else:
+        begin_weight = position_point - int(heavy_range * npoints)
+    if (npoints - position_point) < heavy_range * npoints:
+        end_weight = npoints
+    else:
+        end_weight = position_point + int(heavy_range * npoints)
+    weights[begin_weight:end_weight] = .1
+
+    popt, pcov = optimize.curve_fit(f=func_inter_dot_coupling, p0=popt, sigma=weights, xdata=xdata, ydata=ydata)
+
     if plot_fit:
         plt.plot(1e3 * xdata, func_inter_dot_coupling(xdata, popt[0], popt[1], popt[2], popt[3], popt[4]), "r", label="Fit")
         plt.xlabel("Detuning $\epsilon$ [mV]", fontsize=22)
