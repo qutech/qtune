@@ -15,13 +15,13 @@ gatechannels=tunedata.gatechan;
 new_point=[args.SB, args.BB, args.T, args.N, args.SA, args.BA, args.RFA, args.RFB];
 
 for i=1:8
-	if abs(pretuned_point(i)-new_point(i)) > 70e-3
+	if abs(pretuned_point(i)-new_point(i)) > 100e-3
  		for j = 1:8
  			smset(gatechannels(j),pretuned_point(j))
 		end
 		smset('SDB2', sensor_pretuned)
-		error('also reset sensor to pretuned point!!!!');
-		error('emergency: the dot is 70mV away from pretuned point!')
+		smset('SDB1', sensor_gate1_pretuned)
+		error('emergency: the dot is 100mV away from pretuned point!')
 	end
 end
 
