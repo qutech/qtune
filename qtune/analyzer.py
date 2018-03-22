@@ -322,8 +322,6 @@ class Analyzer:
             d_voltage_pd = d_voltage_pd.sort_index()
             d_parameters_pd = d_parameters_pd.sort_index()
 
-
-
             if with_relative_error:
                 r = np.copy(kalman.filter.R)
                 expected_d_parameter = np.dot(kalman.grad, d_voltage_pd.as_matrix())
@@ -457,11 +455,10 @@ class Analyzer:
                         "Recalculated gradient row: " + parameter_plot_name(
                             parameter.decode("ascii"), with_unit=False) + r"; with $\alpha = $" + str(alpha),
                         fontsize=18)
-#                    plt.title("Gradient row: " + parameter_plot_name(parameter.decode("ascii"), with_unit=False),
-#                              fontsize=18)
+                    plt.title("Gradient row: " + parameter_plot_name(parameter.decode("ascii"), with_unit=False),
+                              fontsize=18)
                     for j in range(number_runs - 1):
-                        if j != 1:
-                            plt.axvline(x=number_steps[j])
+                        plt.axvline(x=number_steps[j])
                     plt.legend(fontsize=16)
                     plt.ylabel(gradient_plot_ylabel(parameter.decode("ascii")), fontsize=16)
                     plt.xlabel("Measurement Number", fontsize=16)
@@ -485,8 +482,7 @@ class Analyzer:
                     #plt.title("Recalculated Parameters with Residuals", fontsize=18)
                     plt.title("Parameters", fontsize=18)
                 for j in range(number_runs - 1):
-                    if j != 1:
-                        plt.axvline(x=number_steps[j])
+                    plt.axvline(x=number_steps[j])
                 plt.ylabel(parameter_plot_name(self.parameter_names[i].decode("ascii")), fontsize=16)
                 if i == number_parameter - 1:
                     plt.xlabel("Measurement Number", fontsize=16)
@@ -524,8 +520,7 @@ class Analyzer:
                 start_desired_val_range = number_steps[run] + 0.01
             plt.plot(x_des_val, y_des_val, "b")
             for j in range(number_runs - 1):
-                if j != 1:
-                    plt.axvline(x=number_steps[j])
+                plt.axvline(x=number_steps[j])
             plt.ylabel(parameter_plot_name(self.parameter_names[i].decode("ascii")), fontsize=16)
         plt.xlabel("Measurement Number", fontsize=16)
         fig = plt.gcf()
@@ -557,8 +552,7 @@ class Analyzer:
                     plt.gca().tick_params("y", labelsize=16)
 
                 for j in range(number_runs):
-                    if j != 1:
-                        plt.axvline(x=number_steps[j])
+                    plt.axvline(x=number_steps[j])
             plt.legend()
             plt.title(
                 "Gradient elements in the matrix row: " + parameter_plot_name(parameter.decode("ascii"), with_unit=False),
@@ -574,8 +568,7 @@ class Analyzer:
         offset = 0.
         for gate in self.gate_names:
             for j in range(number_runs):
-                if j != 1:
-                    plt.axvline(x=number_steps[j])
+                plt.axvline(x=number_steps[j])
             if with_offset:
                 plt.plot(1000. * (
                 gate_voltages_sequence_pd_concatenated[gate] - gate_voltages_sequence_pd_concatenated[gate][0] +

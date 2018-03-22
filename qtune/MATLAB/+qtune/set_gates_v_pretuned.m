@@ -5,6 +5,7 @@ function [ actual_point ] = set_gates_v_pretuned( args )
 global tunedata
 global pretuned_point
 global sensor_pretuned
+global sensor_gate1_pretuned
 global smdata
 gatechannels=tunedata.gatechan;
 

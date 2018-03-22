@@ -12,11 +12,13 @@ import h5py
 import matlab.engine
 import pandas as pd
 import numpy as np
+import scipy.ndimage
 
 from qtune.experiment import *
 from qtune.util import time_string
 from qtune.GradKalman import GradKalmanFilter
 from qtune.basic_dqd import BasicDQD
+from qtune.basic_dqd import BasicQQD
 from qtune.chrg_diag import ChargeDiagram
 from qtune.solver import Evaluator
 
@@ -153,6 +155,7 @@ class LegacyDQD(BasicDQD):
         super().__init__()
         self._matlab = matlab_instance
         self._qpc_tuned = False
+        self.signal_strength = 0.
 
     @property
     def gate_voltage_names(self) -> Tuple:
@@ -175,16 +178,40 @@ class LegacyDQD(BasicDQD):
     def read_qpc_voltage(self) -> pd.Series:
         return pd.Series(self._matlab.engine.qtune.readout_qpc())
 
-    def tune_qpc(self, qpc_position=None, tuning_range=4e-3):
+    def tune_qpc(self, qpc_position=None, tuning_range=4e-3, gate='SDB2'):
         if qpc_position is None:
             qpc_position = dict(self.read_qpc_voltage())['qpc'][0]
-        qpc_tune_input = {"tuning_range": tuning_range, "qpc_position": qpc_position, "file_name": time_string()}
+        qpc_tune_input = {"tuning_range": tuning_range, "qpc_position": qpc_position, "file_name": time_string(),
+                          "gate": gate}
         tuning_output = self._matlab.engine.qtune.retune_qpc(qpc_tune_input)
         self._qpc_tuned = True
+        self.signal_strength = tuning_output["signal_strength"]
         return tuning_output, self.read_qpc_voltage()
 
-    def measure(self,
-                measurement: Measurement) -> np.ndarray:
+    def tune_qpc_2d(self, tuning_range=15e-3):
+        qpc_2d_tune_input = {"range": tuning_range, "file_name": time_string()}
+        data = np.asarray(self._matlab.engine.qtune.PythonQPCScan2D(qpc_2d_tune_input))
+
+        n_lines = data.shape[0]
+        n_points = data.shape[1]
+        data_filterd = scipy.ndimage.filters.gaussian_filter1d(input=data, sigma=.5, axis=0, order=0, mode="nearest",
+                                                               truncate=4.)
+        data_diff = np.zeros((n_lines, n_points - 1))
+        for j in range(n_lines):
+            for i in range(n_points - 1):
+                data_diff[j, i] = data_filterd[j, i + 1] - data_filterd[j, i]
+
+        mins_in_lines = data_diff.min(1)
+        min_line = np.argmin(mins_in_lines)
+        min_point = np.argmin(data_diff[min_line])
+        gate1_pos = float(min_line) / 20. * 2 * tuning_range - tuning_range
+        gate2_pos = float(min_point) / 104. * 2 * tuning_range - tuning_range
+        gate_change = {"gate1": gate1_pos, "gate2": gate2_pos}
+        empty_output = self._matlab.engine.qtune.change_sensing_dot_gates(gate_change)
+#        self.tune_qpc(gate='SDB1')
+        self.tune_qpc(gate='SDB2')
+
+    def measure(self, measurement: Measurement) -> np.ndarray:
         if not self._qpc_tuned:
             self.tune_qpc()
 
@@ -212,9 +239,63 @@ class LegacyDQD(BasicDQD):
             raise ValueError('Unknown measurement: {}'.format(measurement))
 
 
+class LegacyQQD(BasicQQD):
+
+    def __init__(self, matlab_instance: SpecialMeasureMatlab):
+        super().__init__()
+        self._matlab = matlab_instance
+        self._left_sensing_dot_tuned = False
+        self._right_sensing_dot_tuned = False
+
+    def gate_voltage_names(self) -> Tuple:
+        return tuple(sorted(self._matlab.engine.qtune.read_qqd_gate_voltages().keys()))
+
+    def read_gate_voltages(self) -> pd.Series:
+        return pd.Series(self._matlab.engine.qtune.read_qqd_gate_voltages()).sort_index()
+
+    def _read_sensing_dot_voltages(self) -> pd.Series:
+        return pd.Series(self._matlab.engine.qtune.read_qqd_sensing_dot_voltages()).sort_index()
+
+    def tune_sensing_dot_1d(self, gate, prior_position=None, tuning_range=4e-3):
+        raise NotImplementedError
+
+    def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
+        self._left_sensing_dot_tuned = False
+        self._right_sensing_dot_tuned = False
+
+        current_gate_voltages = self.read_gate_voltages()
+        for key in current_gate_voltages.index.tolist():
+            if key not in new_gate_voltages.index.tolist():
+                new_gate_voltages[key] = current_gate_voltages[key]
+        new_gate_voltages = dict(new_gate_voltages)
+        for key in new_gate_voltages:
+            new_gate_voltages[key] = new_gate_voltages[key].item()
+        return pd.Series(self._matlab.engine.qtune.set_qqd_gate_voltages(new_gate_voltages))
+
+    def _set_sensing_dot_voltages(self, new_sensing_dot_voltage: pd.Series):
+        current_sensing_dot_voltages = self._read_sensing_dot_voltages()
+        for key in current_sensing_dot_voltages.index.tolist():
+            if key not in new_sensing_dot_voltage.index.tolist():
+                new_sensing_dot_voltage[key] = current_sensing_dot_voltages[key]
+        new_sensing_dot_voltage = dict(new_sensing_dot_voltage)
+        for key in new_sensing_dot_voltage:
+            new_sensing_dot_voltage[key] = new_sensing_dot_voltage[key].item()
+        self._matlab.engine.qtune.set_sensing_dot_gate_voltages()
+
+    def tune_qpc(self, qpc_position=None, tuning_range=4e-3, gate='SDB2'):
+        if qpc_position is None:
+            qpc_position = dict(self.read_qpc_voltage())['qpc'][0]
+        qpc_tune_input = {"tuning_range": tuning_range, "qpc_position": qpc_position, "file_name": time_string(),
+                          "gate": gate}
+        tuning_output = self._matlab.engine.qtune.retune_qpc(qpc_tune_input)
+        self._qpc_tuned = True
+        self.signal_strength = tuning_output["signal_strength"]
+        return tuning_output, self.read_qpc_voltage()
+
+
 class LegacyChargeDiagram(ChargeDiagram):
     """
-    Charge diagram class using Matlab functions to detect lead transitions. Already to be replaced by the python
+    Charge diagram class using Matlab functions to detect lead transitions. Has already been replaced by the python
     version.
     """
     def __init__(self, dqd: LegacyDQD,

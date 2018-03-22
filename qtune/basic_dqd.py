@@ -15,19 +15,50 @@ class BasicDQD(Experiment):
                                     N_average=3, AWGorDecaDAC='DecaDAC')
     default_detune_scan = Measurement('detune_scan',
                                       center=0., range=2e-3, N_points=100, ramptime=.02,
-                                      N_average=10, AWGorDecaDAC='DecaDAC')
+                                      N_average=10, AWGorDecaDAC='AWG')
     default_lead_scan = Measurement('lead_scan', gate='B', AWGorDecaDAC='DecaDAC')
     default_load_scan = Measurement("load_scan")
+
+    def __init__(self):
+        self.signal_strength = 0.
 
     @property
     def measurements(self) -> Tuple[Measurement, ...]:
         return self.default_line_scan, self.default_detune_scan, self.default_lead_scan, self.default_load_scan
 
-    def tune_qpc(self, qpc_position=None, tuning_range=3e-3):
+    def tune_qpc(self, qpc_position=None, tuning_range=4e-3, gate='SDB2'):
         raise NotImplementedError()
+
+    def tune_qpc_2d(self, tuning_range):
+        raise NotImplementedError
 
     def read_qpc_voltage(self) -> pd.Series:
         raise NotImplementedError()
+
+
+class BasicQQD(Experiment):
+
+    def __init__(self):
+        self.left_sensing_gates = ["LT", "LB"]
+        self.right_sensing_gates = ["RT", "RB"]
+        self.primarily_left_sensing_gate = "LT"
+        self.primarily_right_sensing_gate = "RT"
+        self.centralizing_gates = ["PA", "PB", "PC", "PD", "NAB", "NCD"]
+        self.left_signal_strength = 0.
+        self.right_signal_strength = 0.
+
+    @property
+    def measurements(self) -> Tuple[Measurement, ...]:
+        return NotImplementedError
+
+    def tune_sensing_dot_1d(self, prior_position, tuning_range, gate):
+        raise NotImplementedError
+
+    def tune_tune_sensing_dot_2d(self, side, tuning_range):
+        raise NotImplementedError
+
+    def read_sensing_dot_voltages(self):
+        raise NotImplementedError
 
 
 class TestDQD(BasicDQD):
