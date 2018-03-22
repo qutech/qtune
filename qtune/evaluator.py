@@ -213,7 +213,7 @@ def func_lead_times_v2(x, hight: float, t_fall: float, t_rise: float, begin_rise
     return y
 
 
-def fit_inter_dot_coupling(data, plot_fit=True, **kwargs):
+def fit_inter_dot_coupling(data, plot_fit=True, cut_fist_fifth=True, **kwargs):
     failed = 0
     center = kwargs["center"]
     scan_range = kwargs["scan_range"]
@@ -223,20 +223,24 @@ def fit_inter_dot_coupling(data, plot_fit=True, **kwargs):
         ydata = np.squeeze(data)
     else:
         ydata = np.squeeze(np.mean(data, 0))
+    if cut_fist_fifth:
+        cut_points = int(0.15 * float(npoints))
+        ydata = ydata[cut_points - 1:npoints-1]
+        xdata = xdata[cut_points - 1:npoints-1]
+        npoints = npoints - cut_points
     m_last_part, b_last_part = np.polyfit(xdata[int(round(0.75*npoints)):npoints-1], ydata[int(round(0.75*npoints)):npoints-1], 1)
     m_first_part, b_first_part = np.polyfit(xdata[0:int(round(0.25*npoints))], ydata[0:int(round(0.25*npoints))], 1)
     height = (b_last_part + m_last_part * xdata[npoints - 1]) - (b_first_part + m_first_part * xdata[npoints - 1])
-    position = qtune.chrg_diag.find_lead_transition(data=ydata - xdata * m_first_part, center=center, scan_range=scan_range, npoints=npoints,
-                                    width=scan_range / 12.)
+    position = qtune.chrg_diag.find_lead_transition(data=ydata - xdata * m_first_part, center=center,
+                                                    scan_range=scan_range, npoints=npoints, width=scan_range / 12.)
     p0 = [b_first_part, m_first_part, height, position, scan_range / 8.]
     if plot_fit:
         plt.plot(1e3 * xdata, ydata, "b.", label="Data")
-    #plt.plot(1e3 * xdata, func_inter_dot_coupling(xdata, p0[0], p0[1], p0[2], p0[3], p0[4]), "k--", label="Fit Initial Values")
     popt, pcov = optimize.curve_fit(f=func_inter_dot_coupling, p0=p0, xdata=xdata, ydata=ydata)
 
-    weights = np.ones(100)
+    weights = np.ones(npoints)
     position_point = int((popt[3] + scan_range) / 2. / scan_range * npoints)
-    heavy_range = 0.23
+    heavy_range = 0.25
     if position_point < heavy_range * npoints:
         begin_weight = 0
     else:
@@ -250,7 +254,8 @@ def fit_inter_dot_coupling(data, plot_fit=True, **kwargs):
     popt, pcov = optimize.curve_fit(f=func_inter_dot_coupling, p0=popt, sigma=weights, xdata=xdata, ydata=ydata)
 
     if plot_fit:
-        plt.plot(1e3 * xdata, func_inter_dot_coupling(xdata, popt[0], popt[1], popt[2], popt[3], popt[4]), "r", label="Fit")
+        plt.plot(1e3 * xdata, func_inter_dot_coupling(xdata, popt[0], popt[1], popt[2], popt[3], popt[4]), "r",
+                 label="Fit")
         plt.xlabel("Detuning $\epsilon$ [mV]", fontsize=22)
         plt.ylabel("Signal [a.u.]", fontsize=22)
         plt.gca().tick_params("x", labelsize=22)
@@ -259,11 +264,32 @@ def fit_inter_dot_coupling(data, plot_fit=True, **kwargs):
         fig = plt.gcf()
         fig.set_size_inches(8.5, 8)
         plt.show()
-    residuals = ydata - func_inter_dot_coupling(xdata, popt[0], popt[1], popt[2], popt[3], popt[4])
-    residual = np.nanmean(np.square(residuals)) / (popt[2] * popt[2]) * 5e5
+
+    residuals = ydata[int(0.3 * npoints):npoints] - func_inter_dot_coupling(xdata[int(0.3 * npoints):npoints], popt[0], popt[1], popt[2], popt[3], popt[4])
+    residual = np.nanmean(np.square(residuals)) / (popt[2] * popt[2]) * 2e4
     width_in_mus = popt[4] * 1e6
     fit_result = pd.Series(data=[width_in_mus, failed, residual], index=["tc", "failed", "residual"])
     return fit_result
+
+
+def func_inter_dot_coupling_2_slopes(xdata, offset: float, slope_left: float, slope_right: float, height: float, position: float,
+                            width: float):
+    n_points = xdata.shape[0]
+    i_position = int(n_points / 2)
+    for i in range(n_points):
+        if xdata[i] > position:
+            i_position = i
+            break
+    ydata = np.ones(xdata.shape)
+    ydata[0:i_position] = offset + slope_left * xdata[0:i_position] + .5 * height * (
+        1 + np.tanh((xdata[0:i_position] - position) / width))
+    ydata[i_position:n_points] = offset + slope_right * xdata[i_position:n_points] + .5 * height * (
+        1 + np.tanh((xdata[i_position:n_points] - position) / width))
+    return ydata
+
+
+def func_inter_dot_coupling_parabola(xdata, offset: float, slope: float, curvature: float, height: float, position: float, width: float):
+    return offset + slope * xdata + curvature * (xdata - xdata[0]) * (xdata - xdata[0]) + .5 * height * (1 + np.tanh((xdata - position) / width))
 
 
 def func_inter_dot_coupling(xdata, offset: float, slope: float, height: float, position: float, width: float):
