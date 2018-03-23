@@ -282,8 +282,17 @@ class Analyzer:
     def calculate_kalman_gradient(self, gate_voltages_sequence_pd, parameters_sequence_pd, initial_grad, initial_cov,
                                   initial_noise, number_steps, alpha, with_relative_error=False, relative_error=0.0004,
                                   residuals=None):
+
+        shifting_uncertainty = np.zeros((8, 8))
+        load_uncertainty = 0.15
+        inter_dot_uncertainty = 0.6
+        for i in range(4):
+            shifting_uncertainty[i, i] = load_uncertainty * load_uncertainty * 1e6
+        for i in range(4, 8):
+            shifting_uncertainty[i, i] = inter_dot_uncertainty * inter_dot_uncertainty * 1e6
+
         kalman = GradKalmanFilter(self.tunable_gate_names.size, self.parameter_names.size, initX=initial_grad,
-                                  initP=initial_cov, initR=initial_noise, alpha=alpha)
+                                  initP=initial_cov, initR=initial_noise, alpha=alpha, initQ=shifting_uncertainty)
         covariance_index = []
         for parameter in self.parameter_names:
             for gate in self.tunable_gate_names:
@@ -687,9 +696,7 @@ class Analyzer:
             plt.plot(x_des_val, y_des_val, "b")
             #            plt.axhline(desired_values_pd[self.parameter_names[i]])
             for j in range(number_runs - 1):
-                if j != 1:
-                    plt.axvline(x=number_steps[j])
-                    #                plt.axvline(x=number_steps[j])
+                plt.axvline(x=number_steps[j])
             plt.ylabel(self.parameter_names[i].decode("ascii"))
             plt.xlabel("Measurement Number")
             plt.draw()

@@ -53,21 +53,23 @@ class KalmanSolver(Solver):
     Solver using the Kalman filter to update the gradient.
     """
     def __init__(self, gate_names=None, gradient=None, evaluators: Tuple[Evaluator, ...] = (),
-                 desired_values: pd.Series = pd.Series(), covariance=None, noise=None, alpha=1.02):
+                 desired_values: pd.Series = pd.Series(), covariance=None, noise=None, alpha=1.02,
+                 shifting_uncertainty=None):
         super().__init__(gate_names=gate_names, gradient=gradient, desired_values=desired_values, evaluators=evaluators)
         self.covariance = covariance
         self.noise = noise
+        self.shifting_uncertainty = shifting_uncertainty
         if gradient is not None:
             n_parameter, n_gates = gradient.shape()
             self.grad_kalman = GradKalmanFilter(nGates=n_gates, nParams=n_parameter, initF=None, initX=gradient,
                                                 initP=covariance, initR=noise, initQ=None, alpha=alpha)
 
-    def initialize_kalman(self, gradient=None, covariance=None, noise=None, alpha=1.02):
+    def initialize_kalman(self, gradient=None, covariance=None, noise=None, shifting_uncertainty=None, alpha=1.02):
         if gradient is None:
             gradient = self.gradient
         n_parameters, n_gates = gradient.shape
         self.grad_kalman = GradKalmanFilter(nGates=n_gates, nParams=n_parameters, initX=gradient, initP=covariance,
-                                            initR=noise, alpha=alpha)
+                                            initR=noise, initQ=shifting_uncertainty, alpha=alpha)
         self.gradient = gradient
 
     def update_after_step(self, d_voltages_series: pd.Series, d_parameter_series: pd.Series = None,
@@ -108,24 +110,18 @@ class KalmanNewtonSolver(KalmanSolver):
     Uses the Newton algorithm to compute the voltage steps and the Kalman filter to update the gradient.
     """
     def __init__(self, gate_names=None, gradient=None, evaluators: Tuple[Evaluator, ...] = (),
-                 desired_values: pd.Series = pd.Series(), covariance=None, noise=None, alpha=1.02):
+                 desired_values: pd.Series = pd.Series(), covariance=None, noise=None, alpha=1.02,
+                 shifting_uncertainty=None):
         super().__init__(gate_names=gate_names, gradient=gradient, evaluators=evaluators, desired_values=desired_values,
-                         covariance=covariance, noise=noise, alpha=alpha)
+                         covariance=covariance, noise=noise, alpha=alpha, shifting_uncertainty=shifting_uncertainty)
 
     def suggest_next_step(self) -> pd.Series:
         if not self.check_dimensionality():
             print('The internal dimensionality is not consistent! Cant predict next Step! Abort mission!')
-            return
+            return pd.Series()
         d_parameter_series = self.desired_values.add(-1.*self.parameter)
         d_parameter_series = d_parameter_series.sort_index()
         d_parameter_vector = np.asarray(d_parameter_series.values).T
         d_voltages_vector = np.linalg.lstsq(self.grad_kalman.grad, d_parameter_vector)[0]
         d_voltages_series = pd.Series(d_voltages_vector, self.gate_names)
         return d_voltages_series
-
-
-
-
-
-
-

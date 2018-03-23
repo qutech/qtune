@@ -400,7 +400,8 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
                    evaluators: Tuple[Evaluator, ...] = (),
                    desired_values: pd.Series = pd.Series(), gradient_std: pd.DataFrame = None,
                    evaluation_std: pd.Series = None, alpha=1.02, load_data=False, filename: str = None,
-                   filepath: str = "tunerun_0/gradient_setup_1", tuning_accuracy: pd.Series = pd.Series()):
+                   filepath: str = "tunerun_0/gradient_setup_1", tuning_accuracy: pd.Series = pd.Series(),
+                   add_const_uncertainty=False, shifting_uncertainty=None):
         """
         Adds a solver to the auto tuner.
         :param kalman_solver: The solver to be added
@@ -454,8 +455,16 @@ class CDKalmanAutotuner(ChargeDiagramAutotuner):
                 self.solver.add_evaluator(e)
         if not desired_values.empty:
             self.solver.desired_values = desired_values
+
+        if add_const_uncertainty and shifting_uncertainty is None:
+            if covariance is not None:
+                shifting_uncertainty = 0.5 * covariance
+            else:
+                print("You need to provide an initial covariance or shifting_uncertainty if you want to add constant"
+                      "uncertainty!")
+
         self.solver.initialize_kalman(gradient=gradient_matrix, covariance=covariance, noise=evaluation_noise,
-                                      alpha=alpha)
+                                      alpha=alpha, shifting_uncertainty=shifting_uncertainty)
         self.logout_of_savefile()
 
     def load_step_set_solver(self, kalman_solver: KalmanSolver,  desired_values: pd.Series = None,

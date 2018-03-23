@@ -241,8 +241,8 @@ class PredictionChargeDiagram(ChargeDiagram):
         total_shift = [total_position_shift[0], total_position_shift[1], actual_qpc_shift]
         self.grad_kalman_prediction.update(dU=d_voltages_vector, dT=total_shift)
 
-#        if self.dqd.signal_strength < 1e-5:
-        self.dqd.tune_qpc_2d()
+        if self.dqd.signal_strength < 2e-5:
+            self.dqd.tune_qpc_2d()
         self.center_diagram(remeasure_positions=True)
 
     def track_qpc_while_shifting(self, d_voltages_pd: pd.Series):
