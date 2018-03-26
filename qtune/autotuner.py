@@ -151,6 +151,7 @@ class Autotuner:
         storage_group = evaluation_group.create_group(
             "parameter_evaluation_" + str(self.parameter_evaluation_number))
         self.evaluate_parameters(storing_group=storage_group)
+        save_gate_voltages(storage_group, self.experiment.read_gate_voltages()[self.gates.index])
         self.logout_of_savefile()
 
     def tuning_complete(self) -> bool:

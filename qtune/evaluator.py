@@ -90,7 +90,10 @@ class InterDotTCByLineScan(Evaluator):
         plt.ion()
         plt.figure(51)
         plt.clf()
-        fitresult = fit_inter_dot_coupling(data=ydata.copy(), center=center, scan_range=scan_range, npoints=npoints)
+        try:
+            fitresult = fit_inter_dot_coupling(data=ydata.copy(), center=center, scan_range=scan_range, npoints=npoints)
+        except:
+            fitresult = pd.Series(data=[True, np.nan, np.nan], index=['failed', 'parameter_tunnel_coupling', "residual"])
 #        plt.pause(0.05)
         tc = fitresult['tc']
         failed = bool(fitresult['failed'])
@@ -126,7 +129,10 @@ class LoadTime(Evaluator):
         plt.figure(81)
         plt.clf()
         plt.figure(81)
-        fitresult = fit_load_time(data=data, n_points=n_points, )
+        try:
+            fitresult = fit_load_time(data=data, n_points=n_points, )
+        except:
+            fitresult = pd.Series(data=[True, np.nan, np.nan], index=['failed', 'parameter_time_load', "residual"])
         plt.pause(0.05)
         parameter_time_load = fitresult['parameter_time_load']
         failed = fitresult['failed']
@@ -308,7 +314,8 @@ def fit_load_time(data, plot_fit=True, **kwargs):
     bounds = ([-np.inf, -np.inf, 10.],
               [np.inf, np.inf, 120.])
 #    plt.plot(xdata, func_load_time(xdata, p0[0], p0[1], p0[2]), "k--", label="Fit Starting Values")
-    popt, pcov = optimize.curve_fit(f=func_load_time, p0=p0, bounds=bounds, xdata=xdata, ydata=ydata)
+#    popt, pcov = optimize.curve_fit(f=func_load_time, p0=p0, bounds=bounds, xdata=xdata, ydata=ydata)
+    popt, pcov = optimize.curve_fit(f=func_load_time, p0=p0, xdata=xdata, ydata=ydata)
     if popt[2] < 0.:
         initial_curvature = 200
         p0 = [min, max - min, initial_curvature]
