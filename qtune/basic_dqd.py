@@ -43,9 +43,11 @@ class BasicQQD(Experiment):
         self.right_sensing_gates = ["RT", "RB"]
         self.primarily_left_sensing_gate = "LT"
         self.primarily_right_sensing_gate = "RT"
-        self.centralizing_gates = ["PA", "PB", "PC", "PD", "NAB", "NCD"]
+        self.centralizing_gates = ["PA", "PB", "PC", "PD"]
         self.left_signal_strength = 0.
         self.right_signal_strength = 0.
+        self.tunable_gates = ["SA", "NAB", "NBC", "NCD", "SD", "TAB", "TBC", "TCD"]
+        self.tunable_gates.sort()
 
     @property
     def measurements(self) -> Tuple[Measurement, ...]:

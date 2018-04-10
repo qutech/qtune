@@ -15,7 +15,9 @@ import numpy as np
 import scipy.ndimage
 
 from qtune.experiment import *
+import qtune.experiment
 from qtune.util import time_string
+import qtune.util
 from qtune.GradKalman import GradKalmanFilter
 from qtune.basic_dqd import BasicDQD
 from qtune.basic_dqd import BasicQQD
@@ -256,8 +258,54 @@ class LegacyQQD(BasicQQD):
     def _read_sensing_dot_voltages(self) -> pd.Series:
         return pd.Series(self._matlab.engine.qtune.read_qqd_sensing_dot_voltages()).sort_index()
 
-    def tune_sensing_dot_1d(self, gate, prior_position=None, tuning_range=4e-3):
-        raise NotImplementedError
+    def tune_sensing_dot_1d(self, gate: str, prior_position: float=None, tuning_range: float=4e-3, n_points: int=1280,
+                            scan_range: float=5e-3):
+        if prior_position is None:
+            prior_position = self._read_sensing_dot_voltages()[gate]
+        sensing_dot_measurement = qtune.experiment.Measurement('line_scan',
+                                    center=prior_position, range=scan_range, gate=gate, N_points=n_points, ramptime=.0005,
+                                    N_average=1, AWGorDecaDAC='DecaDAC')
+        data = self.measure(sensing_dot_measurement)
+        detuning = qtune.util.find_stepes_point_sensing_dot(data, scan_range=scan_range, npoints=n_points)
+        self._set_sensing_dot_voltages(pd.Series({gate: prior_position + detuning}))
+
+    def tune_sensing_dot_2d(self, side: str, tuning_range=15e-3, n_lines=20, n_points=104):
+        if side == "r" or side == "R" or side == "right":
+            gate_T = "RT"
+            gate_B = "RB"
+        elif side == "l" or side == "L" or side == "left":
+            gate_T = "LT"
+            gate_B = "LB"
+        else:
+            print("Specify which sensing dot you would like to tune!")
+            raise ValueError
+
+        positions = self._read_sensing_dot_voltages()
+        T_position = positions[gate_T]
+        B_position = positions[gate_B]
+
+        sensing_dot_measurement = qtune.experiment.Measurement('2d_scan', center=[T_position, B_position],
+                                                               range=tuning_range, gate1=gate_T, gate2=gate_B,
+                                                               N_points=1280, ramptime=.0005, n_lines=n_lines,
+                                                               n_points=n_points, N_average=1, AWGorDecaDAC='DecaDAC')
+        data = self.measure(sensing_dot_measurement)
+
+        data_filterd = scipy.ndimage.filters.gaussian_filter1d(input=data, sigma=.5, axis=0, order=0,
+                                                               mode="nearest",
+                                                               truncate=4.)
+        data_diff = np.zeros((n_lines, n_points - 1))
+        for j in range(n_lines):
+            for i in range(n_points - 1):
+                data_diff[j, i] = data_filterd[j, i + 1] - data_filterd[j, i]
+
+        mins_in_lines = data_diff.min(1)
+        min_line = np.argmin(mins_in_lines)
+        min_point = np.argmin(data_diff[min_line])
+        gate_T_pos = float(min_line) / float(n_lines) * 2 * tuning_range - tuning_range
+        gate_B_pos = float(min_point) / float(n_points) * 2 * tuning_range - tuning_range
+        new_positions = {gate_T: gate_T_pos + T_position, gate_B: gate_B_pos + B_position}
+        self._set_sensing_dot_voltages(pd.Series(new_positions))
+        self.tune_sensing_dot_1d(gate=gate_T)
 
     def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
         self._left_sensing_dot_tuned = False
@@ -282,15 +330,34 @@ class LegacyQQD(BasicQQD):
             new_sensing_dot_voltage[key] = new_sensing_dot_voltage[key].item()
         self._matlab.engine.qtune.set_sensing_dot_gate_voltages()
 
-    def tune_qpc(self, qpc_position=None, tuning_range=4e-3, gate='SDB2'):
-        if qpc_position is None:
-            qpc_position = dict(self.read_qpc_voltage())['qpc'][0]
-        qpc_tune_input = {"tuning_range": tuning_range, "qpc_position": qpc_position, "file_name": time_string(),
-                          "gate": gate}
-        tuning_output = self._matlab.engine.qtune.retune_qpc(qpc_tune_input)
-        self._qpc_tuned = True
-        self.signal_strength = tuning_output["signal_strength"]
-        return tuning_output, self.read_qpc_voltage()
+    def measure(self, measurement: Measurement) -> np.ndarray:
+        if not self._left_sensing_dot_tuned:
+            self.tune_sensing_dot_1d("RT")
+        if not self._right_sensing_dot_tuned:
+            self.tune_sensing_dot_1d("LT")
+
+        if measurement == 'line_scan':
+            parameters = measurement.parameter.copy()
+            parameters['file_name'] = "line_scan" + measurement.get_file_name()
+            parameters['N_points'] = float(parameters['N_points'])
+            parameters['N_average'] = float(parameters['N_average'])
+            return np.asarray(self._matlab.engine.qtune.PythonChargeLineScan(parameters))
+        elif measurement == 'detune_scan':
+            parameters = measurement.parameter.copy()
+            parameters['file_name'] = "detune_scan_" + measurement.get_file_name()
+            parameters['N_points'] = float(parameters['N_points'])
+            parameters['N_average'] = float(parameters['N_average'])
+            return np.asarray(self._matlab.engine.qtune.PythonLineScan(parameters))
+        elif measurement == 'lead_scan':
+            parameters = measurement.parameter.copy()
+            parameters['file_name'] = "lead_scan" + measurement.get_file_name()
+            return np.asarray(self._matlab.engine.qtune.LeadScan(parameters))
+        elif measurement == "load_scan":
+            parameters = measurement.parameter.copy()
+            parameters["file_name"] = "load_scan" + measurement.get_file_name()
+            return np.asarray(self._matlab.engine.qtune.LoadScan(parameters))
+        else:
+            raise ValueError('Unknown measurement: {}'.format(measurement))
 
 
 class LegacyChargeDiagram(ChargeDiagram):
