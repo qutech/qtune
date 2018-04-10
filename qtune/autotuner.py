@@ -177,6 +177,7 @@ class Autotuner:
         :return:
         """
         self.gradient_number += 1
+
         self.login_savefile()
         gradient_group = self.current_tunerun_group.create_group("gradient_setup_" + str(self.gradient_number))
         gradient_group.attrs["n_repetitions"] = n_repetitions
@@ -186,11 +187,13 @@ class Autotuner:
         parameter_names = parameters.index.tolist()
         parameter_names = np.asarray(parameter_names, dtype='S30')
         gradient_group.create_dataset("parameter_names", data=parameter_names)
+
         current_gate_positions = self.read_tunable_gate_voltages()
         positive_detune = pd.DataFrame()
         negative_detune = pd.DataFrame()
         positive_detune_parameter = pd.Series()
         negative_detune_parameter = pd.Series()
+
         for gate in self.tunable_gates.index.tolist():
             for parameter in self.parameters.index.tolist():
                 positive_detune_parameter[parameter] = np.zeros((n_repetitions,), dtype=float)
@@ -807,7 +810,7 @@ def save_gate_voltages(save_group: h5py.Group, gate_voltages: pd.Series):
 
 
 def convert_gradient_heuristic_data(gradient: pd.DataFrame, gradient_std: pd.DataFrame,
-                                     evaluation_std: pd.Series):
+                                    evaluation_std: pd.Series):
     gradient = gradient.sort_index(0)
     gradient = gradient.sort_index(1)
     gradient_matrix = gradient.as_matrix()

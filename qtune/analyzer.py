@@ -4,6 +4,7 @@ import h5py
 from scipy import optimize
 from qtune.util import find_lead_transition
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 import qtune.evaluator
 from qtune.GradKalman import GradKalmanFilter
 
@@ -1112,6 +1113,98 @@ class Analyzer:
                                                           0] / n_repetitions
                         gradient_pd[gate][parameter][i] = fit_functions[evaluator_number]
 
+    def load_square_grid_evaluation_reconstruct_voltages(self, start=1, gate1="T", gate2="N", max_distance=15e-3,
+                                                         step_size=3e-3, n_steps=11):
+
+        #reconstruct_voltages:
+        data = pd.Series()
+        for gate1_index in range(int(n_steps / 2)):
+
+            for gate2_index in range(n_steps):
+                new_entry = pd.Series(data=[2 * gate1_index * step_size, gate2_index * step_size], index=[gate1, gate2])
+                data[str(gate2_index + 2 * n_steps * gate1_index)] = new_entry
+
+            for gate2_index in range(n_steps):
+                new_entry = pd.Series(data=[(2 * gate1_index + 1) * step_size, (n_steps - 1 - gate2_index) * step_size],
+                                      index=[gate1, gate2])
+                data[str(n_steps + gate2_index + 2 * n_steps * gate1_index)] = new_entry
+
+        if (n_steps % 2) == 1:
+            for gate2_index in range(n_steps):
+                new_entry = pd.Series(data=[(n_steps - 1) * step_size, gate2_index * step_size],
+                                      index=[gate1, gate2])
+                data[str(gate2_index + n_steps * (n_steps - 1))] = new_entry
+
+        #load data
+        for i in range(n_steps * n_steps):
+            data[str(i)]["evaluator_LoadTime"] = self.root_group[
+                                                     "parameter_evaluation/parameter_evaluation_" + str(
+                                                         i + 1 + start) + "/evaluator_LoadTime"][:]
+            data[str(i)]["evaluator_SMInterDotTCByLineScan"] = self.root_group[
+                                                                   "parameter_evaluation/parameter_evaluation_" + str(
+                                                                       i + 1 + start) + "/evaluator_SMInterDotTCByLineScan"][
+                                                               :]
+
+
+        # calculate parameters
+        data_array_tc = np.zeros((n_steps, n_steps))
+        data_array_load = np.zeros((n_steps, n_steps))
+        gate1_voltage_values = np.zeros((n_steps, n_steps))
+        gate2_voltage_values = np.zeros((n_steps, n_steps))
+
+        for gate1_index in range(int(n_steps / 2)):
+
+            for gate2_index in range(n_steps):
+                fitresult = qtune.evaluator.fit_inter_dot_coupling(
+                    data[str(gate2_index + 2 * n_steps * gate1_index)]["evaluator_SMInterDotTCByLineScan"], center=0.,
+                    scan_range=2e-3, npoints=100, plot_fit=False)
+                data_array_tc[2 * gate1_index, gate2_index] = fitresult["tc"]
+                fitresult = qtune.evaluator.fit_load_time(
+                    data[str(gate2_index + 2 * n_steps * gate1_index)]["evaluator_LoadTime"], plot_fit=False)
+                data_array_load[2 * gate1_index, gate2_index] = fitresult["parameter_time_load"]
+                gate1_voltage_values[2 * gate1_index, gate2_index] = data[str(gate2_index + 2 * n_steps * gate1_index)][
+                    gate1]
+                gate2_voltage_values[2 * gate1_index, gate2_index] = data[str(gate2_index + 2 * n_steps * gate1_index)][
+                    gate2]
+
+            for gate2_index in range(n_steps):
+                fitresult = qtune.evaluator.fit_inter_dot_coupling(
+                    data[str(n_steps + gate2_index + 2 * n_steps * gate1_index)]["evaluator_SMInterDotTCByLineScan"],
+                    center=0., scan_range=2e-3, npoints=100, plot_fit=False)
+                data_array_tc[2 * gate1_index + 1, n_steps - 1 - gate2_index] = fitresult["tc"]
+                fitresult = qtune.evaluator.fit_load_time(
+                    data[str(n_steps + gate2_index + 2 * n_steps * gate1_index)]["evaluator_LoadTime"], plot_fit=False)
+                data_array_load[2 * gate1_index + 1, n_steps - 1 - gate2_index] = fitresult["parameter_time_load"]
+                gate1_voltage_values[2 * gate1_index + 1, n_steps - 1 - gate2_index] = \
+                data[str(n_steps + gate2_index + 2 * n_steps * gate1_index)][gate1]
+                gate2_voltage_values[2 * gate1_index + 1, n_steps - 1 - gate2_index] = \
+                data[str(n_steps + gate2_index + 2 * n_steps * gate1_index)][gate2]
+
+        if (n_steps % 2) == 1:
+            for gate2_index in range(n_steps):
+                fitresult = qtune.evaluator.fit_inter_dot_coupling(
+                    data[str(gate2_index + n_steps * (n_steps - 1))]["evaluator_SMInterDotTCByLineScan"], center=0.,
+                    scan_range=2e-3, npoints=100, plot_fit=False)
+                data_array_tc[n_steps - 1, gate2_index] = fitresult["tc"]
+                fitresult = qtune.evaluator.fit_load_time(
+                    data[str(gate2_index + n_steps * (n_steps - 1))]["evaluator_LoadTime"], plot_fit=False)
+                data_array_load[n_steps - 1, gate2_index] = fitresult["parameter_time_load"]
+                gate1_voltage_values[n_steps - 1, gate2_index] = data[str(gate2_index + n_steps * (n_steps - 1))][gate1]
+                gate2_voltage_values[n_steps - 1, gate2_index] = data[str(gate2_index + n_steps * (n_steps - 1))][gate2]
+
+        #plot
+
+        fig = plt.figure(1)
+        ax = fig.add_subplot(111, projection='3d')
+        Axes3D.plot_surface(ax, X=gate2_voltage_values, Y=gate1_voltage_values, Z=data_array_tc)
+        plt.title('Tunnel Coupling')
+
+        fig = plt.figure(2)
+        ax = fig.add_subplot(111, projection='3d')
+        Axes3D.plot_surface(ax, X=gate2_voltage_values, Y=gate1_voltage_values, Z=data_array_load)
+        plt.title('Load Time')
+
+
 
 def count_steps_in_sequence(sequence_group: h5py.Group):
     counter = 0
@@ -1265,9 +1358,9 @@ def plot_raw_measurement(evaluator, raw_data, attribute_info, figure_number):
 def parameter_plot_name(name: str, with_unit: bool=True):
     if with_unit:
         if name == "parameter_time_load":
-            return "Singlet load time $[ns]$"
+            return "Singlet Load Time $(ns)$"
         if name == "parameter_tunnel_coupling":
-            return "Tunnel coupling $[\mu V]$"
+            return "Tunnel Coupling $(\mu V)$"
     else:
         if name == "parameter_time_load":
             return "Singlet load time"
@@ -1277,6 +1370,6 @@ def parameter_plot_name(name: str, with_unit: bool=True):
 
 def gradient_plot_ylabel(parameter: str):
     if parameter == "parameter_time_load":
-        return "Gradient elements $[ns /m V]$"
+        return "Gradient Elements $(ns /m V)$"
     if parameter == "parameter_tunnel_coupling":
-        return "Gradient elements $[\mu V /m V]$"
+        return "Gradient Elements $(\mu V /m V)$"
