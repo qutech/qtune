@@ -225,11 +225,13 @@ class PredictionChargeDiagram(ChargeDiagram):
         d_voltages = d_voltages.sort_index()
         d_voltages_vector = np.asarray(d_voltages)
         d_parameter_vector = np.dot(self.grad_kalman_prediction.grad, d_voltages_vector.transpose())
+
         current_qpc_position = self.dqd.read_qpc_voltage()["qpc"][0]
         qpc_shift = d_parameter_vector[2]
         predicted_qpc_position = current_qpc_position + qpc_shift
         tuning_output, actual_qpc_voltage = self.dqd.tune_qpc(qpc_position=float(predicted_qpc_position))
         actual_qpc_shift = float(actual_qpc_voltage["qpc"][0]) - current_qpc_position
+
         neg_position_shift = np.asarray([-1. * d_parameter_vector[0], -1. * d_parameter_vector[1]])
         correction = np.linalg.solve(self.grad_kalman.grad, neg_position_shift)
         correction_pd = pd.Series(data=correction, index=["BA", "BB"])

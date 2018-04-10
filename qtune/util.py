@@ -47,3 +47,31 @@ def find_lead_transition(data: np.ndarray, center: float, scan_range: float, npo
 
     return x[max_index]
 
+
+def nth_diff(data:np.ndarray, n: int):
+    data_diff = np.ndarray((len(data) - n, ))
+    for i in range(0, len(data) - n):
+        data_diff[i] = data[i] - data[i+n]
+    return data_diff
+
+
+def moving_average_filter(data: np.ndarray, width) -> np.ndarray:
+    data = data.squeeze()
+    n_points = data.size
+    smoothed = np.zeros((n_points, ))
+    for i in range(width):
+        smoothed[i] = sum(data[0:i + 1])
+        smoothed[i] *= 1. / float(i + 1)
+    for i in range(width, n_points, 1):
+        smoothed[i] = sum(data[i - width + 1:i + 1])
+        smoothed[i] *= 1. / width
+    return smoothed
+
+
+def find_stepes_point_sensing_dot(data: np.ndarray, scan_range=5e-3, npoints=1280) -> float:
+    data = moving_average_filter(data, 200)
+    data = nth_diff(data, 30)
+    data = moving_average_filter(data, 30)
+    max_index = np.argmin(data) + 15
+    detuning = (float(max_index) - float(npoints) / 2.) * scan_range / (float(npoints) / 2.)
+    return detuning
