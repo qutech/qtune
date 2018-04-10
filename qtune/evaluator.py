@@ -13,10 +13,12 @@ class Evaluator:
     """
     The evaluator classes conduct measurements, calculate the parameters with the scan data and save the results in the HDF5 library.
     """
-    def __init__(self, experiment: Experiment, measurements: Tuple[Measurement, ...], parameters: pd.Series):
+    def __init__(self, experiment: Experiment, measurements: Tuple[Measurement, ...], parameters: pd.Series,
+                 name: str):
         self.experiment = experiment
         self.measurements = measurements
         self.parameters = parameters
+        self.name = name
 
     def evaluate(self, storing_group: h5py.Group) -> pd.Series:
         raise NotImplementedError
@@ -42,10 +44,10 @@ class LeadTunnelTimeByLeadScan(Evaluator):
     """
     def __init__(self, dqd: BasicDQD,
                  parameters: pd.Series() = pd.Series([np.nan, np.nan], ['parameter_time_rise', 'parameter_time_fall']),
-                 lead_scan: Measurement = None):
+                 lead_scan: Measurement = None, name: str=""):
         if lead_scan is None:
             lead_scan = dqd.measurements[2]
-        super().__init__(dqd, lead_scan, parameters)
+        super().__init__(dqd, lead_scan, parameters, name)
 
     def evaluate(self, storing_group: h5py.Group) -> pd.Series:
         data = self.experiment.measure(self.measurements)
@@ -61,7 +63,7 @@ class LeadTunnelTimeByLeadScan(Evaluator):
         self.parameters['parameter_time_rise'] = t_rise
         self.parameters['parameter_time_fall'] = t_fall
         if storing_group is not None:
-            storing_dataset = storing_group.create_dataset("evaluator_SMLeadTunnelTimeByLeadScan", data=data)
+            storing_dataset = storing_group.create_dataset("evaluator_" + self.name + "_SMLeadTunnelTimeByLeadScan", data=data)
             storing_dataset.attrs["parameter_time_rise"] = t_rise
             storing_dataset.attrs["parameter_time_fall"] = t_fall
             if failed:
@@ -76,10 +78,10 @@ class InterDotTCByLineScan(Evaluator):
     the width calculated as parameter for the inter dot coupling.
     """
     def __init__(self, dqd: BasicDQD, parameters: pd.Series() = pd.Series((np.nan,), ('parameter_tunnel_coupling',)),
-                 line_scan: Measurement = None):
+                 line_scan: Measurement = None, name: str=""):
         if line_scan is None:
             line_scan = dqd.measurements[1]
-        super().__init__(dqd, line_scan, parameters)
+        super().__init__(dqd, line_scan, parameters, name)
 
     def evaluate(self, storing_group: h5py.Group) -> pd.Series:
         ydata = self.experiment.measure(self.measurements)
@@ -100,7 +102,8 @@ class InterDotTCByLineScan(Evaluator):
         residual = fitresult["residual"]
         self.parameters['parameter_tunnel_coupling'] = tc
         if storing_group is not None:
-            storing_dataset = storing_group.create_dataset("evaluator_SMInterDotTCByLineScan", data=ydata)
+            storing_dataset = storing_group.create_dataset("evaluator_" + self.name + "_SMInterDotTCByLineScan",
+                                                           data=ydata)
             storing_dataset.attrs["center"] = center
             storing_dataset.attrs["scan_range"] = scan_range
             storing_dataset.attrs["npoints"] = npoints
@@ -117,10 +120,10 @@ class LoadTime(Evaluator):
     Measures the time required to reload a (2,0) singlet state. Fits an exponential function.
     """
     def __init__(self, dqd: BasicDQD, parameters: pd.Series() = pd.Series((np.nan,), ('parameter_time_load',)),
-                 load_scan: Measurement = None):
+                 load_scan: Measurement = None, name: str=""):
         if load_scan is None:
             load_scan = dqd.measurements[3]
-        super().__init__(dqd, load_scan, parameters)
+        super().__init__(dqd, load_scan, parameters, name)
 
     def evaluate(self, storing_group: h5py.Group) -> pd.Series:
         data = self.experiment.measure(self.measurements)
@@ -139,7 +142,7 @@ class LoadTime(Evaluator):
         residual = fitresult["residual"]
         self.parameters['parameter_time_load'] = parameter_time_load
         if storing_group is not None:
-            storing_dataset = storing_group.create_dataset("evaluator_LoadTime", data=data)
+            storing_dataset = storing_group.create_dataset("evaluator_" + self.name + "_LoadTime", data=data)
             storing_dataset.attrs["parameter_time_load"] = parameter_time_load
             storing_dataset.attrs["residual"] = residual
             if failed:
@@ -311,8 +314,8 @@ def fit_load_time(data, plot_fit=True, **kwargs):
     max = np.nanmax(ydata)
     initial_curvature = 10.
     p0 = [min, max - min, initial_curvature]
-    bounds = ([-np.inf, -np.inf, 10.],
-              [np.inf, np.inf, 120.])
+    bounds = ([-np.inf, -np.inf, 2.],
+              [np.inf, np.inf, 500.])
 #    plt.plot(xdata, func_load_time(xdata, p0[0], p0[1], p0[2]), "k--", label="Fit Starting Values")
 #    popt, pcov = optimize.curve_fit(f=func_load_time, p0=p0, bounds=bounds, xdata=xdata, ydata=ydata)
     popt, pcov = optimize.curve_fit(f=func_load_time, p0=p0, xdata=xdata, ydata=ydata)
