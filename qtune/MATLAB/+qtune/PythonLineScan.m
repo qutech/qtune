@@ -5,7 +5,7 @@ function [ data ] = PythonLineScan( args )
 scan = qtune.makePythonLineScan(args.center, args.range, args.N_average, args.ramptime, args.N_points, args.AWGorDecaDAC);
 data = smrun(scan, args.file_name);
 
-data=mean(data{1});
-
+%data=mean(data{1});
+data=data{1};
 end
 

@@ -4,6 +4,8 @@ function [ actual_point ] = set_gates_v_pretuned( args )
 %   Detailed explanation goes here
 global tunedata
 global pretuned_point
+global sensor_pretuned
+global sensor_gate1_pretuned
 global smdata
 gatechannels=tunedata.gatechan;
 
@@ -14,11 +16,13 @@ gatechannels=tunedata.gatechan;
 new_point=[args.SB, args.BB, args.T, args.N, args.SA, args.BA, args.RFA, args.RFB];
 
 for i=1:8
-	if abs(pretuned_point(i)-new_point(i)) > 7e-3
-		for j = 1:8
-			smset(gatechannels(j),pretuned_point(j))
+	if abs(pretuned_point(i)-new_point(i)) > 100e-3
+ 		for j = 1:8
+ 			smset(gatechannels(j),pretuned_point(j))
 		end
-		error('emergency: the dot is 7mV away from pretuned point!!!!')
+		smset('SDB2', sensor_pretuned)
+		smset('SDB1', sensor_gate1_pretuned)
+		error('emergency: the dot is 100mV away from pretuned point!')
 	end
 end
 

@@ -11,6 +11,9 @@ GateIdentifier = str
 
 
 class Measurement(str):
+    """
+    This class saves all necessary information for a measurement.
+    """
     def __new__(cls, name, **kwargs):
         return super().__new__(cls, name)
 
@@ -24,6 +27,10 @@ class Measurement(str):
 
 
 class Experiment:
+    """
+    Basic class implementing the structure of an experiment consisting of gates whose voltages can be set and read.
+    Additionally we require the possibility to conduct measurements.
+    """
     @property
     def measurements(self) -> Tuple[Measurement, ...]:
         raise NotImplementedError()
@@ -32,7 +39,7 @@ class Experiment:
     def gate_voltage_names(self) -> Tuple:
         raise NotImplementedError()
 
-    def read_gate_voltages(self):
+    def read_gate_voltages(self) -> pd.Series:
         raise NotImplementedError()
 
     def set_gate_voltages(self, new_gate_voltages: pd.Series):
@@ -47,16 +54,3 @@ class Experiment:
         :return:
         """
         raise NotImplementedError()
-
-
-class TestExperiment(Experiment):
-    def __init__(self, test_voltages):
-        self.test_voltages = test_voltages
-
-    def read_gate_voltages(self):
-        return pd.Series(self.test_voltages).sort_index()
-
-    def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
-        new_gate_voltages = new_gate_voltages.sort_index()
-        self.test_voltages = new_gate_voltages
-        return new_gate_voltages
