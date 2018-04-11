@@ -6,7 +6,7 @@ from qtune.util import find_lead_transition
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import qtune.evaluator
-from qtune.GradKalman import GradKalmanFilter
+from qtune.kalman_gradient import KalmanGradient
 
 known_evaluators = pd.Series([["parameter_tunnel_coupling"], ["parameter_time_rise", "parameter_time_fall"]],
                              ["evaluator_SMInterDotTCByLineScan", "evaluator_SMLeadTunnelTimeByLeadScan"])
@@ -292,8 +292,12 @@ class Analyzer:
         for i in range(4, 8):
             shifting_uncertainty[i, i] = inter_dot_uncertainty * inter_dot_uncertainty * 1e6
 
-        kalman = GradKalmanFilter(self.tunable_gate_names.size, self.parameter_names.size, initX=initial_grad,
-                                  initP=initial_cov, initR=initial_noise, alpha=alpha, initQ=shifting_uncertainty)
+        kalman = KalmanGradient(self.tunable_gate_names.size, self.parameter_names.size,
+                                initial_gradient=initial_grad,
+                                initial_covariance_matrix=initial_cov,
+                                measurement_covariance_matrix=initial_noise,
+                                alpha=alpha,
+                                process_noise=shifting_uncertainty)
         covariance_index = []
         for parameter in self.parameter_names:
             for gate in self.tunable_gate_names:
@@ -339,7 +343,7 @@ class Analyzer:
                     r[j, j] += relative_error * parameters_sequence_pd[j][i + 1] * parameters_sequence_pd[j][i + 1] \
                                + .0025 * (d_parameters_pd[j] - expected_d_parameter[j]) * (
                     d_parameters_pd[j] - expected_d_parameter[j])
-                kalman.update(d_voltage_pd.as_matrix(), d_parameters_pd.as_matrix(), R=r, hack=False)
+                kalman.update(d_voltage_pd.as_matrix(), d_parameters_pd.as_matrix(), measurement_covariance=r, hack=False)
             elif residuals is not None:
                 r = np.copy(kalman.filter.R)
                 residuals = residuals.sort_index()
@@ -347,7 +351,7 @@ class Analyzer:
                     #r[j, j] += 2e7 * residuals[j][i + 1]
                     r[j, j] = 0.1 * r[j, j] + residuals[j][i] + residuals[j][i + 1]
                 try:
-                    kalman.update(d_voltage_pd.as_matrix(), d_parameters_pd.as_matrix(), R=r, hack=False)
+                    kalman.update(d_voltage_pd.as_matrix(), d_parameters_pd.as_matrix(), measurement_covariance=r, hack=False)
                 except:
                     print(r)
 

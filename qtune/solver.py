@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
-from typing import Tuple
-from qtune.GradKalman import GradKalmanFilter
+from typing import Tuple, Optional
+from qtune.kalman_gradient import KalmanGradient
 from qtune.evaluator import Evaluator
 
 
@@ -41,10 +41,10 @@ class Solver:
             return
         self.evaluators += (evaluator, )
 
-    def suggest_next_step(self):
+    def suggest_next_step(self) -> pd.Series:
         raise NotImplementedError()
 
-    def update_after_step(self, d_voltages_series: pd.Series):
+    def update_after_step(self, voltages: pd.Series, measured_parameters: Optional[pd.Series]):
         raise NotImplementedError()
 
 
@@ -61,15 +61,24 @@ class KalmanSolver(Solver):
         self.shifting_uncertainty = shifting_uncertainty
         if gradient is not None:
             n_parameter, n_gates = gradient.shape()
-            self.grad_kalman = GradKalmanFilter(nGates=n_gates, nParams=n_parameter, initF=None, initX=gradient,
-                                                initP=covariance, initR=noise, initQ=None, alpha=alpha)
+            self.grad_kalman = KalmanGradient(n_gates=n_gates,
+                                              n_params=n_parameter,
+                                              initial_gradient=gradient,
+                                              initial_covariance_matrix=covariance,
+                                              measurement_covariance_matrix=noise,
+                                              alpha=alpha)
 
     def initialize_kalman(self, gradient=None, covariance=None, noise=None, shifting_uncertainty=None, alpha=1.02):
         if gradient is None:
             gradient = self.gradient
         n_parameters, n_gates = gradient.shape
-        self.grad_kalman = GradKalmanFilter(nGates=n_gates, nParams=n_parameters, initX=gradient, initP=covariance,
-                                            initR=noise, initQ=shifting_uncertainty, alpha=alpha)
+        self.grad_kalman = KalmanGradient(n_gates=n_gates,
+                                          n_params=n_parameters,
+                                          initial_gradient=gradient,
+                                          initial_covariance_matrix=covariance,
+                                          measurement_covariance_matrix=noise,
+                                          process_noise=shifting_uncertainty,
+                                          alpha=alpha)
         self.gradient = gradient
 
     def update_after_step(self, d_voltages_series: pd.Series, d_parameter_series: pd.Series = None,
@@ -100,7 +109,7 @@ class KalmanSolver(Solver):
         for j in range(self.parameter.size):
             r[j, j] = 0.1 * r[j, j] + residuals[j]
 
-        self.grad_kalman.update(d_voltages_vector, d_parameter_vector, R=r, hack=False)
+        self.grad_kalman.update(d_voltages_vector, d_parameter_vector, measurement_covariance=r, hack=False)
         self.gradient = self.grad_kalman.grad
         return self.grad_kalman.grad, self.grad_kalman.cov, False
 
