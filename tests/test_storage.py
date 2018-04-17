@@ -79,3 +79,34 @@ class SerializationTests(unittest.TestCase):
         recovered_data['data']['ggg'].pop(2)
         data['ggg'].pop(2)
         self.assertEqual({'data': data}, recovered_data)
+
+    def test_custom_class(self):
+        with self.assertRaises(AttributeError):
+            class MyClass(metaclass=HDF5Serializable):
+                def __init__(self, hallo, gib, mir, argumente=None):
+                    self.args = dict(hallo=hallo, gib=gib, mir=mir, argumente=argumente)
+
+        class MyClass(metaclass=HDF5Serializable):
+            def __init__(self, hallo, gib, mir, argumente=None):
+                self.args = dict(hallo=hallo, gib=gib, mir=mir, argumente=argumente)
+
+            def to_hdf5(self):
+                return self.args.copy()
+
+            def __eq__(self, other):
+                try:
+                    np.testing.assert_equal(self.args, other.args)
+                    return True
+                except AssertionError:
+                    return False
+
+        args = dict(hallo=1, gib=[1, 2], mir={'a': 9}, argumente=np.arange(6, 8))
+        obj = MyClass(**args)
+        data = {'asd': [1, 2, 3],
+                'ggg': [{'a': 1}, [1, 2, 3], obj]}
+
+        to_hdf5(self.temp_file.name, 'data', data)
+
+        recovered_data = from_hdf5(self.temp_file.name)
+
+        np.testing.assert_equal({'data': data}, recovered_data)

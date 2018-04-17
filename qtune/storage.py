@@ -19,15 +19,18 @@ def _get_dtype(arr):
 
 class HDF5Serializable(type):
     def __new__(mcs, name, bases, attrs):
-        if 'to_hdf5' not in attrs:
-            raise AttributeError('Missing method: "to_hdf5" that should return all constructor arguments')
-
         if name in serializables:
-            warnings.warn("Overwriting known serializable", name)
+            warnings.warn("Overwriting known serializable {}".format(name))
         cls = type.__new__(mcs, name, bases, attrs)
 
         serializables[name] = cls
         return cls
+
+    def __init__(cls, name, bases, attrs):
+        type.__init__(cls, name, bases, attrs)
+        if 'to_hdf5' not in cls.__dict__:
+            raise AttributeError('Missing method: "to_hdf5" that should return all constructor arguments')
+
 
 
 def _to_hdf5(hdf5_parent_group: h5py.Group, name, obj, serialized):
@@ -117,7 +120,8 @@ def _from_hdf5(root: h5py.File, hdf5_obj: h5py.HLObject, deserialized=None):
             return result
 
         elif hdf5_obj.attrs['#type'] in serializables:
-            deserialized[hdf5_obj.id] = hdf5_obj.attrs['#type'](
+            cls = serializables[hdf5_obj.attrs['#type']]
+            deserialized[hdf5_obj.id] = cls(
                 **{k: _from_hdf5(root, v, deserialized)
                    for k, v in hdf5_obj.items()}
             )
