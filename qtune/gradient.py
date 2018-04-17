@@ -4,12 +4,12 @@ import numpy as np
 import pandas as pd
 
 from qtune.kalman_gradient import KalmanGradient
-
+from qtune.storage import HDF5Serializable
 
 __all__ = ["GradientEstimator", "FiniteDifferencesGradientEstimator", "KalmanGradientEstimator"]
 
 
-class GradientEstimator:
+class GradientEstimator(metaclass=HDF5Serializable):
     """Estimate the gradient of a scalar function"""
 
     def change_position(self, new_position: pd.Series):
@@ -22,6 +22,9 @@ class GradientEstimator:
         raise NotImplementedError()
 
     def update(self, voltages: pd.Series, value: float, covariance: pd.Series, is_new_position=False):
+        raise NotImplementedError()
+
+    def to_hdf5(self):
         raise NotImplementedError()
 
 
@@ -58,20 +61,28 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
 
 class KalmanGradientEstimator(GradientEstimator):
     def __init__(self, kalman_gradient: KalmanGradient, current_position: pd.Series, current_value: float,
-                 maximum_covariance: float=None):
+                 maximum_covariance: float=None,
+                 process_covariance=None):
         self._kalman_gradient = kalman_gradient
         self._current_position = pd.Series(current_position)
         self._current_value = current_value
 
-        self._process_covariance = None
+        self._process_covariance = process_covariance
         self._maximum_covariance = maximum_covariance
+
+    def to_hdf5(self):
+        return dict(kalman_gradient=self._kalman_gradient,
+                    current_position=self._current_position,
+                    current_value=self._current_value,
+                    process_covariance=self._process_covariance,
+                    maximum_covariance=self._maximum_covariance)
 
     def change_position(self, new_position: pd.Series):
         """
         :param new_position:
         :return:
         """
-        self._current_position = new_position
+        self._current_position = new_position[self._current_position.index]
         if self._process_covariance:
             self._kalman_gradient.filter.predict(Q=self._process_covariance)
 

@@ -10,8 +10,10 @@ import scipy
 
 from filterpy.kalman import KalmanFilter
 
+from qtune.storage import HDF5Serializable
 
-class KalmanGradient:
+
+class KalmanGradient(metaclass=HDF5Serializable):
     """ 
     Implements a Kalman filter that can estimate a gradient in a recursive
     manner. 
@@ -125,6 +127,16 @@ class KalmanGradient:
         
         # set alpha value (needed for fading memory filtering)
         self.filter.alpha = alpha
+
+    def to_hdf5(self):
+        return dict(n_gates=self.n_gates,
+                    n_params=self.n_params,
+                    state_transition_function=self.filter.F,
+                    initial_gradient=self.grad,
+                    initial_covariance_matrix=self.cov,
+                    measurement_covariance_matrix=self.filter.R,
+                    process_noise=self.filter.Q,
+                    alpha=self.filter.alpha)
 
     def update(self, diff_volts, diff_params,
                measurement_covariance=None,
