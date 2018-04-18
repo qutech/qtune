@@ -7,7 +7,8 @@ import numpy as np
 import h5py
 from scipy import optimize
 import matplotlib.pyplot as plt
-from qtune.util import find_lead_transition
+import qtune.util
+import scipy.ndimage
 
 
 class Evaluator:
@@ -50,7 +51,7 @@ class LeadTunnelTimeByLeadScan(Evaluator):
             lead_scan = dqd.measurements[2]
         super().__init__(dqd, lead_scan, parameters, name)
 
-    def evaluate(self, storing_group: h5py.Group) -> pd.Series:
+    def evaluate(self) -> pd.Series:
         data = self.experiment.measure(self.measurements)
         plt.ion()
         plt.figure(50)
@@ -63,14 +64,8 @@ class LeadTunnelTimeByLeadScan(Evaluator):
         failed = fitresult['failed']
         self.parameters['parameter_time_rise'] = t_rise
         self.parameters['parameter_time_fall'] = t_fall
-        if storing_group is not None:
-            storing_dataset = storing_group.create_dataset("evaluator_" + self.name + "_SMLeadTunnelTimeByLeadScan", data=data)
-            storing_dataset.attrs["parameter_time_rise"] = t_rise
-            storing_dataset.attrs["parameter_time_fall"] = t_fall
-            if failed:
-                storing_dataset.attrs["parameter_time_rise"] = np.nan
-                storing_dataset.attrs["parameter_time_fall"] = np.nan
-        return pd.Series([t_rise, t_fall, failed], ['parameter_time_rise', 'parameter_time_fall', 'failed'])
+
+        return pd.Series([t_rise, t_fall], ['parameter_time_rise', 'parameter_time_fall'])
 
 
 class InterDotTCByLineScan(Evaluator):
@@ -84,7 +79,7 @@ class InterDotTCByLineScan(Evaluator):
             line_scan = dqd.measurements[1]
         super().__init__(dqd, line_scan, parameters, name)
 
-    def evaluate(self, storing_group: h5py.Group) -> pd.Series:
+    def evaluate(self) -> (pd.Series, pd.Series):
         ydata = self.experiment.measure(self.measurements)
         center = self.measurements.parameter['center']
         scan_range = self.measurements.parameter['range']
@@ -102,18 +97,7 @@ class InterDotTCByLineScan(Evaluator):
         failed = bool(fitresult['failed'])
         residual = fitresult["residual"]
         self.parameters['parameter_tunnel_coupling'] = tc
-        if storing_group is not None:
-            storing_dataset = storing_group.create_dataset("evaluator_" + self.name + "_SMInterDotTCByLineScan",
-                                                           data=ydata)
-            storing_dataset.attrs["center"] = center
-            storing_dataset.attrs["scan_range"] = scan_range
-            storing_dataset.attrs["npoints"] = npoints
-            storing_dataset.attrs["parameter_tunnel_coupling"] = tc
-            storing_dataset.attrs["residual"] = residual
-            if failed:
-                storing_dataset.attrs["parameter_tunnel_coupling"] = np.nan
-                storing_dataset.attrs["residual"] = np.nan
-        return pd.Series((tc, failed, residual), ('parameter_tunnel_coupling', 'failed', "residual"))
+        return pd.Series([tc], ["parameter_tunnel_coupling"]), pd.Series([residual], ["residual"])
 
 
 class LoadTime(Evaluator):
@@ -124,10 +108,10 @@ class LoadTime(Evaluator):
                  load_scan: Measurement = None, name: str=""):
         if load_scan is None:
             load_scan = dqd.measurements[3]
-        super().__init__(dqd, load_scan, parameters, name)
+        super().__init__(dqd, (load_scan, ), parameters, name)
 
-    def evaluate(self, storing_group: h5py.Group) -> pd.Series:
-        data = self.experiment.measure(self.measurements)
+    def evaluate(self) -> (pd.Series, pd.Series):
+        data = self.experiment.measure(self.measurements[0])
         n_points = data.shape[1]
         plt.ion()
         plt.figure(81)
@@ -142,46 +126,118 @@ class LoadTime(Evaluator):
         failed = fitresult['failed']
         residual = fitresult["residual"]
         self.parameters['parameter_time_load'] = parameter_time_load
-        if storing_group is not None:
-            storing_dataset = storing_group.create_dataset("evaluator_" + self.name + "_LoadTime", data=data)
-            storing_dataset.attrs["parameter_time_load"] = parameter_time_load
-            storing_dataset.attrs["residual"] = residual
-            if failed:
-                storing_dataset.attrs["parameter_time_load"] = np.nan
-                storing_dataset.attrs["residual"] = np.nan
-        return pd.Series([parameter_time_load, failed, residual], ['parameter_time_load', 'failed', "residual"])
+        return pd.Series([parameter_time_load], ['parameter_time_load']), pd.Series([residual], ["residual"])
 
 
 class LeadTransition(Evaluator):
     """
     Finds the transition on the edge of the charge diagram
     """
-    def __init__(self, dqd: BasicDQD, name, parameters: pd.Series() = pd.Series([4e-3], ["charge_diagram_width"])):
+
+    def __init__(self, experiment: Experiment, name, parameters: pd.Series() = pd.Series([4e-3, ["RFA", "RFB"]],
+                                                                                         ["charge_diagram_width",
+                                                                                          "shifting_gates"])):
         default_line_scan_a = Measurement('line_scan', center=0., range=4e-3,
                                           gate='RFA', N_points=320,
                                           ramptime=.001,
                                           N_average=7,
                                           AWGorDecaDAC='DecaDAC')
-        self.shifting_gates = ["RFA", "RFB"]
+        self.shifting_gates = parameters["shifting_gates"]
         self.charge_diagram_width = parameters["charge_diagram_width"]
-        super().__init__(dqd, (default_line_scan_a, ), pd.Series(), name=name)
+        super().__init__(experiment, (default_line_scan_a, ), pd.Series(), name=name)
 
     def evaluate(self, storing_group: h5py.Group):
         current_position = pd.Series()
+        error = pd.Series()
         current_gate_voltages = self.experiment.read_gate_voltages()
         for gate in self.shifting_gates:
             shift = pd.Series(-1. * self.charge_diagram_width, [gate])
             self.experiment.set_gate_voltages(current_gate_voltages.add(shift))
-            self.measurements[0]["gate"] = gate
+            self.measurements[0].parameter["gate"] = gate
             data = self.experiment.measure(self.measurements[0])
-            current_position[gate] = find_lead_transition(data,
-                                                          float(
-                                                              self.measurements[0]["center"]),
-                                                          float(
-                                                              self.measurements[0]["range"]),
-                                                          int(self.measurements[0]["N_points"]))
+            current_position["position_" + gate] = qtune.util.find_lead_transition(data,
+                                                                     float(
+                                                                         self.measurements[0].parameter["center"]),
+                                                                     float(
+                                                                         self.measurements[0].parameter["range"]),
+                                                                     int(self.measurements[0].parameter["N_points"]))
+            error["position_" + gate] = .1e-3
         self.experiment.set_gate_voltages(current_gate_voltages)
-        return current_position
+
+        return current_position, error
+
+
+class SensingDot1D(Evaluator):
+    """
+    Sweep one gate of the sensing dot to find the point of steepest slope on the current
+    """
+
+    def __init__(self,
+                 experiment: Experiment,
+                 name,
+                 parameters: pd.Series() = pd.Series([["SDB2"]],
+                                                     ["sweeping_gates"])):
+        self.sweeping_gates = parameters["sweeping_gates"]
+        sensing_dot_measurement = Measurement('line_scan',
+                                              center=None, range=4e-3, gate="SDB2",
+                                              N_points=1280, ramptime=.0005,
+                                              N_average=1, AWGorDecaDAC='DecaDAC')
+        super().__init__(experiment, (sensing_dot_measurement,), pd.Series(), name=name)
+
+    def evaluate(self, storing_group: h5py.Group):
+        sensing_dot_measurement = self.measurements[0]
+        new_gate_voltage = pd.Series()
+        error = pd.Series()
+        for gate in self.sweeping_gates:
+            sensing_dot_measurement.parameter["gate"] = gate
+            sensing_dot_measurement.parameter["center"] = self.experiment.read_gate_voltages()[gate]
+            data = self.experiment.measure(sensing_dot_measurement)
+            detuning = qtune.util.find_stepes_point_sensing_dot(data=data,
+                                                                scan_range=sensing_dot_measurement.parameter[
+                                                                    "scan_range"],
+                                                                npoints=sensing_dot_measurement.parameter["N_points"])
+            new_gate_voltage["position_" + gate] = sensing_dot_measurement.parameter["center"] + detuning
+            error["position_" + gate] = 0.1e-3
+
+        return new_gate_voltage, error
+
+
+class SensingDot2D(Evaluator):
+    """
+    Two dimensional sensing dot scan. Coulomb peak might be changed
+    """
+
+    def __init__(self, experiment: Experiment, name,
+                 parameters: pd.Series() = pd.Series([15e-3, ["SDB2", "SDB1"]], ["scan_range", "gates"])):
+        sensing_dot_measurement = Measurement('2d_scan', center=[None, None],
+                                              range=parameters["scan_range"],
+                                              gate1=parameters["gates"][0],
+                                              gate2=parameters["gates"][1],
+                                              N_points=1280, ramptime=.0005, n_lines=20,
+                                              n_points=104, N_average=1, AWGorDecaDAC='DecaDAC')
+        super().__init__(experiment, (sensing_dot_measurement,), pd.Series(), name=name)
+
+    def evaluate(self, storing_group: h5py.Group):
+        self.measurements[0].parameter["center"] = [
+            self.experiment.read_gate_voltages()[self.measurements[0].parameter["gate1"]],
+            self.experiment.read_gate_voltages()[self.measurements[0].parameter["gate2"]]]
+        data = self.experiment.measure(self.measurements[0])
+        data_filterd = scipy.ndimage.filters.gaussian_filter1d(input=data, sigma=.5, axis=0, order=0,
+                                                               mode="nearest",
+                                                               truncate=4.)
+        data_diff = np.diff(data_filterd, n=1)
+        mins_in_lines = data_diff.min(1)
+        min_line = np.argmin(mins_in_lines)
+        min_point = np.argmin(data_diff[min_line])
+        gate_1_pos = float(min_line) / float(self.measurements[0].parameter["n_lines"]) * 2 * \
+            self.measurements[0].parameter["range"] - self.measurements[0].parameter["range"]
+        gate_2_pos = float(min_point) / float(self.measurements[0].parameter["N_points"]) * 2 * \
+            self.measurements[0].parameter["range"] - self.measurements[0].parameter["range"]
+        new_voltages = pd.Series([gate_1_pos, gate_2_pos], ["position_" + self.measurements[0].parameter["gate1"],
+                                                            "position_" + self.measurements[0].parameter["gate1"]])
+        error = pd.Series([.1e-3, .1e-3], ["position_" + self.measurements[0].parameter["gate1"],
+                                           "position_" + self.measurements[0].parameter["gate1"]])
+        return new_voltages, error
 
 
 def fit_lead_times(data: np.ndarray, **kwargs):
