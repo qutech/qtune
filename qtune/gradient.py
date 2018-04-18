@@ -58,23 +58,23 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
         """Is this even possible?"""
         raise NotImplementedError()
 
+    def to_hdf5(self):
+        raise NotImplementedError()
+
 
 class KalmanGradientEstimator(GradientEstimator):
     def __init__(self, kalman_gradient: KalmanGradient, current_position: pd.Series, current_value: float,
-                 maximum_covariance: float=None,
-                 process_covariance=None):
+                 maximum_covariance: float):
         self._kalman_gradient = kalman_gradient
         self._current_position = pd.Series(current_position)
         self._current_value = current_value
 
-        self._process_covariance = process_covariance
         self._maximum_covariance = maximum_covariance
 
     def to_hdf5(self):
         return dict(kalman_gradient=self._kalman_gradient,
                     current_position=self._current_position,
                     current_value=self._current_value,
-                    process_covariance=self._process_covariance,
                     maximum_covariance=self._maximum_covariance)
 
     def change_position(self, new_position: pd.Series):
@@ -83,8 +83,6 @@ class KalmanGradientEstimator(GradientEstimator):
         :return:
         """
         self._current_position = new_position[self._current_position.index]
-        if self._process_covariance:
-            self._kalman_gradient.filter.predict(Q=self._process_covariance)
 
     def estimate(self) -> pd.Series:
         return pd.Series(self._kalman_gradient.grad, index=self._current_position.index)
