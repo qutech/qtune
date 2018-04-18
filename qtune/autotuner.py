@@ -12,161 +12,32 @@ from qtune.chrg_diag import ChargeDiagram, PredictionChargeDiagram
 from qtune.sm import LegacyDQD
 from qtune.GradKalman import GradKalmanFilter
 from qtune.evaluator import Evaluator
+from typing import List
+from qtune.parameter_tuner import ParameterTuner
 
 
 class Autotuner:
     """
     The auto tuner class combines the evaluator and solver classes to tune an experiment.
     """
-    def __init__(self, experiment: Experiment, solver: Solver = None, evaluators: Tuple[Evaluator, ...] = (),
-                 desired_values: pd.Series = pd.Series(), tuning_accuracy: pd.Series = pd.Series(),
-                 data_directory: str = ''):
-        self.parameters = pd.Series()
-        self.solver = solver
-        self.experiment = experiment
-        self._evaluators = ()
-        for e in evaluators:
-            self.add_evaluator(e)
-        self._desired_values = desired_values
-        self.tuning_accuracy = tuning_accuracy
-        self.tunable_gates = self.experiment.read_gate_voltages().drop(['RFA', 'RFB'])
-        self.gates = self.tunable_gates
-        self.gradient = None
-        self.gradient_std = None
-        self.evaluation_std = None
-        self.tune_run_number = 0
-        self.gradient_number = 0
-        self.parameter_evaluation_number = 0
-        self.charge_diagram_number = 0
-        self.filename = data_directory + r'\Autotuner_' + time_string() + ".hdf5"
-        self.hdf5file = h5py.File(self.filename, 'w-')
-        tunerun_group = self.hdf5file.create_group('tunerun_' + str(self.tune_run_number))
-        self.hdf5file.create_group("parameter_evaluation")
-        self.current_tunerun_group = tunerun_group
-
-
-    @property
-    def evaluators(self):
-        return self._evaluators
-
-    @evaluators.setter
-    def evaluators(self, evaluators: Tuple[Evaluator, ...]):
-        self._evaluators = evaluators
-
-    def add_evaluator(self, new_evaluator: Evaluator):
-        new_parameters = new_evaluator.parameters
-        for i in new_parameters.index.tolist():
-            if i in self.parameters:
-                print('This Evaluator determines a parameter which is already being evaluated by another Evaluator')
-                return
-            series_to_add = pd.Series((new_parameters[i],), (i,))
-            self.parameters = self.parameters.append(series_to_add, verify_integrity=True)
-        self._evaluators += (new_evaluator, )
-        if self.solver is not None:
-            print(self.solver)
-            self.solver.add_evaluator(evaluator=new_evaluator)
-
-    @property
-    def desired_values(self):
-        return self._desired_values
-
-    @desired_values.setter
-    def desired_values(self, desired_values: pd.Series):
-        self.parameters = self.parameters.sort_index()
-        assert(desired_values.index.tolist() == self.parameters.index.tolist())
-        self._desired_values = desired_values
-        if self.solver is not None:
-            self.solver.desired_values = desired_values
-
-    def set_desired_values_manually(self):
-        raise NotImplementedError
-
-    def read_tunable_gate_voltages(self) -> pd.Series:
-        full_gate_voltages = self.experiment.read_gate_voltages()
-        tunable_gate_voltages = pd.Series()
-        for tunable_gate in self.tunable_gates.index.tolist():
-            tunable_gate_voltages[tunable_gate] = full_gate_voltages[tunable_gate]
-        return tunable_gate_voltages
-
-    def set_gate_voltages(self, new_voltages):
-        self.experiment.set_gate_voltages(new_gate_voltages=new_voltages.copy())
-
-    def shift_gate_voltages(self, new_voltages: pd.Series, step_size=2.e-3):
-        tunable_start_voltages = self.read_tunable_gate_voltages()
-        for key in tunable_start_voltages.index.tolist():
-            if key not in new_voltages.index.tolist():
-                tunable_start_voltages = tunable_start_voltages.drop(key)
-        d_voltages_series = new_voltages.add(-1. * tunable_start_voltages, fill_value=0.)
-        d_voltage_abs = d_voltages_series.as_matrix()
-        d_voltage_abs = np.linalg.norm(d_voltage_abs)
-        if d_voltage_abs > step_size:
-            voltage_step = d_voltages_series * step_size / d_voltage_abs
-            self.set_gate_voltages(new_voltages=voltage_step.add(tunable_start_voltages, fill_value=0))
-            self.shift_gate_voltages(new_voltages=new_voltages, step_size=step_size)
-        else:
-            self.set_gate_voltages(new_voltages=new_voltages)
-
-    def evaluate_parameters(self, storing_group: h5py.Group=None) -> pd.Series:
-        parameters = pd.Series()
-        for e in self.evaluators:
-            evaluation_result = e.evaluate(storing_group)
-
-            if evaluation_result['failed']:
-                evaluation_result = evaluation_result.drop(['failed'])
-                for r in evaluation_result.index.tolist():
-                    evaluation_result[r] = np.nan
-            else:
-                evaluation_result = evaluation_result.drop(['failed'])
-
-            for r in evaluation_result.index.tolist():
-                if not r == "residual":
-                    parameters[r] = evaluation_result[r]
-        self.parameters = copy.deepcopy(parameters.sort_index())
-        return parameters
-
-    def evaluate_parameters_residuals(self, storing_group: h5py.Group=None) -> (pd.Series, pd.Series):
-        parameters = pd.Series()
-        residuals = pd.Series()
-        for e in self.evaluators:
-            evaluation_result = e.evaluate(storing_group)
-
-            if evaluation_result['failed']:
-                evaluation_result = evaluation_result.drop(['failed'])
-                for r in evaluation_result.index.tolist():
-                    evaluation_result[r] = np.nan
-            else:
-                evaluation_result = evaluation_result.drop(['failed'])
-
-            for r in evaluation_result.index.tolist():
-                if not r == "residual":
-                    parameters[r] = evaluation_result[r]
-                    residuals[r] = evaluation_result["residual"]
-        self.parameters = copy.deepcopy(parameters.sort_index())
-        return parameters, residuals
-
-    def evaluate_and_save_parameters(self):
-        self.login_savefile()
-        self.parameter_evaluation_number += 1
-        evaluation_group = self.hdf5file["parameter_evaluation"]
-        storage_group = evaluation_group.create_group(
-            "parameter_evaluation_" + str(self.parameter_evaluation_number))
-        self.evaluate_parameters(storing_group=storage_group)
-        save_gate_voltages(storage_group, self.experiment.read_gate_voltages()[self.gates.index])
-        self.logout_of_savefile()
+    def __init__(self, experiment: Experiment, tuning_hierarchy: List(ParameterTuner)=None):
+        self._experiment = experiment
+        self._tuning_hierarchy = tuning_hierarchy
 
     def tuning_complete(self) -> bool:
-        complete = True
-        for parameter in self.desired_values.index.tolist():
-            if np.abs(self.parameters[parameter]-self.desired_values[parameter]) > self.tuning_accuracy[parameter]:
-                complete = False
-        return complete
+        for tuner in self._tuning_hierarchy:
+            if not tuner.is_tuned():
+                return False
+        return True
 
     def ready_to_tune(self) -> bool:
-        if self.solver is None:
-            print('You need to setup a solver!')
-            return False
-        else:
-            return True
+        raise NotImplementedError
+
+    def autotune(self):
+        for tuner in self._tuning_hierarchy:
+            if not tuner.is_tuned():
+                self._experiment.set_gate_voltages(new_gate_voltages=tuner.get_next_voltage)
+                self.autotune()
 
     def evaluate_gradient_covariance_noise(self, delta_u=4e-3, n_repetitions=3) -> Tuple[
         pd.DataFrame, pd.DataFrame, pd.Series]:
