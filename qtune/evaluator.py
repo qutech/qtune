@@ -7,6 +7,7 @@ import numpy as np
 import h5py
 from scipy import optimize
 import matplotlib.pyplot as plt
+from qtune.util import find_lead_transition
 
 
 class Evaluator:
@@ -149,6 +150,38 @@ class LoadTime(Evaluator):
                 storing_dataset.attrs["parameter_time_load"] = np.nan
                 storing_dataset.attrs["residual"] = np.nan
         return pd.Series([parameter_time_load, failed, residual], ['parameter_time_load', 'failed', "residual"])
+
+
+class LeadTransition(Evaluator):
+    """
+    Finds the transition on the edge of the charge diagram
+    """
+    def __init__(self, dqd: BasicDQD, name, parameters: pd.Series() = pd.Series([4e-3], ["charge_diagram_width"])):
+        default_line_scan_a = Measurement('line_scan', center=0., range=4e-3,
+                                          gate='RFA', N_points=320,
+                                          ramptime=.001,
+                                          N_average=7,
+                                          AWGorDecaDAC='DecaDAC')
+        self.shifting_gates = ["RFA", "RFB"]
+        self.charge_diagram_width = parameters["charge_diagram_width"]
+        super().__init__(dqd, (default_line_scan_a, ), pd.Series(), name=name)
+
+    def evaluate(self, storing_group: h5py.Group):
+        current_position = pd.Series()
+        current_gate_voltages = self.experiment.read_gate_voltages()
+        for gate in self.shifting_gates:
+            shift = pd.Series(-1. * self.charge_diagram_width, [gate])
+            self.experiment.set_gate_voltages(current_gate_voltages.add(shift))
+            self.measurements[0]["gate"] = gate
+            data = self.experiment.measure(self.measurements[0])
+            current_position[gate] = find_lead_transition(data,
+                                                          float(
+                                                              self.measurements[0]["center"]),
+                                                          float(
+                                                              self.measurements[0]["range"]),
+                                                          int(self.measurements[0]["N_points"]))
+        self.experiment.set_gate_voltages(current_gate_voltages)
+        return current_position
 
 
 def fit_lead_times(data: np.ndarray, **kwargs):
