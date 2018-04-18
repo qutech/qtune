@@ -1,6 +1,6 @@
 import itertools
 import datetime
-from typing import Iterable, Any, Callable
+from typing import Iterable, Any, Callable, List
 import numpy as np
 
 
@@ -75,3 +75,30 @@ def find_stepes_point_sensing_dot(data: np.ndarray, scan_range=5e-3, npoints=128
     max_index = np.argmin(data) + 15
     detuning = (float(max_index) - float(npoints) / 2.) * scan_range / (float(npoints) / 2.)
     return detuning
+
+def gradient_min_evaluations(parameters: List[np.ndarray, ...], voltage_points: List[np.ndarray,...]):
+    """
+    Uses finite differences and basis transformations to compute the gradient.
+    :param parameters: A list of paramters belonging to the voltages
+    :param voltage_points: List of voltage points. Either
+    :return:
+    """
+    n_points = len(voltage_points)
+    assert(len(voltage_points) == len(parameters))
+    n_parameters = parameters[0].size
+    n_gates = voltage_points[0].size
+    voltage_diff = np.zeros((n_gates, n_gates))
+    parameter_diff = np.zeros((n_parameters, n_gates))
+
+    if n_points == n_gates + 1:
+        for i in range(1, n_points):
+            voltage_diff[:][i - 1] = voltage_points[i] - voltage_points[0]
+            parameter_diff[:][i - 1] = parameters[i] - parameters[0]
+    elif n_points == 2 * n_gates:
+        for i in range(n_gates):
+            voltage_diff[:][i] = voltage_points[2 * i + 1] - voltage_points[2 * i]
+            parameter_diff[:][i] = parameters[2 * i + 1] - parameters[2 * i]
+
+    gradient = np.dot(parameter_diff, np.linalg.inv(voltage_diff))
+    return gradient
+
