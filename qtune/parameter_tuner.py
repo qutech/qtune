@@ -133,3 +133,60 @@ class SubsetTuner(ParameterTuner):
         solver_step = self._solver.suggest_next_step()
 
         return self._last_voltage.add(solver_step, fill_value=0)
+
+
+class SensingDotTuner(ParameterTuner):
+    """
+    This tuner directly tunes to voltage points of interest. The evaluators return positions
+    """
+
+    def __init__(self, cheap_evaluators: Sequence[Evaluator], expensive_evaluators: Sequence[Evaluator],
+                 gates: Sequence[str], min_threshold, cost_threshold, **kwargs):
+        """
+
+        :param cheap_evaluators:
+        :param expensive_evaluators:
+        :param gates:
+        :param min_threshhold: If the parameters are below this threshold, the experiment is not tuned. This doesnt
+        regard the optimal signal found but only the current one.
+        :param cost_threshhold: If the parameters are below this threshold, the expensive parameters will be used.
+        :param kwargs:
+        """
+        super().__init__(cheap_evaluators, **kwargs)
+        self._gates = sorted(gates)
+        self._cheap_evaluators = cheap_evaluators
+        self._expensive_evaluators = expensive_evaluators
+        self._min_threshold = min_threshold
+        self._cost_threshold = cost_threshold
+
+    def is_tuned(self, voltages: pd.Series):
+        current_parameter, errors = self.evaluate(cheap=True)
+        solver_voltages = voltages[self._gates]
+        self._last_voltage = voltages
+
+        if self._min_threshold.le(current_parameter).any:
+            if self._cost_threshold.le(current_parameter).any:
+                current_parameter, errors = self.evaluate(cheap=False)
+
+            self.solver.update_after_step(solver_voltages, (current_parameter, errors))
+            return False
+        else:
+            self._tuned_positions.append(voltages)
+            return True
+
+    def get_next_voltages(self):
+        solver_step = self._solver.suggest_next_step()
+
+        return self._last_voltage.add(solver_step, fill_value=0)
+
+    def evaluate(self, **kwargs) -> pd.Series:
+        #  no list comprehension for easier debugging
+        cheap = kwargs["cheap"]
+        values = []
+        if cheap:
+            for evaluator in self._cheap_evaluators:
+                values.append(evaluator.evaluate())
+        else:
+            for evaluator in self._expensive_evaluators:
+                values.append(evaluator.evaluate())
+        return pd.concat(values).sort_index()
