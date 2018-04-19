@@ -1,4 +1,4 @@
-from typing import Sequence
+from typing import Sequence, List
 
 import numpy as np
 import pandas as pd
@@ -78,9 +78,12 @@ class ParameterTuner:
     def evaluate(self) -> pd.Series:
         #  no list comprehension for easier debugging
         values = []
+        variances = []
         for evaluator in self._evaluators:
-            values.append(evaluator.evaluate())
-        return pd.concat(values).sort_index()
+            value, variance = evaluator.evaluate()
+            values.append(value)
+            variances.append(variance)
+        return pd.concat(values).sort_index(), pd.concat(variances).sort_index()
 
     def is_tuned(self, voltages: pd.Series) -> bool:
         """Tell the tuner, the voltages have changed and that he might have to re-tune.
@@ -168,7 +171,7 @@ class SensingDotTuner(ParameterTuner):
             if self._cost_threshold.le(current_parameter).any:
                 current_parameter, errors = self.evaluate(cheap=False)
 
-            self.solver.update_after_step(solver_voltages, (current_parameter, errors))
+            self.solver.update_after_step(solver_voltages, current_parameter, errors)
             return False
         else:
             self._tuned_positions.append(voltages)

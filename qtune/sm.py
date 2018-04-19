@@ -237,6 +237,9 @@ class LegacyDQD(BasicDQD):
             parameters = measurement.parameter.copy()
             parameters["file_name"] = "load_scan" + measurement.get_file_name()
             return np.asarray(self._matlab.engine.qtune.LoadScan(parameters))
+        elif measurement == "2d_scan":
+            qpc_2d_tune_input = {"range": measurement.parameter["scan_range"], "file_name": time_string()}
+            return np.asarray(self._matlab.engine.qtune.PythonQPCScan2D(qpc_2d_tune_input))
         else:
             raise ValueError('Unknown measurement: {}'.format(measurement))
 

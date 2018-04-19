@@ -76,7 +76,10 @@ def find_stepes_point_sensing_dot(data: np.ndarray, scan_range=5e-3, npoints=128
     detuning = (float(max_index) - float(npoints) / 2.) * scan_range / (float(npoints) / 2.)
     return detuning
 
-def gradient_min_evaluations(parameters: List[np.ndarray, ...], voltage_points: List[np.ndarray,...]):
+
+#def gradient_min_evaluations(parameters: List(np.ndarray, ...), voltage_points: List(np.ndarray, ...)):
+def gradient_min_evaluations(parameters, voltage_points):
+
     """
     Uses finite differences and basis transformations to compute the gradient.
     :param parameters: A list of paramters belonging to the voltages
