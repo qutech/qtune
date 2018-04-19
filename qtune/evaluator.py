@@ -4,7 +4,6 @@ import qtune.chrg_diag
 from typing import Tuple
 import pandas as pd
 import numpy as np
-import h5py
 from scipy import optimize
 import matplotlib.pyplot as plt
 import qtune.util
@@ -13,7 +12,8 @@ import scipy.ndimage
 
 class Evaluator:
     """
-    The evaluator classes conduct measurements, calculate the parameters with the scan data and save the results in the HDF5 library.
+    The evaluator classes conduct measurements, calculate the parameters with the scan data and save the results in the
+    HDF5 library.
     """
     def __init__(self, experiment: Experiment, measurements: Tuple[Measurement, ...], parameters: pd.Series,
                  name: str):
@@ -22,21 +22,21 @@ class Evaluator:
         self.parameters = parameters
         self.name = name
 
-    def evaluate(self, storing_group: h5py.Group) -> pd.Series:
+    def evaluate(self) -> pd.Series:
         raise NotImplementedError
 
 
 class TestEvaluator(Evaluator):
-    def __init__(self, experiment: TestDQD, measurements=None,
-                 parameters=pd.Series((np.nan, np.nan), ('linsine', 'quadratic')), ):
-        super().__init__(experiment=experiment, measurements=measurements, parameters=parameters)
+    def __init__(self, experiment: TestDQD, name, measurements=None,
+                 parameters=pd.Series((np.nan, np.nan), ('linsine', 'quadratic'))):
+        super().__init__(experiment=experiment, measurements=measurements, parameters=parameters, name=name)
 
-    def evaluate(self, storing_group: h5py.Group) -> pd.Series:
+    def evaluate(self) -> pd.Series:
         test_voltages = self.experiment.read_gate_voltages()
         test_voltages = test_voltages.sort_index()
         linsine = test_voltages[0] * np.sin(test_voltages[1])
         quadratic = test_voltages[1] * test_voltages[1]
-        return pd.Series([linsine, quadratic, False], ['linsine', 'quadratic', 'failed'])
+        return pd.Series([linsine, quadratic], ['linsine', 'quadratic'])
 
 
 class LeadTunnelTimeByLeadScan(Evaluator):
@@ -49,10 +49,10 @@ class LeadTunnelTimeByLeadScan(Evaluator):
                  lead_scan: Measurement = None, name: str=""):
         if lead_scan is None:
             lead_scan = dqd.measurements[2]
-        super().__init__(dqd, lead_scan, parameters, name)
+        super().__init__(dqd, (lead_scan, ), parameters, name)
 
     def evaluate(self) -> pd.Series:
-        data = self.experiment.measure(self.measurements)
+        data = self.experiment.measure(self.measurements[0])
         plt.ion()
         plt.figure(50)
         plt.clf()
@@ -61,7 +61,6 @@ class LeadTunnelTimeByLeadScan(Evaluator):
 #        plt.pause(0.05)
         t_rise = fitresult['t_rise']
         t_fall = fitresult['t_fall']
-        failed = fitresult['failed']
         self.parameters['parameter_time_rise'] = t_rise
         self.parameters['parameter_time_fall'] = t_fall
 
@@ -77,12 +76,12 @@ class InterDotTCByLineScan(Evaluator):
                  line_scan: Measurement = None, name: str=""):
         if line_scan is None:
             line_scan = dqd.measurements[1]
-        super().__init__(dqd, line_scan, parameters, name)
+        super().__init__(dqd, (line_scan, ), parameters, name)
 
     def evaluate(self) -> (pd.Series, pd.Series):
-        ydata = self.experiment.measure(self.measurements)
-        center = self.measurements.parameter['center']
-        scan_range = self.measurements.parameter['range']
+        ydata = self.experiment.measure(self.measurements[0])
+        center = self.measurements[0].parameter['center']
+        scan_range = self.measurements[0].parameter['range']
 #        npoints = self.measurements.parameter['N_points']
         npoints = ydata.shape[1]
         plt.ion()
@@ -91,10 +90,9 @@ class InterDotTCByLineScan(Evaluator):
         try:
             fitresult = fit_inter_dot_coupling(data=ydata.copy(), center=center, scan_range=scan_range, npoints=npoints)
         except:
-            fitresult = pd.Series(data=[True, np.nan, np.nan], index=['failed', 'parameter_tunnel_coupling', "residual"])
+            fitresult = pd.Series(data=[np.nan, np.nan], index=['parameter_tunnel_coupling', "residual"])
 #        plt.pause(0.05)
         tc = fitresult['tc']
-        failed = bool(fitresult['failed'])
         residual = fitresult["residual"]
         self.parameters['parameter_tunnel_coupling'] = tc
         return pd.Series([tc], ["parameter_tunnel_coupling"]), pd.Series([residual], ["residual"])
@@ -120,10 +118,9 @@ class LoadTime(Evaluator):
         try:
             fitresult = fit_load_time(data=data, n_points=n_points, )
         except:
-            fitresult = pd.Series(data=[True, np.nan, np.nan], index=['failed', 'parameter_time_load', "residual"])
+            fitresult = pd.Series(data=[np.nan, np.nan], index=['parameter_time_load', "residual"])
         plt.pause(0.05)
         parameter_time_load = fitresult['parameter_time_load']
-        failed = fitresult['failed']
         residual = fitresult["residual"]
         self.parameters['parameter_time_load'] = parameter_time_load
         return pd.Series([parameter_time_load], ['parameter_time_load']), pd.Series([residual], ["residual"])
@@ -146,7 +143,7 @@ class LeadTransition(Evaluator):
         self.charge_diagram_width = parameters["charge_diagram_width"]
         super().__init__(experiment, (default_line_scan_a, ), pd.Series(), name=name)
 
-    def evaluate(self, storing_group: h5py.Group):
+    def evaluate(self):
         current_position = pd.Series()
         error = pd.Series()
         current_gate_voltages = self.experiment.read_gate_voltages()
@@ -156,11 +153,14 @@ class LeadTransition(Evaluator):
             self.measurements[0].parameter["gate"] = gate
             data = self.experiment.measure(self.measurements[0])
             current_position["position_" + gate] = qtune.util.find_lead_transition(data,
-                                                                     float(
-                                                                         self.measurements[0].parameter["center"]),
-                                                                     float(
-                                                                         self.measurements[0].parameter["range"]),
-                                                                     int(self.measurements[0].parameter["N_points"]))
+                                                                                   float(
+                                                                                       self.measurements[0].parameter[
+                                                                                           "center"]),
+                                                                                   float(
+                                                                                       self.measurements[0].parameter[
+                                                                                           "range"]),
+                                                                                   int(self.measurements[0].parameter[
+                                                                                           "N_points"]))
             error["position_" + gate] = .1e-3
         self.experiment.set_gate_voltages(current_gate_voltages)
 
@@ -184,22 +184,37 @@ class SensingDot1D(Evaluator):
                                               N_average=1, AWGorDecaDAC='DecaDAC')
         super().__init__(experiment, (sensing_dot_measurement,), pd.Series(), name=name)
 
-    def evaluate(self, storing_group: h5py.Group):
+    def evaluate(self):
         sensing_dot_measurement = self.measurements[0]
-        new_gate_voltage = pd.Series()
+        values = pd.Series()
         error = pd.Series()
         for gate in self.sweeping_gates:
             sensing_dot_measurement.parameter["gate"] = gate
             sensing_dot_measurement.parameter["center"] = self.experiment.read_gate_voltages()[gate]
-            data = self.experiment.measure(sensing_dot_measurement)
-            detuning = qtune.util.find_stepes_point_sensing_dot(data=data,
-                                                                scan_range=sensing_dot_measurement.parameter[
-                                                                    "scan_range"],
-                                                                npoints=sensing_dot_measurement.parameter["N_points"])
-            new_gate_voltage["position_" + gate] = sensing_dot_measurement.parameter["center"] + detuning
-            error["position_" + gate] = 0.1e-3
 
-        return new_gate_voltage, error
+            data = self.experiment.measure(sensing_dot_measurement)
+            data_filterd = scipy.ndimage.filters.gaussian_filter1d(input=data, sigma=.5, axis=0, order=0,
+                                                                   mode="nearest",
+                                                                   truncate=4.)
+            data_filtered_diff = np.diff(data_filterd, n=1)
+            data_filtered_diff_smoothed = scipy.ndimage.filters.gaussian_filter1d(input=data_filtered_diff, sigma=.5,
+                                                                                  axis=0, order=0,
+                                                                                  mode="nearest",
+                                                                                  truncate=4.)
+            current_signal = data_filtered_diff_smoothed[self.measurements[0].parameter["N_points"] / 2]
+            optimal_signal = data_filtered_diff_smoothed.min()
+            optimal_position = data_filtered_diff_smoothed.argmin()
+            optimal_position = float(optimal_position) / float(self.measurements[0].parameter["N_points"]) * 2 * \
+                self.measurements[0].parameter["range"] - self.measurements[0].parameter["range"]
+
+            values["position_" + gate] = sensing_dot_measurement.parameter["center"] + optimal_position
+            error["position_" + gate] = 0.1e-3
+            values["current_signal"] = current_signal
+            error["current_signal"] = np.nan
+            values["optimal_signal"] = optimal_signal
+            error["optimal_signal"] = np.nan
+
+        return values, error
 
 
 class SensingDot2D(Evaluator):
@@ -217,7 +232,7 @@ class SensingDot2D(Evaluator):
                                               n_points=104, N_average=1, AWGorDecaDAC='DecaDAC')
         super().__init__(experiment, (sensing_dot_measurement,), pd.Series(), name=name)
 
-    def evaluate(self, storing_group: h5py.Group):
+    def evaluate(self):
         self.measurements[0].parameter["center"] = [
             self.experiment.read_gate_voltages()[self.measurements[0].parameter["gate1"]],
             self.experiment.read_gate_voltages()[self.measurements[0].parameter["gate2"]]]
@@ -270,8 +285,7 @@ def fit_lead_times(data: np.ndarray, **kwargs):
                                 popt[9], popt[10], popt[11]), "r")
     plt.draw()
 #    plt.pause(0.05)
-    failed = 0
-    fitresult = pd.Series(data=[popt[1], popt[2], failed], index=["t_fall", "t_rise", "failed"])
+    fitresult = pd.Series(data=[popt[1], popt[2]], index=["t_fall", "t_rise"])
     return fitresult
 
 
@@ -312,7 +326,6 @@ def func_lead_times_v2(x, hight: float, t_fall: float, t_rise: float, begin_rise
 
 
 def fit_inter_dot_coupling(data, plot_fit=True, cut_fist_fifth=True, **kwargs):
-    failed = 0
     center = kwargs["center"]
     scan_range = kwargs["scan_range"]
     npoints = kwargs["npoints"]
@@ -366,7 +379,7 @@ def fit_inter_dot_coupling(data, plot_fit=True, cut_fist_fifth=True, **kwargs):
     residuals = ydata[int(0.3 * npoints):npoints] - func_inter_dot_coupling(xdata[int(0.3 * npoints):npoints], popt[0], popt[1], popt[2], popt[3], popt[4])
     residual = np.nanmean(np.square(residuals)) / (popt[2] * popt[2]) * 2e4
     width_in_mus = popt[4] * 1e6
-    fit_result = pd.Series(data=[width_in_mus, failed, residual], index=["tc", "failed", "residual"])
+    fit_result = pd.Series(data=[width_in_mus, residual], index=["tc", "residual"])
     return fit_result
 
 
@@ -395,7 +408,6 @@ def func_inter_dot_coupling(xdata, offset: float, slope: float, height: float, p
 
 
 def fit_load_time(data, plot_fit=True, **kwargs):
-    failed = 0
     n_points = data.shape[1]
     ydata = data[0, 1:n_points]
     xdata = data[1, 1:n_points]
@@ -428,7 +440,7 @@ def fit_load_time(data, plot_fit=True, **kwargs):
     residual = ydata - func_load_time(xdata, popt[0], popt[1], popt[2])
     #residual = np.nanmean(np.square(residual)) / np.ptp(ydata)
     residual = np.nanmean(np.square(residual)) / (popt[1] * popt[1]) * 1500.
-    fit_result = pd.Series(data=[popt[2], failed, residual], index=["parameter_time_load", "failed", "residual"])
+    fit_result = pd.Series(data=[popt[2], residual], index=["parameter_time_load", "residual"])
     return fit_result
 
 
