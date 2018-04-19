@@ -24,7 +24,7 @@ class Solver(metaclass=HDF5Serializable):
     def suggest_next_step(self) -> pd.Series:
         raise NotImplementedError()
 
-    def update_after_step(self, voltages: pd.Series, parameters: pd.Series):
+    def update_after_step(self, voltages: pd.Series, parameters: pd.Series, variances: pd.Series):
         raise NotImplementedError()
 
     def to_hdf5(self):
@@ -115,3 +115,21 @@ class NelderMeadSolver(Solver):
     def to_hdf5(self):
         raise NotImplementedError()
 
+
+class TrivialSolver(Solver):
+    def __init__(self, current_position):
+        self._current_position = current_position
+        self._next_step = None
+
+    def suggest_next_step(self):
+        return self._next_step
+
+    def update_after_step(self, voltages: pd.Series, parameters: pd.Series, variances: pd.Series):
+        self._next_step = pd.Series()
+        for key in parameters:
+            if "position_" == key[0:9]:
+                gate = key[9:]  # delete the position prefix
+                self._next_step[gate] = parameters[key]
+
+    def to_hdf5(self):
+        return dict(next_step=self._next_step)
