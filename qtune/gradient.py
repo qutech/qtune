@@ -53,9 +53,7 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
         return self._current_estimate
 
     def require_measurement(self) -> pd.Series:
-        if self._required_measurements:
-            return self._required_measurements.pop()
-        elif self._current_estimate is None:
+        if not self._required_measurements and self._current_estimate is None:
             self._required_measurements = []
             if self._symmetric_calculation:
                 for position in self._current_position:
@@ -69,6 +67,8 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
                     self._required_measurements.append(
                         self._current_position.add(pd.Series(data=[self._epsilon], index=[position]), fill_value=0.))
                 self._required_measurements.append(self._current_position)
+        if self._required_measurements:
+            return self._required_measurements.pop()
 
     def update(self, voltages: pd.Series, value: float, covariance: pd.Series, is_new_position=False):
         """Is this even possible?"""
