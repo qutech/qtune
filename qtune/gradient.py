@@ -29,7 +29,7 @@ class GradientEstimator(metaclass=HDF5Serializable):
 
 
 class FiniteDifferencesGradientEstimator(GradientEstimator):
-    def __init__(self, current_position: pd.Series, parameters: pd.Series, epsilon: pd.Series):
+    def __init__(self, current_position: pd.Series, parameters: pd.Series, epsilon: pd.Series, symmetric=False):
         self._current_position = current_position.sort_index()
         self._current_parameters = parameters.sort_index()
 
@@ -39,6 +39,8 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
         self._current_estimate = None
 
         self._required_measurements = None
+
+        self._symmetric_calculation = symmetric
 
     def change_position(self, new_position: pd.Series):
         if self._current_position and ((self._current_position - new_position).abs() < self._valid_distance).all():
@@ -53,6 +55,20 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
     def require_measurement(self) -> pd.Series:
         if self._required_measurements:
             return self._required_measurements.pop()
+        elif self._current_estimate is None:
+            self._required_measurements = []
+            if self._symmetric_calculation:
+                for position in self._current_position:
+                    self._required_measurements.append(
+                        self._current_position.add(pd.Series(data=[self._epsilon], index=[position]), fill_value=0.))
+                    self._required_measurements.append(
+                        self._current_position.add(pd.Series(data=[-1. * self._epsilon], index=[position]),
+                                                   fill_value=0.))
+            else:
+                for position in self._current_position:
+                    self._required_measurements.append(
+                        self._current_position.add(pd.Series(data=[self._epsilon], index=[position]), fill_value=0.))
+                self._required_measurements.append(self._current_position)
 
     def update(self, voltages: pd.Series, value: float, covariance: pd.Series, is_new_position=False):
         """Is this even possible?"""
