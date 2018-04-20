@@ -9,6 +9,28 @@ from qtune.gradient import GradientEstimator
 from qtune.storage import HDF5Serializable
 
 
+def make_target(desired: pd.Series=np.nan,
+                maximum: pd.Series=np.nan,
+                minimum: pd.Series=np.nan):
+    for ser in (desired, maximum, minimum):
+        if isinstance(ser, pd.Series):
+            parameters = ser.index
+            break
+    else:
+        raise RuntimeError('Could not extract parameter names from arguments')
+
+    def to_series(arg):
+        if not isinstance(arg, pd.Series):
+            return pd.Series(arg, index=parameters)
+        else:
+            return arg[parameters]
+
+    return pd.DataFrame({'desired': to_series(desired),
+                         'minimum': to_series(minimum),
+                         'maximum': to_series(maximum)},
+                        index=parameters)
+
+
 class Solver(metaclass=HDF5Serializable):
     """
     The solver class implements an algorithm to minimise the difference of the parameters to the target values.
@@ -20,6 +42,10 @@ class Solver(metaclass=HDF5Serializable):
         raise NotImplementedError()
 
     def to_hdf5(self):
+        raise NotImplementedError()
+
+    @property
+    def target(self) -> pd.DataFrame:
         raise NotImplementedError()
 
 

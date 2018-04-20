@@ -1,4 +1,4 @@
-from typing import Sequence, List
+from typing import Sequence, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -11,11 +11,12 @@ from qtune.storage import HDF5Serializable
 class ParameterTuner(metaclass=HDF5Serializable):
     """This class tunes a specific set of parameters which are defined by the given evaluators."""
 
-    def __init__(self, evaluators: Sequence[Evaluator],
-                 desired_values: pd.Series,
-                 tolerances: pd.Series,
+    def __init__(self,
+                 evaluators: Sequence[Evaluator],
                  solver: Solver,
-                 tuned_positions=None, last_voltage=None, last_parameter_values=None):
+                 tuned_positions=None,
+                 last_voltage=None,
+                 last_parameter_values=None):
         self._tuned_positions = tuned_positions or []
 
         self._last_voltage = last_voltage
@@ -29,17 +30,9 @@ class ParameterTuner(metaclass=HDF5Serializable):
         if len(parameters) != len(set(parameters)):
             raise ValueError('Parameter duplicates: ', {p for p in parameters if parameters.count(p) > 1})
 
-        if not isinstance(desired_values, pd.Series):
-            desired_values = pd.Series(desired_values, index=parameters)
-        self._desired_values = desired_values[parameters]
-
-        if not isinstance(tolerances, pd.Series):
-            tolerances = pd.Series(tolerances, index=parameters)
-        self._tolerances = tolerances[parameters]
-
         self._solver = solver
 
-        self._solver.target = self._desired_values
+        assert set(self.solver.target.index) == set(parameters)
 
     @property
     def solver(self) -> Solver:
@@ -47,36 +40,27 @@ class ParameterTuner(metaclass=HDF5Serializable):
 
     @property
     def desired_values(self) -> pd.Series:
-        return self._desired_values
-
-    @desired_values.setter
-    def desired_values(self, val: pd.Series):
-        if isinstance(val, pd.Series):
-            assert set(val.index) == set(self.parameters)
-        self._desired_values[:] = val
-        self._solver.target = self._desired_values
+        return self.solver.target.desired_values
 
     @property
-    def tolerances(self) -> pd.Series:
-        return self._tolerances
+    def minimal_values(self) -> pd.Series:
+        return self.solver.target.minimal_values
 
-    @tolerances.setter
-    def tolerances(self, val):
-        if isinstance(val, pd.Series):
-            assert set(val.index) == set(self.parameters)
-        self._tolerances[:] = val
+    @property
+    def maximal_values(self) -> pd.Series:
+        return self.solver.target.maximal_values
 
     @property
     def parameters(self) -> Sequence[str]:
         """Alphabetically sorted parameters"""
-        return self.desired_values.index
+        return self.solver.target.index
 
     @property
     def tuned_positions(self) -> List[pd.Series]:
         """A list of the positions where the parameter set was successfully tuned."""
         return self._tuned_positions
 
-    def evaluate(self) -> pd.Series:
+    def evaluate(self) -> Tuple[pd.Series, pd.Series]:
         #  no list comprehension for easier debugging
         values = []
         variances = []
@@ -84,7 +68,7 @@ class ParameterTuner(metaclass=HDF5Serializable):
             value, variance = evaluator.evaluate()
             values.append(value)
             variances.append(variance)
-        return pd.concat(values).sort_index(), pd.concat(variances).sort_index()
+        return pd.concat(values)[self.parameters], pd.concat(variances)[self.parameters]
 
     def is_tuned(self, voltages: pd.Series) -> bool:
         """Tell the tuner, the voltages have changed and that he might have to re-tune.
@@ -94,17 +78,15 @@ class ParameterTuner(metaclass=HDF5Serializable):
         """
         raise NotImplementedError()
 
-    def get_next_voltage(self) -> pd.Series:
+    def get_next_voltages(self) -> pd.Series:
         """The next voltage in absolute values.
 
         :return:
         """
         raise NotImplementedError()
 
-    def to_hdf5(self):
+    def to_hdf5(self) -> dict:
         return dict(evaluators=self._evaluators,
-                    desired_values=self._desired_values,
-                    tolerances=self._tolerances,
                     solver=self._solver,
                     tuned_positions=self._tuned_positions,
                     last_voltage=self._last_voltage,
@@ -143,9 +125,12 @@ class SubsetTuner(ParameterTuner):
             return False
 
     def get_next_voltages(self):
-        solver_step = self._solver.suggest_next_step()
+        solver_voltage = self._solver.suggest_next_voltage()
+        result = pd.Series(self._last_voltage)
 
-        return self._last_voltage.add(solver_step, fill_value=0)
+        result[solver_voltage.index] = solver_voltage
+
+        return result
 
     def to_hdf5(self):
         parent_dict = super().to_hdf5()
