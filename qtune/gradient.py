@@ -56,16 +56,18 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
         if not self._required_measurements and self._current_estimate is None:
             self._required_measurements = []
             if self._symmetric_calculation:
-                for position in self._current_position:
+                for position in self._current_position.keys():
                     self._required_measurements.append(
-                        self._current_position.add(pd.Series(data=[self._epsilon], index=[position]), fill_value=0.))
+                        self._current_position.add(pd.Series(data=[self._epsilon[position]], index=[position]),
+                                                   fill_value=0.))
                     self._required_measurements.append(
-                        self._current_position.add(pd.Series(data=[-1. * self._epsilon], index=[position]),
+                        self._current_position.add(pd.Series(data=[-1. * self._epsilon[position]], index=[position]),
                                                    fill_value=0.))
             else:
-                for position in self._current_position:
+                for position in self._current_position.keys():
                     self._required_measurements.append(
-                        self._current_position.add(pd.Series(data=[self._epsilon], index=[position]), fill_value=0.))
+                        self._current_position.add(pd.Series(data=[self._epsilon[position]], index=[position]),
+                                                   fill_value=0.))
                 self._required_measurements.append(self._current_position)
         if self._required_measurements:
             return self._required_measurements.pop()
