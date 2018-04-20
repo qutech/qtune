@@ -10,24 +10,61 @@ class UtilTests(unittest.TestCase):
         test_list = [[], [], [], [], []]
         self.assertIs(test_list[3], qtune.util.nth(test_list, 3))
 
-    def test_gradient_min_evaluations(self):
+    def test_gradient_min_evaluations_asymmetric(self):
+        gradient = np.array([[1., 2., 3],
+                             [4., 0, 1.]])
 
-        vec0 = np.asarray([0., 0., 0.])
-        vec1 = np.asarray([.007, .007, 0.])
-        vec2 = np.asarray([.005, 0., 0.])
-        vec3 = np.asarray([0., .002, .005])
-        vec4 = np.asarray([2., 2., 2.])
-        voltage_points = [vec0, vec1, vec2, vec3]
-        parameters = [(a + vec4)**2 for a in voltage_points]
+        vec0 = np.asarray([1., 2., 3.])
+        dv1 = np.asarray([.007, .007, 0.])
+        dv2 = np.asarray([.005, 0., 0.])
+        dv3 = np.asarray([0., .002, .005])
+
+        deltas = [np.asarray([0., 0., 0.]), dv1, dv2, dv3]
+        voltage_points = [vec0 + dv for dv in deltas]
+
+        p0 = np.array([10., 11.])
+        parameters = [p0 + gradient @ dv for dv in deltas]
+
+        grad = qtune.util.gradient_min_evaluations(parameters=parameters, voltage_points=voltage_points)
+
+        np.testing.assert_almost_equal(grad, gradient)
+
+    def test_gradient_min_evaluations_symmetric(self):
+        gradient = np.array([[1., 2., 3],
+                             [4., 0, 1.]])
+
+        vec0 = np.asarray([1., 2., 3.])
+        dv1 = np.asarray([.007, .007, 0.])
+        dv2 = np.asarray([.005, 0., 0.])
+        dv3 = np.asarray([0., .002, .005])
+
+        deltas = [dv1, -dv1, dv2, -dv2, -dv3, dv3]
+        voltage_points = [vec0 + dv for dv in deltas]
+
+        p0 = np.array([10., 11.])
+        parameters = [p0 + gradient @ dv for dv in deltas]
 
         grad = qtune.util.gradient_min_evaluations(parameters=parameters, voltage_points=voltage_points)
 
-        self.assertLess(a=np.linalg.norm(grad - np.diag([4., 4., 4.])), b=.01)
+        np.testing.assert_almost_equal(grad, gradient)
 
-        voltage_points = [-vec1, vec1, -vec2, vec2, -vec3, vec3]
-        parameters = [(a + vec4)**2 for a in voltage_points]
+    def test_gradient_min_evaluation_exception(self):
+        gradient = np.array([[1., 2., 3],
+                             [4., 0, 1.]])
 
-        grad = qtune.util.gradient_min_evaluations(parameters=parameters, voltage_points=voltage_points)
-        self.assertLess(a=np.linalg.norm(grad - np.diag([4., 4., 4.])), b=.0001)
+        vec0 = np.asarray([1., 2., 3.])
+        dv1 = np.asarray([.007, .007, 0.])
+        dv2 = np.asarray([.005, 0., 0.])
+        dv3 = dv1 + dv2
 
+        deltas = [dv1, -dv1, dv2, -dv2, -dv3, dv3]
+        voltage_points = [vec0 + dv for dv in deltas]
 
+        p0 = np.array([10., 11.])
+        parameters = [p0 + gradient @ dv for dv in deltas]
+
+        with self.assertRaises(RuntimeError):
+            qtune.util.gradient_min_evaluations(parameters=parameters[:-1], voltage_points=voltage_points[:-1])
+
+        with self.assertRaises(qtune.util.EvaluationError):
+            qtune.util.gradient_min_evaluations(parameters=parameters, voltage_points=voltage_points)

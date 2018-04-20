@@ -7,6 +7,10 @@ import numpy as np
 __all__ = ['nth']
 
 
+class EvaluationError(RuntimeError):
+    """This exception is raised if a fit or evaluation fails. It should be catched at the right position"""
+
+
 def nth(iterable: Iterable[Any], n: int) -> Any:
     """Returns the nth item or a default value"""
     return next(itertools.islice(iterable, n, None))
@@ -88,20 +92,19 @@ def gradient_min_evaluations(parameters, voltage_points):
     """
     n_points = len(voltage_points)
     assert(len(voltage_points) == len(parameters))
-    n_parameters = parameters[0].size
     n_gates = voltage_points[0].size
-    voltage_diff = np.zeros((n_gates, n_gates))
-    parameter_diff = np.zeros((n_parameters, n_gates))
 
     if n_points == n_gates + 1:
-        for i in range(1, n_points):
-            voltage_diff[:][i - 1] = voltage_points[i] - voltage_points[0]
-            parameter_diff[:][i - 1] = parameters[i] - parameters[0]
+        voltage_diff = (np.stack(voltage_points[1:]) - voltage_points[0]).T
+        parameter_diff = (np.stack(parameters[1:]) - parameters[0]).T
     elif n_points == 2 * n_gates:
-        for i in range(n_gates):
-            voltage_diff[:][i] = voltage_points[2 * i + 1] - voltage_points[2 * i]
-            parameter_diff[:][i] = parameters[2 * i + 1] - parameters[2 * i]
+        voltage_diff = (np.stack(voltage_points[1::2]) - np.stack(voltage_points[::2])).T
+        parameter_diff = (np.stack(parameters[1::2]) - np.stack(parameters[::2])).T
+    else:
+        raise RuntimeError("Invalid number of points", parameters, voltage_points)
 
-    gradient = np.dot(parameter_diff, np.linalg.inv(voltage_diff))
+    try:
+        gradient = np.dot(parameter_diff, np.linalg.inv(voltage_diff))
+    except np.linalg.LinAlgError as err:
+        raise EvaluationError() from err
     return gradient
-
