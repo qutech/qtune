@@ -111,20 +111,24 @@ class NelderMeadSolver(Solver):
         raise NotImplementedError()
 
 
-class TrivialSolver(Solver):
-    def __init__(self, current_position):
-        self._current_position = current_position
-        self._next_step = None
+class ForwardingSolver(Solver):
+    """Solves by forwarding the values of the given parameters and renaming them to a voltage vector"""
+    def __init__(self, parameter_to_voltage: pd.Series, next_voltage=None):
+        """
 
-    def suggest_next_step(self):
-        return self._next_step
+        :param parameter_to_voltage: A series of strings
+        :param next_voltage:
+        """
+        self._parameter_to_voltage = parameter_to_voltage
+        self._next_voltage = None
+
+    def suggest_next_voltage(self) -> pd.Series:
+        return self._next_voltage
 
     def update_after_step(self, voltages: pd.Series, parameters: pd.Series, variances: pd.Series):
-        self._next_step = pd.Series()
-        for key in parameters:
-            if "position_" == key[0:9]:
-                gate = key[9:]  # delete the position prefix
-                self._next_step[gate] = parameters[key]
+        new_voltage_names = self._parameter_to_voltage[parameters.index]
+        self._next_voltage[new_voltage_names] = parameters
 
     def to_hdf5(self):
-        return dict(next_step=self._next_step)
+        return dict(parameter_to_voltage=self._parameter_to_voltage,
+                    next_voltage=self._next_voltage)
