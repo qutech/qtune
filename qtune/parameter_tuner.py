@@ -5,9 +5,10 @@ import pandas as pd
 
 from qtune.evaluator import Evaluator
 from qtune.solver import Solver
+from qtune.storage import HDF5Serializable
 
 
-class ParameterTuner:
+class ParameterTuner(metaclass=HDF5Serializable):
     """This class tunes a specific set of parameters which are defined by the given evaluators."""
 
     def __init__(self, evaluators: Sequence[Evaluator],
@@ -100,6 +101,15 @@ class ParameterTuner:
         """
         raise NotImplementedError()
 
+    def to_hdf5(self):
+        return dict(evaluators=self._evaluators,
+                    desired_values=self._desired_values,
+                    tolerances=self._tolerances,
+                    solver=self._solver,
+                    tuned_positions=self._tuned_positions,
+                    last_voltage=self._last_voltage,
+                    last_parameter_values=self._last_parameter_values)
+
 
 class SubsetTuner(ParameterTuner):
     """This tuner uses only a subset of gates to tune the parameters"""
@@ -136,6 +146,10 @@ class SubsetTuner(ParameterTuner):
         solver_step = self._solver.suggest_next_step()
 
         return self._last_voltage.add(solver_step, fill_value=0)
+
+    def to_hdf5(self):
+        parent_dict = super().to_hdf5()
+        return dict(parent_dict, gates=self._gates)
 
 
 class SensingDotTuner(ParameterTuner):
