@@ -112,23 +112,35 @@ class NelderMeadSolver(Solver):
 
 
 class ForwardingSolver(Solver):
-    """Solves by forwarding the values of the given parameters and renaming them to a voltage vector"""
-    def __init__(self, parameter_to_voltage: pd.Series, next_voltage=None):
+    """Solves by forwarding the values of the given parameters and renaming them to a voltage vector which updates the
+    given voltages"""
+    def __init__(self, parameter_to_voltage: pd.Series,
+                 current_position: pd.Series,
+                 next_voltage: pd.Series=None):
         """
 
         :param parameter_to_voltage: A series of strings
         :param next_voltage:
         """
         self._parameter_to_voltage = parameter_to_voltage
-        self._next_voltage = None
+        self._current_position = current_position
+        if next_voltage is None:
+            next_voltage = self._current_position.copy()
+        else:
+            next_voltage = next_voltage[self._current_position]
+        self._next_voltage = next_voltage
 
     def suggest_next_voltage(self) -> pd.Series:
         return self._next_voltage
 
     def update_after_step(self, voltages: pd.Series, parameters: pd.Series, variances: pd.Series):
+        self._current_position[voltages.index] = voltages
+        self._next_voltage[voltages.index] = voltages
+
         new_voltage_names = self._parameter_to_voltage[parameters.index]
         self._next_voltage[new_voltage_names] = parameters
 
     def to_hdf5(self):
         return dict(parameter_to_voltage=self._parameter_to_voltage,
+                    current_position=self._current_position,
                     next_voltage=self._next_voltage)
