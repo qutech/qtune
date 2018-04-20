@@ -13,15 +13,7 @@ class Solver(metaclass=HDF5Serializable):
     """
     The solver class implements an algorithm to minimise the difference of the parameters to the target values.
     """
-    @property
-    def target(self) -> pd.Series:
-        raise NotImplementedError()
-
-    @target.setter
-    def target(self, val):
-        raise NotImplementedError()
-
-    def suggest_next_step(self) -> pd.Series:
+    def suggest_next_voltage(self) -> pd.Series:
         raise NotImplementedError()
 
     def update_after_step(self, voltages: pd.Series, parameters: pd.Series, variances: pd.Series):
@@ -32,6 +24,9 @@ class Solver(metaclass=HDF5Serializable):
 
 
 class NewtonSolver(Solver):
+    """This solver uses (an estimate of) the jacobian and solves by inverting it.(Newton's method)
+
+    The jacobian is put together from the given gradient estimators"""
     def __init__(self, target: pd.Series,
                  gradient_estimators: Sequence[GradientEstimator],
                  current_position: pd.Series=None,
@@ -95,7 +90,7 @@ class NelderMeadSolver(Solver):
         self.weights = weights
         self.current_voltages = current_voltages
 
-    def suggest_next_step(self) -> pd.Series:
+    def suggest_next_voltage(self) -> pd.Series:
         if len(self.simplex) < len(self.current_voltages) + 1:
             pass
 
