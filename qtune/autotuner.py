@@ -20,24 +20,46 @@ class Autotuner:
     """
     The auto tuner class combines the evaluator and solver classes to tune an experiment.
     """
-    def __init__(self, experiment: Experiment, tuning_hierarchy: List(ParameterTuner)=None):
+    def __init__(self, experiment: Experiment, tuning_hierarchy: List[ParameterTuner]=None):
         self._experiment = experiment
         self._tuning_hierarchy = tuning_hierarchy
+        self._current_tuner_index = 0
+        self._current_tuner = False
+        self._voltage_to_set = None
 
     def tuning_complete(self) -> bool:
-        for tuner in self._tuning_hierarchy:
-            if not tuner.is_tuned():
-                return False
-        return True
+        if self._current_tuner_index == len(self._tuning_hierarchy):
+            return True
+        else:
+            return False
 
     def ready_to_tune(self) -> bool:
         raise NotImplementedError
 
+    def get_current_tuner(self):
+        return self._tuning_hierarchy[self._current_tuner_index]
+
+    def iterate(self):
+        if self._voltage_to_set:
+            self._experiment.set_gate_voltages(self._voltage_to_set)
+            self._current_tuner = 0
+            self._voltage_to_set = None
+        elif self._current_tuner is False:
+            if self.get_current_tuner().is_tuned(self._experiment.read_gate_voltages()):
+                self._current_tuner_index += 1
+            else:
+                self._current_tuner = True
+        else:
+            self._voltage_to_set = self.get_current_tuner().get_next_voltage()
+            self._current_tuner = False
+
     def autotune(self):
-        for tuner in self._tuning_hierarchy:
-            if not tuner.is_tuned():
-                self._experiment.set_gate_voltages(new_gate_voltages=tuner.get_next_voltage)
-                self.autotune()
+        if not self.ready_to_tune():
+            print("Setup incomplete!")
+            return
+        while not self.tuning_complete():
+            self.iterate()
+
 
     def evaluate_gradient_covariance_noise(self, delta_u=4e-3, n_repetitions=3) -> Tuple[
         pd.DataFrame, pd.DataFrame, pd.Series]:
