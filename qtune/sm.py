@@ -34,8 +34,10 @@ def matlab_files_path():
 
 
 class SpecialMeasureMatlab:
+    """
+    Keeps track of all connected engines as matlab.engine does not allow to connect to the same engine twice.
+    """
     connected_engines = weakref.WeakValueDictionary()
-    """Keeps track of all connected engines as matlab.engine does not allow to connect to the same engine twice."""
 
     def __init__(self, connect=None, gui=None, special_measure_setup_script=None, silently_overwrite_path=None):
         if not connect:
