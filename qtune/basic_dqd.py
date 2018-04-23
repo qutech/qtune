@@ -35,7 +35,7 @@ class BasicDQD(Experiment):
     def read_qpc_voltage(self) -> pd.Series:
         raise NotImplementedError()
 
-
+# TODO QQB or general QDArray? Move to other file
 class BasicQQD(Experiment):
 
     def __init__(self):

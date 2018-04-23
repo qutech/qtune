@@ -8,6 +8,7 @@ from typing import Tuple, Sequence, Union
 import os.path
 import weakref
 import h5py
+from numbers import Number
 
 import matlab.engine
 import pandas as pd
@@ -23,6 +24,7 @@ from qtune.basic_dqd import BasicDQD
 from qtune.basic_dqd import BasicQQD
 from qtune.chrg_diag import ChargeDiagram
 from qtune.solver import Evaluator
+from qtune.experiment import Experiment, Measurement
 
 
 def redirect_output(func):
@@ -247,70 +249,97 @@ class LegacyDQD(BasicDQD):
 
 
 class LegacyQQD(BasicQQD):
+    """
+    QQD implementation using the MATLAB backend and the tune.m script on the Trition 200 Setup
+    """
+    # TODO wrap special functions connected to tune runs and tunedata!
+    # TODO Should the sensing dot functions allow for passing of kwargs to measurement?
+    # TODO Either allow for better control of scan parameters or provide interface to tunedata?
 
     def __init__(self, matlab_instance: SpecialMeasureMatlab):
         super().__init__()
         self._matlab = matlab_instance
         self._left_sensing_dot_tuned = False
         self._right_sensing_dot_tuned = False
+        # TODO Load tunedata to Python?
+
+        # TODO List all possible arguments for the functions here!
+        self._measurements = {'sensor_2d': qtune.experiment.Measurement('sensor_2d'),
+                              'sensor': qtune.experiment.Measurement('sensor'),
+                              'chrg': None,
+                              'resp': None,
+                              'line': None,
+                              'lead': None,
+                              'jac': None,
+                              'measp': None}
+
+        self._sensors = [{'T': "LT", 'P': "LP", 'B': "LB"},
+                         {'T': "RT", 'P': "RP", 'B': "RB"}]
+
+    def measurements(self) -> Tuple[Measurement, ...]:
+        return tuple(self._measurements.values())
 
     def gate_voltage_names(self) -> Tuple:
-        return tuple(sorted(self._matlab.engine.qtune.read_qqd_gate_voltages().keys()))
+        return tuple(sorted(self._matlab.engine.qtune.read_qqd_gate_voltages().keys())) # Why call MATLAB engine here?
 
     def read_gate_voltages(self) -> pd.Series:
         return pd.Series(self._matlab.engine.qtune.read_qqd_gate_voltages()).sort_index()
 
     def _read_sensing_dot_voltages(self) -> pd.Series:
+        # TODO: Maybe allow for getting only one sensor at a time?
         return pd.Series(self._matlab.engine.qtune.read_qqd_sensing_dot_voltages()).sort_index()
 
-    def tune_sensing_dot_1d(self, gate: str, prior_position: float=None, tuning_range: float=4e-3, n_points: int=1280,
-                            scan_range: float=5e-3):
-        if prior_position is None:
-            prior_position = self._read_sensing_dot_voltages()[gate]
-        sensing_dot_measurement = qtune.experiment.Measurement('line_scan',
-                                    center=prior_position, range=scan_range, gate=gate, N_points=n_points, ramptime=.0005,
-                                    N_average=1, AWGorDecaDAC='DecaDAC')
+    def tune_sensing_dot_1d(self, sensor: int, stepping_gate=None):
+        """Provide functionality for 1d sensor dot tuning"""
+
+        if sensor <= 0 or sensor >= len(self._sensors):
+            raise ValueError("Sensor index out of range!")
+
+        sensing_dot_measurement = self._measurements['sensor']
+        sensing_dot_measurement.parameters.index = sensor
+
+        # check stepping gate
+        if stepping_gate is not None:
+            if stepping_gate not in self._sensors[sensor].values():
+                raise ValueError("Stepping gate clashes with selected sensor!")
+            else:
+                sensing_dot_measurement.parameters.stepping_gate=stepping_gate
+
+        sensing_dot_measurement.parameters.
+        # Execute measurement and store data
+        # TODO Pass data for further analysis by autotuner?
         data = self.measure(sensing_dot_measurement)
-        detuning = qtune.util.find_stepes_point_sensing_dot(data, scan_range=scan_range, npoints=n_points)
-        self._set_sensing_dot_voltages(pd.Series({gate: prior_position + detuning}))
 
-    def tune_sensing_dot_2d(self, side: str, tuning_range=15e-3, n_lines=20, n_points=104):
-        if side == "r" or side == "R" or side == "right":
-            gate_T = "RT"
-            gate_B = "RB"
-        elif side == "l" or side == "L" or side == "left":
-            gate_T = "LT"
-            gate_B = "LB"
-        else:
-            print("Specify which sensing dot you would like to tune!")
-            raise ValueError
+        # Set gates here or in MATLAB script?
+        # detuning = qtune.util.find_stepes_point_sensing_dot(data, scan_range=scan_range, npoints=n_points)
+        # self._set_sensing_dot_voltages(pd.Series({gate: prior_position + detuning}))
 
+    def tune_sensing_dot_2d(self, sensor: int):
+        """Provide functionality for 2d sensor dot tuning"""
+        # TODO Should these functions allow for passing of kwargs to measurement?
+        # TODO decide how much is done in MATLAB script. The autotuner could be completely agnostic of the sensor gates!
+        # check if sensor index is in range
+        if sensor <= 0 or sensor >= len(self._sensors):
+            raise ValueError("Sensor index out of range!")
+
+        # Read values of top and bottom gate -> also automatically done by the MATLAB script,
+        # no need to go back and forth
         positions = self._read_sensing_dot_voltages()
-        T_position = positions[gate_T]
-        B_position = positions[gate_B]
+        T_position = positions[self._sensors[sensor]['T']]
+        B_position = positions[self._sensors[sensor]['B']]
 
-        sensing_dot_measurement = qtune.experiment.Measurement('2d_scan', center=[T_position, B_position],
-                                                               range=tuning_range, gate1=gate_T, gate2=gate_B,
-                                                               N_points=1280, ramptime=.0005, n_lines=n_lines,
-                                                               n_points=n_points, N_average=1, AWGorDecaDAC='DecaDAC')
+        # Standard arguments are provided on a MATLAB level by tune script
+        sensing_dot_measurement = self._measurements['sensor_2d']
+        sensing_dot_measurement.parameters.index = sensor
+
+        # Start Measurement
+        # Data processing and further adjustments are done on the MATLAB level for now
+        # -> pass data for further analysis if needed for the tuning process
         data = self.measure(sensing_dot_measurement)
 
-        data_filterd = scipy.ndimage.filters.gaussian_filter1d(input=data, sigma=.5, axis=0, order=0,
-                                                               mode="nearest",
-                                                               truncate=4.)
-        data_diff = np.zeros((n_lines, n_points - 1))
-        for j in range(n_lines):
-            for i in range(n_points - 1):
-                data_diff[j, i] = data_filterd[j, i + 1] - data_filterd[j, i]
-
-        mins_in_lines = data_diff.min(1)
-        min_line = np.argmin(mins_in_lines)
-        min_point = np.argmin(data_diff[min_line])
-        gate_T_pos = float(min_line) / float(n_lines) * 2 * tuning_range - tuning_range
-        gate_B_pos = float(min_point) / float(n_points) * 2 * tuning_range - tuning_range
-        new_positions = {gate_T: gate_T_pos + T_position, gate_B: gate_B_pos + B_position}
-        self._set_sensing_dot_voltages(pd.Series(new_positions))
-        self.tune_sensing_dot_1d(gate=gate_T)
+        # 1d tuning at the end is done by the MATLAB script,
+        # we could of course disable it and call it here if needed for the tuning stack
+        # self.tune_sensing_dot_1d(gate=gate_T)
 
     def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
         self._left_sensing_dot_tuned = False
@@ -326,6 +355,7 @@ class LegacyQQD(BasicQQD):
         return pd.Series(self._matlab.engine.qtune.set_qqd_gate_voltages(new_gate_voltages))
 
     def _set_sensing_dot_voltages(self, new_sensing_dot_voltage: pd.Series):
+        # currently handled in MATLAB
         current_sensing_dot_voltages = self._read_sensing_dot_voltages()
         for key in current_sensing_dot_voltages.index.tolist():
             if key not in new_sensing_dot_voltage.index.tolist():
@@ -336,35 +366,28 @@ class LegacyQQD(BasicQQD):
         self._matlab.engine.qtune.set_sensing_dot_gate_voltages()
 
     def measure(self, measurement: Measurement) -> np.ndarray:
-        if not self._left_sensing_dot_tuned:
-            self.tune_sensing_dot_1d("RT")
-        if not self._right_sensing_dot_tuned:
-            self.tune_sensing_dot_1d("LT")
-
-        if measurement == 'line_scan':
-            parameters = measurement.parameter.copy()
-            parameters['file_name'] = "line_scan" + measurement.get_file_name()
-            parameters['N_points'] = float(parameters['N_points'])
-            parameters['N_average'] = float(parameters['N_average'])
-            return np.asarray(self._matlab.engine.qtune.PythonChargeLineScan(parameters))
-        elif measurement == 'detune_scan':
-            parameters = measurement.parameter.copy()
-            parameters['file_name'] = "detune_scan_" + measurement.get_file_name()
-            parameters['N_points'] = float(parameters['N_points'])
-            parameters['N_average'] = float(parameters['N_average'])
-            return np.asarray(self._matlab.engine.qtune.PythonLineScan(parameters))
-        elif measurement == 'lead_scan':
-            parameters = measurement.parameter.copy()
-            parameters['file_name'] = "lead_scan" + measurement.get_file_name()
-            return np.asarray(self._matlab.engine.qtune.LeadScan(parameters))
-        elif measurement == "load_scan":
-            parameters = measurement.parameter.copy()
-            parameters["file_name"] = "load_scan" + measurement.get_file_name()
-            return np.asarray(self._matlab.engine.qtune.LoadScan(parameters))
-        else:
+        """This function basically wraps the tune.m script on the Trition 200 setup"""
+        if measurement not in self._measurements:
             raise ValueError('Unknown measurement: {}'.format(measurement))
 
+        # Should this be part of the autotuner?
+        if not self._left_sensing_dot_tuned:
+            self.tune_sensing_dot_1d(sensor=0)
+        if not self._right_sensing_dot_tuned:
+            self.tune_sensing_dot_1d(sensor=1)
 
+        # Make sure ints are converted to float
+        parameters = measurement.parameter.copy()
+        for parameter, value in parameters.items():
+            if isinstance(value, Number):
+                parameters[parameter] = float(value)
+
+        # check data structure of returned values -> Most likely MATLAB struct
+        data = self._matlab.engine.tune.tune(measurement, parameters['index'], parameters)
+        return data['data']
+
+
+# Deprecated
 class LegacyChargeDiagram(ChargeDiagram):
     """
     Charge diagram class using Matlab functions to detect lead transitions. Has already been replaced by the python
