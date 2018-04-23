@@ -33,6 +33,7 @@ class Experiment:
     """
     @property
     def measurements(self) -> Tuple[Measurement, ...]:
+        """Return available measurements for the Experiment"""
         raise NotImplementedError()
 
     @property
