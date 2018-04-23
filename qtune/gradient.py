@@ -5,6 +5,7 @@ import pandas as pd
 
 from qtune.kalman_gradient import KalmanGradient
 from qtune.storage import HDF5Serializable
+from qtune.util import get_orthogonal_vector, calculate_gradient_non_orthogonal
 
 __all__ = ["GradientEstimator", "FiniteDifferencesGradientEstimator", "KalmanGradientEstimator"]
 
@@ -21,7 +22,7 @@ class GradientEstimator(metaclass=HDF5Serializable):
     def require_measurement(self) -> Optional[pd.Series]:
         raise NotImplementedError()
 
-    def update(self, voltages: pd.Series, value: float, covariance: pd.Series, is_new_position=False):
+    def update(self, voltages: pd.Series, value: float, covariance: float, is_new_position=False):
         raise NotImplementedError()
 
     def to_hdf5(self):
@@ -29,55 +30,75 @@ class GradientEstimator(metaclass=HDF5Serializable):
 
 
 class FiniteDifferencesGradientEstimator(GradientEstimator):
-    def __init__(self, current_position: pd.Series, parameters: pd.Series, epsilon: pd.Series, symmetric=False):
+    def __init__(self,
+                 current_position: pd.Series,
+                 epsilon: pd.Series, symmetric: bool=False,
+                 current_estimate=None,
+                 variance=None,
+                 stored_measurements=None,
+                 requested_measurements=None):
         self._current_position = current_position.sort_index()
-        self._current_parameters = parameters.sort_index()
 
-        self._valid_distance = pd.Series(0, index=self._current_position.index)
         self._epsilon = epsilon.sort_index()
 
-        self._current_estimate = None
+        self._current_estimate = current_estimate
+        self._variance = variance
 
-        self._required_measurements = None
+        self._stored_measurements = stored_measurements or []
+
+        # only for debugging purposes
+        self._requested_measurements = requested_measurements or []
 
         self._symmetric_calculation = symmetric
 
     def change_position(self, new_position: pd.Series):
-        if self._current_position and ((self._current_position - new_position).abs() < self._valid_distance).all():
-            pass
-        else:
-            self._current_position[:] = new_position
-            self._required_measurements = pd.DataFrame()
+        self._current_position[new_position.index] = new_position
 
-    def estimate(self):
+    def estimate(self) -> pd.Series:
         return self._current_estimate
 
     def require_measurement(self) -> pd.Series:
-        if not self._required_measurements and self._current_estimate is None:
-            self._required_measurements = []
+        if self._current_estimate is None:
             if self._symmetric_calculation:
-                for position in self._current_position.keys():
-                    self._required_measurements.append(
-                        self._current_position.add(pd.Series(data=[self._epsilon[position]], index=[position]),
-                                                   fill_value=0.))
-                    self._required_measurements.append(
-                        self._current_position.add(pd.Series(data=[-1. * self._epsilon[position]], index=[position]),
-                                                   fill_value=0.))
+                measured_points = [v for v, *_ in self._stored_measurements]
+                if len(measured_points) % 2 == 1:
+                    self._requested_measurements.append(2*self._current_position - measured_points[-1][0])
+                elif measured_points:
+                    measured_points = [v2 - v1 for v2, v1 in zip(measured_points[1::2],
+                                                                 measured_points[::2])]
+                    self._requested_measurements.append(self._current_position + get_orthogonal_vector(measured_points) * self._epsilon)
             else:
-                for position in self._current_position.keys():
-                    self._required_measurements.append(
-                        self._current_position.add(pd.Series(data=[self._epsilon[position]], index=[position]),
-                                                   fill_value=0.))
-                self._required_measurements.append(self._current_position)
-        if self._required_measurements:
-            return self._required_measurements.pop()
+                measured_points = [v for v, *_ in self._stored_measurements]
+                if len(measured_points) == 0:
+                    ov = get_orthogonal_vector([np.zeros_like(self._current_position.index, dtype=float)])
+                    self._requested_measurements.append(self._current_position + ov)
+                elif len(measured_points) < self._current_position.size:
+                    ov = get_orthogonal_vector(measured_points)
+                    self._requested_measurements.append(self._current_position + ov)
+                else:
+                    self._requested_measurements.append(self._current_position)
+            return self._requested_measurements[-1]
 
     def update(self, voltages: pd.Series, value: float, covariance: pd.Series, is_new_position=False):
-        """Is this even possible?"""
-        raise NotImplementedError()
+        if self._current_estimate is None:
+            self._stored_measurements.append((voltages, value, covariance))
+
+            positions, values, variances = zip(*self._stored_measurements)
+
+            if ((self._symmetric_calculation and len(self._stored_measurements) == 2*self._current_position.size) or
+                not (self._symmetric_calculation and len(self._stored_measurements) == self._current_position.size + 1)):
+                    self._current_estimate, self._variance = calculate_gradient_non_orthogonal(positions=positions,
+                                                                                               values=values,
+                                                                                               variances=variances)
 
     def to_hdf5(self):
-        raise NotImplementedError()
+        return dict(current_position=self._current_position,
+                    epsilon=self._epsilon,
+                    current_estimate=self._current_estimate,
+                    variance=self._variance,
+                    stored_measurements=self._stored_measurements,
+                    symmetric=self._symmetric_calculation,
+                    requested_measurements=self._requested_measurements)
 
 
 class KalmanGradientEstimator(GradientEstimator):
