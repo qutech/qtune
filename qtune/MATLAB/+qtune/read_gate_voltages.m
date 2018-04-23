@@ -15,5 +15,7 @@ voltages.SA=gate_voltages(5);
 voltages.BA=gate_voltages(6);
 voltages.RFA=gate_voltages(7);
 voltages.RFB=gate_voltages(8);
+voltages.SDB2=cell2mat(smget('SDB2'));
+voltages.SDB1=cell2mat(smget('SDB1'));
 end
 
