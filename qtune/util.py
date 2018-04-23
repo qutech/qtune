@@ -120,11 +120,11 @@ def calculate_gradient_non_orthogonal(positions: Sequence[np.ndarray],
     n_dim = positions[0].size
 
     if n_points == n_dim + 1:
-        voltage_diff = (np.stack(positions[1:]) - positions[0]).T
-        parameter_diff = (np.stack(values[1:]) - values[0]).T
+        voltage_diff = np.stack(positions[1:]) - positions[0]
+        parameter_diff = np.stack(values[1:]) - values[0]
     elif n_points == 2 * n_dim:
-        voltage_diff = (np.stack(positions[1::2]) - np.stack(positions[::2])).T
-        parameter_diff = (np.stack(values[1::2]) - np.stack(values[::2])).T
+        voltage_diff = np.stack(positions[1::2]) - np.stack(positions[::2])
+        parameter_diff = np.stack(values[1::2]) - np.stack(values[::2])
     else:
         raise RuntimeError("Invalid number of points", positions, values)
 
@@ -133,20 +133,22 @@ def calculate_gradient_non_orthogonal(positions: Sequence[np.ndarray],
     except np.linalg.LinAlgError as err:
         raise EvaluationError() from err
 
-    gradient = np.dot(parameter_diff, inverted_volt_diffs)
+    gradient = inverted_volt_diffs @ parameter_diff
 
     if variances:
-        gradient_variances = np.dot(variances, inverted_volt_diffs**2)
-        return gradient, gradient_variances
+        if n_points == n_dim + 1:
+            diff_variances = np.stack(variances[1:]) + variances[0]
+        else:
+            diff_variances = np.stack(variances[1::2]) + np.stack(variances[::2])
+
+        gradient_covariance = inverted_volt_diffs @ np.diag(diff_variances) @ inverted_volt_diffs.T
+        return gradient, gradient_covariance
 
     return gradient
 
 
 def get_orthogonal_vector(vectors: Sequence[np.ndarray]):
     """Return a vector orthogonal to the given ones"""
-    ns = sp.Matrix(vectors).nullspace()
-    ov = ns[0]
+    ov, *_ = sp.Matrix(vectors).nullspace()
     ov = np.asarray(ov, dtype=float)
     return ov / np.linalg.norm(ov)
-
-
