@@ -1,4 +1,4 @@
-from typing import Tuple, Sequence, Optional
+from typing import Tuple, Sequence
 
 import numpy as np
 import pandas as pd
@@ -53,7 +53,7 @@ class NewtonSolver(Solver):
     """This solver uses (an estimate of) the jacobian and solves by inverting it.(Newton's method)
 
     The jacobian is put together from the given gradient estimators"""
-    def __init__(self, target: pd.Series,
+    def __init__(self, target: pd.DataFrame,
                  gradient_estimators: Sequence[GradientEstimator],
                  current_position: pd.Series=None,
                  current_values: pd.Series=None):
@@ -68,12 +68,8 @@ class NewtonSolver(Solver):
             self._current_values = pd.Series(np.nan, index=self._target.index)
 
     @property
-    def target(self) -> pd.Series:
+    def target(self) -> pd.DataFrame:
         return self._target
-
-    @target.setter
-    def target(self, val):
-        self._target = val[self._target.index]
 
     @property
     def jacobian(self) -> pd.DataFrame:
@@ -90,7 +86,7 @@ class NewtonSolver(Solver):
             raise RuntimeError('NewtonSolver: Position not initialized.')
 
         # our jacobian is sufficiently accurate
-        required_diff = self.target - self._current_position
+        required_diff = self.target.desired - self._current_position
 
         step, *_ = np.linalg.lstsq(self.jacobian, required_diff)
         return self._current_position + step
@@ -140,7 +136,9 @@ class NelderMeadSolver(Solver):
 class ForwardingSolver(Solver):
     """Solves by forwarding the values of the given parameters and renaming them to a voltage vector which updates the
     given voltages"""
-    def __init__(self, parameter_to_voltage: pd.Series,
+    def __init__(self,
+                 target: pd.DataFrame,
+                 parameter_to_voltage: pd.Series,
                  current_position: pd.Series,
                  next_voltage: pd.Series=None):
         """
@@ -148,6 +146,7 @@ class ForwardingSolver(Solver):
         :param parameter_to_voltage: A series of strings
         :param next_voltage:
         """
+        self._target = target
         self._parameter_to_voltage = parameter_to_voltage
         self._current_position = current_position
         if next_voltage is None:
@@ -155,6 +154,10 @@ class ForwardingSolver(Solver):
         else:
             next_voltage = next_voltage[self._current_position]
         self._next_voltage = next_voltage
+
+    @property
+    def target(self) -> pd.DataFrame:
+        return self._target
 
     def suggest_next_voltage(self) -> pd.Series:
         return self._next_voltage
