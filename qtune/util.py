@@ -1,7 +1,9 @@
 import itertools
 import datetime
-from typing import Iterable, Any, Callable, List
+from typing import Iterable, Any, Callable, Sequence
+
 import numpy as np
+import sympy as sp
 
 
 __all__ = ['nth']
@@ -108,3 +110,43 @@ def gradient_min_evaluations(parameters, voltage_points):
     except np.linalg.LinAlgError as err:
         raise EvaluationError() from err
     return gradient
+
+
+def calculate_gradient_non_orthogonal(positions: Sequence[np.ndarray],
+                                      values: Sequence[float],
+                                      variances: Sequence[float]=None):
+    n_points = len(values)
+    assert len(values) == len(positions)
+    n_dim = positions[0].size
+
+    if n_points == n_dim + 1:
+        voltage_diff = (np.stack(positions[1:]) - positions[0]).T
+        parameter_diff = (np.stack(values[1:]) - values[0]).T
+    elif n_points == 2 * n_dim:
+        voltage_diff = (np.stack(positions[1::2]) - np.stack(positions[::2])).T
+        parameter_diff = (np.stack(values[1::2]) - np.stack(values[::2])).T
+    else:
+        raise RuntimeError("Invalid number of points", positions, values)
+
+    try:
+        inverted_volt_diffs = np.linalg.inv(voltage_diff)
+    except np.linalg.LinAlgError as err:
+        raise EvaluationError() from err
+
+    gradient = np.dot(parameter_diff, inverted_volt_diffs)
+
+    if variances:
+        gradient_variances = np.dot(variances, inverted_volt_diffs**2)
+        return gradient, gradient_variances
+
+    return gradient
+
+
+def get_orthogonal_vector(vectors: Sequence[np.ndarray]):
+    """Return a vector orthogonal to the given ones"""
+    ns = sp.Matrix(vectors).nullspace()
+    ov = ns[0]
+    ov = np.asarray(ov, dtype=float)
+    return ov / np.linalg.norm(ov)
+
+
