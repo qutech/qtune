@@ -14,18 +14,23 @@ from qtune.GradKalman import GradKalmanFilter
 from qtune.evaluator import Evaluator
 from typing import List
 from qtune.parameter_tuner import ParameterTuner
+from qtune.storage import to_hdf5
 
 
 class Autotuner:
     """
     The auto tuner class combines the evaluator and solver classes to tune an experiment.
     """
-    def __init__(self, experiment: Experiment, tuning_hierarchy: List[ParameterTuner]=None):
+
+    def __init__(self, experiment: Experiment, tuning_hierarchy: List[ParameterTuner] = None, current_tuner_index=0,
+                 current_tuner_status=False, voltage_to_set=None, hdf5_filename=None):
         self._experiment = experiment
         self._tuning_hierarchy = tuning_hierarchy
-        self._current_tuner_index = 0
-        self._current_tuner = False
-        self._voltage_to_set = None
+        self._current_tuner_index = current_tuner_index
+        self._current_tuner_status = current_tuner_status
+        self._voltage_to_set = voltage_to_set
+        self._hdf5_filename = hdf5_filename
+        self._hdf5_file = h5py.File(self._hdf5_filename, 'w-')
 
     def tuning_complete(self) -> bool:
         if self._current_tuner_index == len(self._tuning_hierarchy):
@@ -42,16 +47,16 @@ class Autotuner:
     def iterate(self):
         if self._voltage_to_set:
             self._experiment.set_gate_voltages(self._voltage_to_set)
-            self._current_tuner = 0
+            self._current_tuner_index = 0
             self._voltage_to_set = None
-        elif self._current_tuner is False:
+        elif self._current_tuner_status is False:
             if self.get_current_tuner().is_tuned(self._experiment.read_gate_voltages()):
                 self._current_tuner_index += 1
             else:
-                self._current_tuner = True
+                self._current_tuner_status = True
         else:
             self._voltage_to_set = self.get_current_tuner().get_next_voltage()
-            self._current_tuner = False
+            self._current_tuner_status = False
 
     def autotune(self):
         if not self.ready_to_tune():
@@ -59,125 +64,22 @@ class Autotuner:
             return
         while not self.tuning_complete():
             self.iterate()
-
-
-    def evaluate_gradient_covariance_noise(self, delta_u=4e-3, n_repetitions=3) -> Tuple[
-        pd.DataFrame, pd.DataFrame, pd.Series]:
-        """
-        Estimates the gradient with finite differences and computes estimates for the covariance and noise.
-        :param delta_u: difference in the finite differences
-        :param n_repetitions: number of times the finite differences are measured and computed
-        :return:
-        """
-        self.gradient_number += 1
-
-        self.login_savefile()
-        gradient_group = self.current_tunerun_group.create_group("gradient_setup_" + str(self.gradient_number))
-        gradient_group.attrs["n_repetitions"] = n_repetitions
-        gradient_group.attrs["delta_u"] = delta_u
-        parameters = self.parameters
-        parameters = parameters.sort_index()
-        parameter_names = parameters.index.tolist()
-        parameter_names = np.asarray(parameter_names, dtype='S30')
-        gradient_group.create_dataset("parameter_names", data=parameter_names)
-
-        current_gate_positions = self.read_tunable_gate_voltages()
-        positive_detune = pd.DataFrame()
-        negative_detune = pd.DataFrame()
-        positive_detune_parameter = pd.Series()
-        negative_detune_parameter = pd.Series()
-
-        for gate in self.tunable_gates.index.tolist():
-            for parameter in self.parameters.index.tolist():
-                positive_detune_parameter[parameter] = np.zeros((n_repetitions,), dtype=float)
-                negative_detune_parameter[parameter] = np.zeros((n_repetitions,), dtype=float)
-
-            detuning = pd.Series([delta_u, ], [gate, ])
-            new_gate_positions = current_gate_positions.add(detuning, fill_value=0)
-            self.shift_gate_voltages(new_gate_positions)
-
-            for i in range(n_repetitions):
-                run_subgroup = gradient_group.create_group("positive_detune_run_" + gate + "_" + str(i))
-                save_gate_voltages(run_subgroup, self.experiment.read_gate_voltages()[self.gates.index])
-                evaluation_result = self.evaluate_parameters(run_subgroup)
-                for result in evaluation_result.index.tolist():
-                    try:
-                        (positive_detune_parameter[result])[i] = evaluation_result[result]
-                    except KeyError:
-                        print("the parameter is ")
-                        print(result)
-                        print("We are trying to load it from:")
-                        print(evaluation_result)
-                        print("and we want to savi it in")
-                        print(positive_detune_parameter)
-                        print("at position")
-                        print(i)
-                        x = input("since this wasnt possible, we will save nan. type anything to continue!")
-                        (positive_detune_parameter[result])[i] = np.nan
-            new_gate_positions = current_gate_positions.add(detuning.multiply(-1.), fill_value=0)
-            self.shift_gate_voltages(new_gate_positions)
-
-            for i in range(n_repetitions):
-                run_subgroup = gradient_group.create_group("negative_detune_run_" + gate + "_" + str(i))
-                save_gate_voltages(run_subgroup, self.experiment.read_gate_voltages()[self.gates.index])
-                evaluation_result = self.evaluate_parameters(run_subgroup)
-                for r in evaluation_result.index.tolist():
-                    (negative_detune_parameter[r])[i] = evaluation_result[r]
-
-            self.shift_gate_voltages(current_gate_positions.copy())
-
-            positive_detune_parameter_df = positive_detune_parameter.to_frame(gate)
-            if positive_detune.empty:
-                positive_detune = positive_detune_parameter_df
+            if self._hdf5_filename:
+                filename = self._hdf5_filename + "_" + time_string()
             else:
-                positive_detune = positive_detune.join(positive_detune_parameter_df)
-            negative_detune_parameter_df = negative_detune_parameter.to_frame(gate)
-            if negative_detune.empty:
-                negative_detune = negative_detune_parameter_df
-            else:
-                negative_detune = negative_detune.join(negative_detune_parameter_df)
+                filename = time_string()
+            hdf5_file = h5py.File(filename, 'w-')
+            to_hdf5(hdf5_file, name="autotuner")
 
-        gradient = (positive_detune - negative_detune) / 2. / delta_u
-        gradient_std = gradient.applymap(np.nanstd)
-        gradient = gradient.applymap(np.nanmean)
-        evaluation_std = positive_detune_parameter.apply(np.nanstd)
-
-        self.gradient = gradient
-        self.gradient_std = gradient_std
-        self.evaluation_std = evaluation_std
-
-        gradient_matrix, covariance, evaluation_noise = convert_gradient_heuristic_data(gradient, gradient_std,
-                                                                                              evaluation_std)
-        save_gradient_data(gradient_group, gradient_matrix, covariance, evaluation_noise)
-        self.logout_of_savefile()
-
-        return gradient, gradient_std, evaluation_std
-
-    def set_solver(self, solver: Solver):
-        self.solver = solver
-
-    def logout_of_savefile(self):
-        self.hdf5file.close()
-
-    def login_savefile(self):
-        self.hdf5file = h5py.File(self.filename, 'r+')
-        self.current_tunerun_group = self.hdf5file['tunerun_' + str(self.tune_run_number)]
-
-    def manual_logout(self):
-        decision_logout = input(
-            "Would you like to log out of the HDF5 library file. The file will only be readable, if the Autotuner" 
-            "eventually logs out. (Y/N)")
-        if decision_logout == "Y":
-            self.logout_of_savefile()
-            print("logging out of the hdf5 library")
-        elif decision_logout == "N":
-            print("The Autotuner stays connected to the library!")
-        else:
-            print("The only answers possible are Y or N!")
-            self.manual_logout()
-
-    def autotune(self) -> bool:
-        raise NotImplementedError
+    def to_hdf5(self):
+        return dict(
+            experiment=self._experiment,
+            tuning_hierarchy=self._tuning_hierarchy,
+            current_tuner_index=self._current_tuner_index,
+            current_tuner_status=self._current_tuner_status,
+            voltage_to_set=self._voltage_to_set,
+            hdf5_filename=self._hdf5_filename
+        )
 
 
 class ChargeDiagramAutotuner(Autotuner):
