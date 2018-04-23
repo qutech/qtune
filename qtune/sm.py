@@ -253,7 +253,6 @@ class LegacyQQD(BasicQQD):
     QQD implementation using the MATLAB backend and the tune.m script on the Trition 200 Setup
     """
     # TODO wrap special functions connected to tune runs and tunedata!
-    # TODO Should the sensing dot functions allow for passing of kwargs to measurement?
     # TODO Either allow for better control of scan parameters or provide interface to tunedata?
 
     def __init__(self, matlab_instance: SpecialMeasureMatlab):
@@ -270,7 +269,7 @@ class LegacyQQD(BasicQQD):
                               'resp': None,
                               'line': None,
                               'lead': None,
-                              'jac': None,
+                              'jac': None,  # Probably part of the autotuner
                               'measp': None}
 
         self._sensors = [{'T': "LT", 'P': "LP", 'B': "LB"},
@@ -289,6 +288,7 @@ class LegacyQQD(BasicQQD):
         # TODO: Maybe allow for getting only one sensor at a time?
         return pd.Series(self._matlab.engine.qtune.read_qqd_sensing_dot_voltages()).sort_index()
 
+    # Deprecated
     def tune_sensing_dot_1d(self, sensor: int, stepping_gate=None):
         """Provide functionality for 1d sensor dot tuning"""
 
@@ -314,6 +314,7 @@ class LegacyQQD(BasicQQD):
         # detuning = qtune.util.find_stepes_point_sensing_dot(data, scan_range=scan_range, npoints=n_points)
         # self._set_sensing_dot_voltages(pd.Series({gate: prior_position + detuning}))
 
+    # Deprecated
     def tune_sensing_dot_2d(self, sensor: int):
         """Provide functionality for 2d sensor dot tuning"""
         # TODO Should these functions allow for passing of kwargs to measurement?
@@ -370,12 +371,6 @@ class LegacyQQD(BasicQQD):
         if measurement not in self._measurements:
             raise ValueError('Unknown measurement: {}'.format(measurement))
 
-        # Should this be part of the autotuner?
-        if not self._left_sensing_dot_tuned:
-            self.tune_sensing_dot_1d(sensor=0)
-        if not self._right_sensing_dot_tuned:
-            self.tune_sensing_dot_1d(sensor=1)
-
         # Make sure ints are converted to float
         parameters = measurement.parameter.copy()
         for parameter, value in parameters.items():
@@ -384,8 +379,25 @@ class LegacyQQD(BasicQQD):
 
         # check data structure of returned values -> Most likely MATLAB struct
         data = self._matlab.engine.tune.tune(measurement, parameters['index'], parameters)
-        return data['data']
+        return data
 
+class SMQQDLineScan(Evaluator):
+    """
+    Adiabaticly sweeps the detune over the transition between the (2,0) and the (1,1) region for ith DQD. An Scurve is fitted and
+    the width calculated as parameter for the inter dot coupling. Fitted with Matlab functions. Can be replaced by python  code
+    """
+    def __init__(self, qqd: BasicQQD, matlab_instance: SpecialMeasureMatlab,
+                 parameters: pd.Series() = pd.Series({'parameter_tunnel_coupling': np.nan}), line_scan: Measurement=None,
+                 index: int):
+        # This seems weired since the parameter is to be returned ^^^^^^^^^^^^^^^^
+        if line_scan is None:
+            line_scan = qqd._measurements['line'] # can we pevent hardcoding indices or accessing private vars here?
+        super().__init__(qqd, line_scan, parameters)
+        self.matlab = matlab_instance
+
+    def evaluate(self, storing_group: h5py.Group) -> pd.Series:
+       
+        return pd.Series((tc, failed), ('parameter_tunnel_coupling', 'failed'))
 
 # Deprecated
 class LegacyChargeDiagram(ChargeDiagram):

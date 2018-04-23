@@ -39,6 +39,7 @@ class BasicDQD(Experiment):
 class BasicQQD(Experiment):
 
     def __init__(self):
+        # Do wen want this hardcoded list here? Its not really used
         self.left_sensing_gates = ["LT", "LB"]
         self.right_sensing_gates = ["RT", "RB"]
         self.primarily_left_sensing_gate = "LT"
