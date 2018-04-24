@@ -26,7 +26,7 @@ class ParameterTuner(metaclass=HDF5Serializable):
 
         parameters = sorted(parameter
                             for evaluator in self._evaluators
-                            for parameter in evaluator.parameters)
+                            for parameter in evaluator.parameters.index)
         if len(parameters) != len(set(parameters)):
             raise ValueError('Parameter duplicates: ', {p for p in parameters if parameters.count(p) > 1})
 
@@ -192,3 +192,11 @@ class SensingDotTuner(ParameterTuner):
             for evaluator in self._expensive_evaluators:
                 values.append(evaluator.evaluate())
         return pd.concat(values).sort_index()
+
+    def to_hdf5(self):
+        return dict(cheap_evaluators=self._cheap_evaluators,
+                    expensive_evaluators=self._expensive_evaluators,
+                    gates=self._gates,
+                    min_threshold=self._min_threshold,
+                    cost_threshold=self._cost_threshold,
+                    solver=self.solver)
