@@ -170,6 +170,7 @@ class ForwardingSolver(Solver):
         self._next_voltage[new_voltage_names] = parameters
 
     def to_hdf5(self):
-        return dict(parameter_to_voltage=self._parameter_to_voltage,
+        return dict(target=self._target,
+                    parameter_to_voltage=self._parameter_to_voltage,
                     current_position=self._current_position,
                     next_voltage=self._next_voltage)
