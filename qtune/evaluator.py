@@ -1,6 +1,5 @@
 from qtune.experiment import Experiment, Measurement
 from qtune.basic_dqd import TestDQD, BasicDQD
-import qtune.chrg_diag
 from typing import Tuple
 import pandas as pd
 import numpy as np
@@ -131,17 +130,16 @@ class LeadTransition(Evaluator):
     Finds the transition on the edge of the charge diagram
     """
 
-    def __init__(self, experiment: Experiment, name, parameters: pd.Series() = pd.Series([4e-3, ["RFA", "RFB"]],
-                                                                                         ["charge_diagram_width",
-                                                                                          "shifting_gates"])):
+    def __init__(self, experiment: Experiment, name, shifting_gates=("RFA", "RFB"), charge_diagram_width=4e-3,
+                 parameters: pd.Series() = pd.Series([np.nan, np.nan], ["position_RFA", "position_RFB"])):
         default_line_scan_a = Measurement('line_scan', center=0., range=4e-3,
                                           gate='RFA', N_points=320,
                                           ramptime=.001,
                                           N_average=7,
                                           AWGorDecaDAC='DecaDAC')
-        self.shifting_gates = parameters["shifting_gates"]
-        self.charge_diagram_width = parameters["charge_diagram_width"]
-        super().__init__(experiment, (default_line_scan_a, ), pd.Series(), name=name)
+        self.shifting_gates = shifting_gates
+        self.charge_diagram_width = charge_diagram_width
+        super().__init__(experiment, (default_line_scan_a, ), parameters, name=name)
 
     def evaluate(self):
         current_position = pd.Series()
@@ -175,8 +173,7 @@ class SensingDot1D(Evaluator):
     def __init__(self,
                  experiment: Experiment,
                  name,
-                 parameters: pd.Series() = pd.Series([["SDB2"]],
-                                                     ["sweeping_gates"])):
+                 parameters: pd.Series() = pd.Series([["SDB2"]], ["sweeping_gates"])):
         self.sweeping_gates = parameters["sweeping_gates"]
         sensing_dot_measurement = Measurement('line_scan',
                                               center=None, range=4e-3, gate="SDB2",
@@ -249,9 +246,9 @@ class SensingDot2D(Evaluator):
         gate_2_pos = float(min_point) / float(self.measurements[0].parameter["N_points"]) * 2 * \
             self.measurements[0].parameter["range"] - self.measurements[0].parameter["range"]
         new_voltages = pd.Series([gate_1_pos, gate_2_pos], ["position_" + self.measurements[0].parameter["gate1"],
-                                                            "position_" + self.measurements[0].parameter["gate1"]])
+                                                            "position_" + self.measurements[0].parameter["gate2"]])
         error = pd.Series([.1e-3, .1e-3], ["position_" + self.measurements[0].parameter["gate1"],
-                                           "position_" + self.measurements[0].parameter["gate1"]])
+                                           "position_" + self.measurements[0].parameter["gate2"]])
         return new_voltages, error
 
 
@@ -342,7 +339,7 @@ def fit_inter_dot_coupling(data, plot_fit=True, cut_fist_fifth=True, **kwargs):
     m_last_part, b_last_part = np.polyfit(xdata[int(round(0.75*npoints)):npoints-1], ydata[int(round(0.75*npoints)):npoints-1], 1)
     m_first_part, b_first_part = np.polyfit(xdata[0:int(round(0.25*npoints))], ydata[0:int(round(0.25*npoints))], 1)
     height = (b_last_part + m_last_part * xdata[npoints - 1]) - (b_first_part + m_first_part * xdata[npoints - 1])
-    position = qtune.chrg_diag.find_lead_transition(data=ydata - xdata * m_first_part, center=center,
+    position = qtune.util.find_lead_transition(data=ydata - xdata * m_first_part, center=center,
                                                     scan_range=scan_range, npoints=npoints, width=scan_range / 12.)
     p0 = [b_first_part, m_first_part, height, position, scan_range / 8.]
     if plot_fit:
