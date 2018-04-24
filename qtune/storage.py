@@ -92,6 +92,19 @@ def _to_hdf5(hdf5_parent_group: h5py.Group, name, obj, serialized):
         hdf5_parent_group.create_dataset(name, data=obj, shape=())
         return
 
+    if isinstance(obj, str):
+        dt = h5py.special_dtype(vlen=str)
+        dset = hdf5_parent_group.create_dataset(name, data=obj, dtype=dt)
+        dset.attrs['#type'] = 'str'
+        serialized[id(obj)] = dset
+        return
+
+    if obj is None:
+        dset = hdf5_parent_group.create_dataset(name, dtype="f")
+        dset.attrs['#type'] = 'NoneType'
+        serialized[id(obj)] = dset
+        return
+
     raise RuntimeError()
 
 
@@ -162,6 +175,14 @@ def _from_hdf5(root: h5py.File, hdf5_obj: h5py.HLObject, deserialized=None):
                 result = pd.Series(data=np.asarray(hdf5_obj), index=idx)
                 deserialized[hdf5_obj.id] = result
                 return result
+
+            if hdf5_obj.attrs['#type'] == 'str':
+                result = str(np.asarray(hdf5_obj))
+                deserialized[hdf5_obj.id] = result
+                return result
+
+            if hdf5_obj.attrs['#type'] == 'NoneType':
+                return None
 
         result = np.asarray(hdf5_obj)
         if result.shape == ():
