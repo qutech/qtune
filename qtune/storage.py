@@ -11,11 +11,13 @@ __all__ = ["serializables", "HDF5Serializable"]
 
 serializables = dict()
 
+
 def _get_dtype(arr):
     if arr.dtype == 'O':
         if all(isinstance(t, str) for t in arr.ravel()):
             return h5py.special_dtype(vlen=str)
     return arr.dtype
+
 
 class HDF5Serializable(type):
     def __new__(mcs, name, bases, attrs):
@@ -29,8 +31,7 @@ class HDF5Serializable(type):
     def __init__(cls, name, bases, attrs):
         type.__init__(cls, name, bases, attrs)
         if 'to_hdf5' not in cls.__dict__:
-            raise AttributeError('Missing method: "to_hdf5" that should return all constructor arguments')
-
+            raise AttributeError('Missing method: "to_hdf5" that should return all constructor arguments', name)
 
 
 def _to_hdf5(hdf5_parent_group: h5py.Group, name, obj, serialized):
@@ -161,7 +162,6 @@ def _from_hdf5(root: h5py.File, hdf5_obj: h5py.HLObject, deserialized=None):
                 result = pd.Series(data=np.asarray(hdf5_obj), index=idx)
                 deserialized[hdf5_obj.id] = result
                 return result
-
 
         result = np.asarray(hdf5_obj)
         if result.shape == ():
