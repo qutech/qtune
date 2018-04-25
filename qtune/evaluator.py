@@ -96,7 +96,10 @@ class InterDotTCByLineScan(Evaluator):
         center = self.measurements[0].parameter['center']
         scan_range = self.measurements[0].parameter['range']
 #        npoints = self.measurements.parameter['N_points']
-        npoints = ydata.shape[1]
+        if len(ydata.shape) == 1:
+            npoints = ydata.size
+        else:
+            npoints = ydata.shape[1]
         plt.ion()
         plt.figure(51)
         plt.clf()
@@ -107,7 +110,7 @@ class InterDotTCByLineScan(Evaluator):
 #        plt.pause(0.05)
         tc = fitresult['tc']
         residual = fitresult["residual"]
-        return pd.Series([tc], ["parameter_tunnel_coupling"]), pd.Series([residual], ["residual"])
+        return pd.Series([tc], ["parameter_tunnel_coupling"]), pd.Series([residual], ["parameter_tunnel_coupling"])
 
     def to_hdf5(self):
         return super().to_hdf5()
@@ -125,8 +128,10 @@ class LoadTime(Evaluator):
 
     def evaluate(self) -> (pd.Series, pd.Series):
         data = self.experiment.measure(self.measurements[0])
-
-        n_points = data.shape[1]
+        if len(data.shape) == 1:
+            n_points = data.size
+        else:
+            n_points = data.shape[1]
         plt.ion()
         plt.figure(81)
         plt.clf()
@@ -139,7 +144,7 @@ class LoadTime(Evaluator):
 
         parameter_time_load = fitresult['parameter_time_load']
         residual = fitresult["residual"]
-        return pd.Series([parameter_time_load], ['parameter_time_load']), pd.Series([residual], ["residual"])
+        return pd.Series([parameter_time_load], ['parameter_time_load']), pd.Series([residual], ["parameter_time_load"])
 
     def to_hdf5(self):
         return super().to_hdf5()
@@ -170,7 +175,7 @@ class LeadTransition(Evaluator):
         current_gate_voltages = self.experiment.read_gate_voltages()
         for gate in self._shifting_gates:
             shift = pd.Series(-1. * self._charge_diagram_width, [gate])
-            self.experiment.set_gate_voltages(current_gate_voltages.add(shift))
+            self.experiment.set_gate_voltages(current_gate_voltages.add(shift, fill_value=0.))
             self.measurements[0].parameter["gate"] = gate
             data = self.experiment.measure(self.measurements[0])
             transition_position["position_" + gate] = qtune.util.find_lead_transition(data,
@@ -229,8 +234,8 @@ class SensingDot1D(Evaluator):
                                                                                   axis=0, order=0,
                                                                                   mode="nearest",
                                                                                   truncate=4.)
-            current_signal = data_filtered_diff_smoothed[int(self.measurements[0].parameter["N_points"] / 2)]
-            optimal_signal = data_filtered_diff_smoothed.min()
+            current_signal = abs(data_filtered_diff_smoothed[int(self.measurements[0].parameter["N_points"] / 2)])
+            optimal_signal = abs(data_filtered_diff_smoothed.min())
             optimal_position = data_filtered_diff_smoothed.argmin()
             optimal_position = float(optimal_position) / float(self.measurements[0].parameter["N_points"]) * 2 * \
                 self.measurements[0].parameter["range"] - self.measurements[0].parameter["range"]
