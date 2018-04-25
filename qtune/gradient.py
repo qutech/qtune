@@ -141,18 +141,20 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
 
 class KalmanGradientEstimator(GradientEstimator):
     def __init__(self, kalman_gradient: KalmanGradient, current_position: pd.Series, current_value: float,
-                 maximum_covariance: float):
+                 maximum_covariance: float, epsilon: float):
         self._kalman_gradient = kalman_gradient
         self._current_position = pd.Series(current_position)
         self._current_value = current_value
 
         self._maximum_covariance = maximum_covariance
+        self._epsilon = epsilon
 
     def to_hdf5(self):
         return dict(kalman_gradient=self._kalman_gradient,
                     current_position=self._current_position,
                     current_value=self._current_value,
-                    maximum_covariance=self._maximum_covariance)
+                    maximum_covariance=self._maximum_covariance,
+                    delta_v=self._epsilon)
 
     def change_position(self, new_position: pd.Series):
         """
@@ -162,14 +164,16 @@ class KalmanGradientEstimator(GradientEstimator):
         self._current_position = new_position[self._current_position.index]
 
     def estimate(self) -> pd.Series:
-        return pd.Series(self._kalman_gradient.grad, index=self._current_position.index)
+        return pd.Series(np.squeeze(self._kalman_gradient.grad), index=self._current_position.index)
 
     def require_measurement(self):
         if self._maximum_covariance:
             if np.any(np.linalg.eigvals(self._kalman_gradient.cov) > self._maximum_covariance):
-                return self._current_position + self._kalman_gradient.sugg_diff_volts
+                print(self._kalman_gradient.cov)
+                return self._current_position + self._epsilon * self._kalman_gradient.sugg_diff_volts
 
-    def update(self, voltages: pd.Series,
+    def update(self,
+               voltages: pd.Series,
                value: float,
                covariance: float,
                is_new_position=False):
@@ -182,4 +186,4 @@ class KalmanGradientEstimator(GradientEstimator):
 
         if is_new_position:
             self._current_value = value
-            self._current_position[:] = voltages
+            self._current_position = voltages[self._current_position.index]
