@@ -69,9 +69,9 @@ class TestDQD(BasicDQD):
     """
     def __init__(self, initial_voltages=None, gate_names=None):
         if initial_voltages is None:
-            initial_voltages = [1., 1., 1., 1., 1., 1., 0., 0., 1., 1.]
+            initial_voltages = [2., 0., 0., 0., 0., 0., 0., 0., 0., 0.]
         if gate_names is None:
-            gate_names = ["SB", "BB", "T", "N", "SA", "BA", "RFA", "RFB", "SDB1", "SDB2"]
+            gate_names = ["BA", "BB", "N", "RFA", "RFB", "SA", "SB", "SDB1", "SDB2", "T"]
         self._gate_voltages = pd.Series(initial_voltages, gate_names)
         self._gate_voltages = self._gate_voltages.sort_index()
 
@@ -84,6 +84,8 @@ class TestDQD(BasicDQD):
     def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
         for gate in new_gate_voltages.index:
             self._gate_voltages[gate] = new_gate_voltages[gate]
+        print("new Voltages:")
+        print(self._gate_voltages)
         return new_gate_voltages
 
     def measure(self, measurement: Measurement) -> np.ndarray:
@@ -98,24 +100,16 @@ class TestDQD(BasicDQD):
                 parameters['N_points'] = float(parameters['N_points'])
                 parameters['N_average'] = float(parameters['N_average'])
                 if parameters["gate"] == "RFA":
-                    simulated_center = 0.75 * (self._gate_voltages["SA"] - self._gate_voltages["BA"]) + 500. * (
-                        self._gate_voltages["SA"] - self._gate_voltages["BA"]) ** 2 + 2. * (
-                        self._gate_voltages["T"] - 1.) - 0.5 * (self._gate_voltages["N"] - 1.) + 0.2 * (
-                        self._gate_voltages["SB"] - self._gate_voltages["BB"])
-
+                    simulated_center = (self._gate_voltages["SA"] - self._gate_voltages["BA"]) * 1e3
                 elif parameters["gate"] == "RFB":
-                    simulated_center = self._gate_voltages["SB"] - self._gate_voltages["BB"] + 500. * (
-                        self._gate_voltages["SB"] - self._gate_voltages["BB"]) ** 2 + 2. * (
-                        self._gate_voltages["T"] - 1.) - 0.5 * (self._gate_voltages["N"] - 1.) + 0.2 * (
-                        self._gate_voltages["SA"] - self._gate_voltages["BA"])
+                    simulated_center = (self._gate_voltages["SB"] - self._gate_voltages["BB"]) * 1e3
                 else:
                     raise ValueError("The gate in the measurement must be RFA or RFB!")
                 x = np.linspace(parameters["center"] - parameters["range"], parameters["center"] + parameters["range"],
                                 parameters["N_points"])
-                simulated_center = simulated_center + 0.0002 * (np.random.rand(1)[0] - 0.5)
+                simulated_center = simulated_center + 0. * (np.random.rand(1)[0] - 0.5)
                 x = x - simulated_center
-                x = x
-                return np.tanh(x/parameters["range"]*5.) + 0.05 * np.random.rand(x.shape[0])
+                return np.tanh(x/parameters["range"]*5.) + 0.0 * np.random.rand(x.shape[0])
 
         elif measurement == 'detune_scan':
             parameters = measurement.parameter.copy()
@@ -124,7 +118,8 @@ class TestDQD(BasicDQD):
             parameters['N_average'] = float(parameters['N_average'])
             x = np.linspace(parameters["center"] - parameters["range"], parameters["center"] + parameters["range"],
                             parameters["N_points"])
-            simulated_width = 1./20.*(self._gate_voltages["T"] + self._gate_voltages["N"] - 2.) + 190e-6 + 70e-6 * (
+            simulated_width = np.exp(self._gate_voltages["T"] - self._gate_voltages["SA"]) + np.exp(
+                self._gate_voltages["N"] - self._gate_voltages["SB"]) + 190. + 0. * (
                 np.random.rand(1)[0] - 0.5)
             y = np.tanh(x/simulated_width)
 
@@ -147,9 +142,11 @@ class TestDQD(BasicDQD):
             y0 = np.zeros(shape=y.shape)
             return np.concatenate((y0, y), axis=0)
         elif measurement == "load_scan":
-            simulated_curvature = 10. + 1e3 * np.exp(self._gate_voltages["SA"] - 1.) + 1e3 * np.exp(
-                self._gate_voltages["T"] - 1.)
-            return np.exp(np.arange(0., 500e-6, 5e-6) * -1. / simulated_curvature)
+            simulated_curvature = 15. + np.exp(- self._gate_voltages["T"] - self._gate_voltages["SA"]) + 0. * (
+                        np.random.rand(1)[0] - 0.5)
+            ydata = np.exp(np.arange(0., 500, 5) * -1. / simulated_curvature)
+            xdata = np.arange(0., 500, 5)
+            return np.reshape(np.concatenate((ydata, xdata)), (2, 100))
         elif measurement == "2d_scan":
             x = np.linspace(start=-5., stop=5., num=104)
             y = np.linspace(start=-5., stop=5., num=20)
@@ -157,3 +154,4 @@ class TestDQD(BasicDQD):
             return np.sin(xx + yy + self._gate_voltages["SDB1"])
         else:
             raise ValueError('Unknown measurement: {}'.format(measurement))
+
