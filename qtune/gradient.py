@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -32,7 +32,7 @@ class GradientEstimator(metaclass=HDF5Serializable):
 class FiniteDifferencesGradientEstimator(GradientEstimator):
     def __init__(self,
                  current_position: pd.Series,
-                 epsilon: pd.Series,
+                 epsilon: Union[pd.Series, float],
                  symmetric: bool=False,
                  current_estimate=None,
                  covariance=None,
@@ -52,7 +52,9 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
         """
         self._current_position = current_position
 
-        self._epsilon = epsilon
+        if not isinstance(epsilon, pd.Series):
+            epsilon = pd.Series(epsilon, index=current_position.index)
+        self._epsilon = epsilon[self._current_position.index]
 
         self._current_estimate = current_estimate
         self._covariance = covariance
@@ -63,6 +65,10 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
         self._requested_measurements = requested_measurements or []
 
         self._symmetric_calculation = symmetric
+
+    @property
+    def epsilon(self) -> pd.Series:
+        return self._epsilon
 
     def change_position(self, new_position: pd.Series):
         self._current_position[new_position.index] = new_position
@@ -141,20 +147,23 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
 
 class KalmanGradientEstimator(GradientEstimator):
     def __init__(self, kalman_gradient: KalmanGradient, current_position: pd.Series, current_value: float,
-                 maximum_covariance: float, epsilon: float):
+                 maximum_covariance: float, epsilon: Union[pd.Series, float]):
         self._kalman_gradient = kalman_gradient
         self._current_position = pd.Series(current_position)
         self._current_value = current_value
 
         self._maximum_covariance = maximum_covariance
-        self._epsilon = epsilon
+
+        if not isinstance(epsilon, pd.Series):
+            epsilon = pd.Series(epsilon, index=current_position.index)
+        self._epsilon = epsilon[current_position.index]
 
     def to_hdf5(self):
         return dict(kalman_gradient=self._kalman_gradient,
                     current_position=self._current_position,
                     current_value=self._current_value,
                     maximum_covariance=self._maximum_covariance,
-                    delta_v=self._epsilon)
+                    epsilon=self._epsilon)
 
     def change_position(self, new_position: pd.Series):
         """
@@ -187,3 +196,74 @@ class KalmanGradientEstimator(GradientEstimator):
         if is_new_position:
             self._current_value = value
             self._current_position = voltages[self._current_position.index]
+
+
+class SelfInitializingKalmanEstimator(GradientEstimator):
+    """A kalman gradient estimator that initializes itself with finite differences"""
+    def __init__(self,
+                 finite_difference_estimator: FiniteDifferencesGradientEstimator,
+                 kalman_estimator: Optional[KalmanGradientEstimator]=None,
+                 kalman_arguments: Optional[dict]=None):
+        self._finite_difference_estimator = finite_difference_estimator
+        self._kalman_estimator = kalman_estimator
+        self._kalman_arguments = kalman_arguments
+
+    @classmethod
+    def from_scratch(cls,
+                     current_position: pd.Series,
+                     epsilon: pd.Series,
+                     maximum_covariance: float,
+                     symmetric: bool=False):
+        finite_differences_estimator = FiniteDifferencesGradientEstimator(current_position=current_position,
+                                                                          epsilon=epsilon,
+                                                                          symmetric=symmetric)
+        kalman_arguments = dict(maximum_covariance=maximum_covariance)
+
+        return cls(finite_difference_estimator=finite_differences_estimator,
+                   kalman_arguments=kalman_arguments)
+
+    @property
+    def kalman_estimator(self) -> Optional[KalmanGradientEstimator]:
+        return self._kalman_estimator
+
+    @property
+    def finite_difference_estimator(self) -> FiniteDifferencesGradientEstimator:
+        return self._finite_difference_estimator
+
+    @property
+    def active_estimator(self) -> GradientEstimator:
+        return self._kalman_estimator or self._finite_difference_estimator
+
+    def estimate(self):
+        return self.active_estimator.estimate()
+
+    def change_position(self, new_position: pd.Series):
+        self._finite_difference_estimator.change_position(new_position)
+        if self.kalman_estimator:
+            self.kalman_estimator.change_position(new_position)
+
+    def require_measurement(self):
+        return self.active_estimator.require_measurement()
+
+    def update(self, voltages: pd.Series, value: float, covariance: float, is_new_position=False):
+        self.finite_difference_estimator.update(voltages, value, covariance, is_new_position)
+
+        if self.kalman_estimator:
+            self.kalman_estimator.update(voltages, value, covariance, is_new_position)
+
+        elif self.finite_difference_estimator.estimate():
+            # we collected enough values to initialize the kalman
+            initial_estimate = self.finite_difference_estimator.estimate()
+            kalman_gradient = KalmanGradient(n_gates=initial_estimate.size, n_params=1,
+                                             initial_gradient=initial_estimate,
+                                             initial_covariance_matrix=self.finite_difference_estimator.covariance())
+            self._kalman_estimator = KalmanGradientEstimator(kalman_gradient=kalman_gradient,
+                                                             current_position=voltages[initial_estimate.index],
+                                                             current_value=value,
+                                                             epsilon=self._finite_difference_estimator.epsilon,
+                                                             **self._kalman_arguments)
+
+    def to_hdf5(self):
+        return dict(finite_difference_estimator=self._finite_difference_estimator,
+                    kalman_estimator=self._kalman_estimator,
+                    kalman_arguments=self._kalman_arguments)
