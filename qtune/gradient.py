@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -32,7 +32,7 @@ class GradientEstimator(metaclass=HDF5Serializable):
 class FiniteDifferencesGradientEstimator(GradientEstimator):
     def __init__(self,
                  current_position: pd.Series,
-                 epsilon: pd.Series,
+                 epsilon: Union[pd.Series, float],
                  symmetric: bool=False,
                  current_estimate=None,
                  covariance=None,
@@ -52,7 +52,9 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
         """
         self._current_position = current_position
 
-        self._epsilon = epsilon
+        if not isinstance(epsilon, pd.Series):
+            epsilon = pd.Series(epsilon, index=current_position.index)
+        self._epsilon = epsilon[self._current_position.index]
 
         self._current_estimate = current_estimate
         self._covariance = covariance
@@ -63,6 +65,10 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
         self._requested_measurements = requested_measurements or []
 
         self._symmetric_calculation = symmetric
+
+    @property
+    def epsilon(self) -> pd.Series:
+        return self._epsilon
 
     def change_position(self, new_position: pd.Series):
         self._current_position[new_position.index] = new_position
@@ -141,13 +147,16 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
 
 class KalmanGradientEstimator(GradientEstimator):
     def __init__(self, kalman_gradient: KalmanGradient, current_position: pd.Series, current_value: float,
-                 maximum_covariance: float, epsilon: float):
+                 maximum_covariance: float, epsilon: Union[pd.Series, float]):
         self._kalman_gradient = kalman_gradient
         self._current_position = pd.Series(current_position)
         self._current_value = current_value
 
         self._maximum_covariance = maximum_covariance
-        self._epsilon = epsilon
+
+        if not isinstance(epsilon, pd.Series):
+            epsilon = pd.Series(epsilon, index=current_position.index)
+        self._epsilon = epsilon[current_position.index]
 
     def to_hdf5(self):
         return dict(kalman_gradient=self._kalman_gradient,
