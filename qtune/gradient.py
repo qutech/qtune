@@ -154,7 +154,7 @@ class KalmanGradientEstimator(GradientEstimator):
                     current_position=self._current_position,
                     current_value=self._current_value,
                     maximum_covariance=self._maximum_covariance,
-                    delta_v=self._epsilon)
+                    epsilon=self._epsilon)
 
     def change_position(self, new_position: pd.Series):
         """
