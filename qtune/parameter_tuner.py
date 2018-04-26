@@ -115,8 +115,6 @@ class SubsetTuner(ParameterTuner):
 
         solver_voltages = voltages[self._gates]
 
-#        if not math.isclose(np.square(solver_voltages[self._gates] - self._last_voltage).sum(), 0):
-#        if self._last_voltage is not None:
         self._solver.update_after_step(solver_voltages, current_values, current_variances)
 
         self._last_voltage = voltages

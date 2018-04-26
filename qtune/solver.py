@@ -76,7 +76,7 @@ class NewtonSolver(Solver):
     @property
     def jacobian(self) -> pd.DataFrame:
         gradients = [gradient.estimate() for gradient in self._gradient_estimators]
-        return pd.concat(gradients, axis=1, keys=self._target.index)
+        return pd.concat(gradients, axis=1, keys=self._target.index).T
 
     def suggest_next_voltage(self) -> pd.Series:
         for estimator in self._gradient_estimators:
@@ -90,7 +90,7 @@ class NewtonSolver(Solver):
         # our jacobian is sufficiently accurate
         required_diff = self.target.desired - self._current_values
 
-        step, *_ = np.linalg.lstsq(self.jacobian.T, required_diff)
+        step, *_ = np.linalg.lstsq(self.jacobian, required_diff)
         return self._current_position + step
 
     def update_after_step(self, voltages: pd.Series, parameters: pd.Series, variances: pd.Series):

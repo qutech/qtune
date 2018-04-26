@@ -107,7 +107,7 @@ class InterDotTCByLineScan(Evaluator):
             fitresult = fit_inter_dot_coupling(data=ydata.copy(), center=center, scan_range=scan_range, npoints=npoints)
         except RuntimeError:
             fitresult = pd.Series(data=[np.nan, np.nan], index=['parameter_tunnel_coupling', "residual"])
-#        plt.pause(0.05)
+        plt.pause(0.05)
         tc = fitresult['tc']
         residual = fitresult["residual"]
         return pd.Series([tc], ["parameter_tunnel_coupling"]), pd.Series([residual], ["parameter_tunnel_coupling"])
