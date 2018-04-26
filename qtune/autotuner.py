@@ -20,7 +20,6 @@ class Autotuner(metaclass=HDF5Serializable):
         self._current_tuner_status = current_tuner_status
         self._voltage_to_set = voltage_to_set
         self._hdf5_filename = hdf5_filename
-        self._hdf5_file = h5py.File(self._hdf5_filename + "_" + qtune.util.time_string(), 'w-')
 
     def tuning_complete(self) -> bool:
         if self._current_tuner_index == len(self._tuning_hierarchy):
@@ -55,11 +54,11 @@ class Autotuner(metaclass=HDF5Serializable):
         while not self.tuning_complete():
             self.iterate()
             if self._hdf5_filename:
-                filename = self._hdf5_filename + "_" + time_string()
+                filename = self._hdf5_filename + r"\\" + time_string() + ".hdf5"
             else:
-                filename = time_string()
+                filename = time_string() + ".hdf5"
             hdf5_file = h5py.File(filename, 'w-')
-            to_hdf5(hdf5_file, name="autotuner", obj=self)
+            to_hdf5(hdf5_file, name="autotuner", obj=self, reserved={"experiment": self._experiment})
 
     def to_hdf5(self):
         return dict(

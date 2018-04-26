@@ -76,7 +76,7 @@ def _to_hdf5(hdf5_parent_group: h5py.Group, name, obj, serialized):
         return
 
     if isinstance(obj, pd.Series):
-        dset = hdf5_parent_group.create_dataset(name, data=obj)
+        dset = hdf5_parent_group.create_dataset(name, data=obj, dtype=_get_dtype(obj))
         dset.attrs.create('index', data=obj.index, dtype=_get_dtype(obj.index))
         dset.attrs['#type'] = 'Series'
 
@@ -124,7 +124,7 @@ def to_hdf5(filename_or_handle: Union[str, h5py.Group], name: str, obj, reserved
         serialized[id(value)] = dset
         dset.attrs["#type"] = "#reserved"
 
-    _to_hdf5(root, name, obj, dict())
+    _to_hdf5(root, name, obj, serialized)
 
 
 def _from_hdf5(root: h5py.File, hdf5_obj: h5py.HLObject, deserialized=None):
