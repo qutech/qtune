@@ -386,17 +386,24 @@ class SMQQDLineScan(Evaluator):
     Adiabaticly sweeps the detune over the transition between the (2,0) and the (1,1) region for ith DQD. An Scurve is fitted and
     the width calculated as parameter for the inter dot coupling. Fitted with Matlab functions. Can be replaced by python  code
     """
-    def __init__(self, qqd: BasicQQD, matlab_instance: SpecialMeasureMatlab,
-                 parameters: pd.Series() = pd.Series({'parameter_tunnel_coupling': np.nan}), line_scan: Measurement=None,
-                 index: int):
-        # This seems weired since the parameter is to be returned ^^^^^^^^^^^^^^^^
-        if line_scan is None:
-            line_scan = qqd._measurements['line'] # can we pevent hardcoding indices or accessing private vars here?
-        super().__init__(qqd, line_scan, parameters)
-        self.matlab = matlab_instance
+    def __init__(self, experiment: BasicQQD, measurements: Tuple[Measurement],
+                 parameters: pd.Series() = pd.Series({'parameter_tunnel_coupling': np.nan}), name: str):
 
-    def evaluate(self, storing_group: h5py.Group) -> pd.Series:
-       
+        # This seems weired since the parameter is to be returned ^^^^^^^^^^^^^^^^
+        if measurements is None:
+            measurements = qqd._measurements['line'] # can we pevent hardcoding indices or accessing private vars here?
+        super().__init__(qqd,measurements, parameters, name)
+
+
+    def evaluate(self) -> pd.Series:
+        data = pd.Series()
+        for measurement in self.measurements:
+            data['measurement'] = self.experiment.measure(measurement)
+
+            # TODO Process data
+            # TODO Append to Series -> How do we connect measurements and parameters?
+
+
         return pd.Series((tc, failed), ('parameter_tunnel_coupling', 'failed'))
 
 # Deprecated
@@ -516,8 +523,10 @@ class SMLoadTime(Evaluator):
     def __init__(self, dqd: BasicDQD, matlab_instance: SpecialMeasureMatlab,
                  parameters: pd.Series() = pd.Series([np.nan], ['parameter_time_load']),
                  load_scan: Measurement = None):
+
         if load_scan is None:
             load_scan = dqd.measurements[3]
+
         super().__init__(dqd, load_scan, parameters)
         self.matlab = matlab_instance
 
