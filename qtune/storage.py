@@ -92,14 +92,37 @@ def _to_hdf5(hdf5_parent_group: h5py.Group, name, obj, serialized):
         hdf5_parent_group.create_dataset(name, data=obj, shape=())
         return
 
+    if isinstance(obj, str):
+        dt = h5py.special_dtype(vlen=str)
+        dset = hdf5_parent_group.create_dataset(name, data=obj, dtype=dt)
+        dset.attrs['#type'] = 'str'
+        serialized[id(obj)] = dset
+        return
+
+    if obj is None:
+        dset = hdf5_parent_group.create_dataset(name, dtype="f")
+        dset.attrs['#type'] = 'NoneType'
+        serialized[id(obj)] = dset
+        return
+
     raise RuntimeError()
 
 
-def to_hdf5(filename_or_handle: Union[str, h5py.Group], name: str, obj):
+def to_hdf5(filename_or_handle: Union[str, h5py.Group], name: str, obj, reserved=None):
     if isinstance(filename_or_handle, h5py.Group):
         root = filename_or_handle
     else:
         root = h5py.File(filename_or_handle, mode='r+')
+
+    if not reserved:
+        reserved = dict()
+
+    serialized = dict()
+
+    for key, value in reserved.items():
+        dset = root.create_dataset(name=key, dtype='f')
+        serialized[id(value)] = dset
+        dset.attrs["#type"] = "#reserved"
 
     _to_hdf5(root, name, obj, dict())
 
@@ -163,6 +186,14 @@ def _from_hdf5(root: h5py.File, hdf5_obj: h5py.HLObject, deserialized=None):
                 deserialized[hdf5_obj.id] = result
                 return result
 
+            if hdf5_obj.attrs['#type'] == 'str':
+                result = str(np.asarray(hdf5_obj))
+                deserialized[hdf5_obj.id] = result
+                return result
+
+            if hdf5_obj.attrs['#type'] == 'NoneType':
+                return None
+
         result = np.asarray(hdf5_obj)
         if result.shape == ():
             result = result[()]
@@ -175,10 +206,16 @@ def _from_hdf5(root: h5py.File, hdf5_obj: h5py.HLObject, deserialized=None):
         raise RuntimeError()
 
 
-def from_hdf5(filename_or_handle):
+def from_hdf5(filename_or_handle, reserved):
     if isinstance(filename_or_handle, h5py.Group):
         root = filename_or_handle
     else:
         root = h5py.File(filename_or_handle, mode='r')
 
-    return _from_hdf5(root, root, dict())
+    deserialized = dict()
+
+    for key, value in root.items():
+        if "#type" in value.attrs and value.attrs["#type"] == "#reserved":
+            deserialized[value.id] = reserved[key]
+
+    return _from_hdf5(root, root, deserialized)

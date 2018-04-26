@@ -160,8 +160,6 @@ class LegacyDQD(BasicDQD):
     def __init__(self, matlab_instance: SpecialMeasureMatlab):
         super().__init__()
         self._matlab = matlab_instance
-        self._qpc_tuned = False
-        self.signal_strength = 0.
 
     @property
     def gate_voltage_names(self) -> Tuple:
@@ -171,7 +169,6 @@ class LegacyDQD(BasicDQD):
         return pd.Series(self._matlab.engine.qtune.read_gate_voltages()).sort_index()
 
     def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
-        self._qpc_tuned = False
         current_gate_voltages = self.read_gate_voltages()
         for key in current_gate_voltages.index.tolist():
             if key not in new_gate_voltages.index.tolist():

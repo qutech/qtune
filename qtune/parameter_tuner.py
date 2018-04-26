@@ -2,6 +2,7 @@ from typing import Sequence, List, Tuple
 
 import numpy as np
 import pandas as pd
+import math
 
 from qtune.evaluator import Evaluator
 from qtune.solver import Solver
@@ -26,7 +27,7 @@ class ParameterTuner(metaclass=HDF5Serializable):
 
         parameters = sorted(parameter
                             for evaluator in self._evaluators
-                            for parameter in evaluator.parameters.index)
+                            for parameter in evaluator.parameters)
         if len(parameters) != len(set(parameters)):
             raise ValueError('Parameter duplicates: ', {p for p in parameters if parameters.count(p) > 1})
 
@@ -40,7 +41,7 @@ class ParameterTuner(metaclass=HDF5Serializable):
 
     @property
     def desired_values(self) -> pd.Series:
-        return self.solver.target.desired_values
+        return self.solver.target["desired"]
 
     @property
     def minimal_values(self) -> pd.Series:
@@ -110,15 +111,15 @@ class SubsetTuner(ParameterTuner):
         self._gates = sorted(gates)
 
     def is_tuned(self, voltages: pd.Series):
-        current_values = self.evaluate()
+        current_values, current_variances = self.evaluate()
 
         solver_voltages = voltages[self._gates]
 
-        self._solver.update_after_step(solver_voltages, current_values)
+        self._solver.update_after_step(solver_voltages, current_values, current_variances)
 
         self._last_voltage = voltages
 
-        if ((self.desired_values - current_values).abs() < self.tolerances).all():
+        if ((self.desired_values - current_values).abs() < self.solver.target['tolerance']).all():
             self._tuned_positions.append(voltages)
             return True
         else:
@@ -166,8 +167,8 @@ class SensingDotTuner(ParameterTuner):
         solver_voltages = voltages[self._gates]
         self._last_voltage = voltages
 
-        if self._min_threshold.le(current_parameter).any:
-            if self._cost_threshold.le(current_parameter).any:
+        if current_parameter.le(self._min_threshold).any():
+            if current_parameter.le(self._cost_threshold).any:
                 current_parameter, errors = self.evaluate(cheap=False)
 
             self.solver.update_after_step(solver_voltages, current_parameter, errors)
@@ -177,7 +178,7 @@ class SensingDotTuner(ParameterTuner):
             return True
 
     def get_next_voltages(self):
-        solver_step = self._solver.suggest_next_step()
+        solver_step = self._solver.suggest_next_voltage()
 
         return self._last_voltage.add(solver_step, fill_value=0)
 
@@ -185,13 +186,18 @@ class SensingDotTuner(ParameterTuner):
         #  no list comprehension for easier debugging
         cheap = kwargs["cheap"]
         values = []
+        errors = []
         if cheap:
             for evaluator in self._cheap_evaluators:
-                values.append(evaluator.evaluate())
+                value, error = evaluator.evaluate()
+                values.append(value)
+                errors.append(error)
         else:
             for evaluator in self._expensive_evaluators:
-                values.append(evaluator.evaluate())
-        return pd.concat(values).sort_index()
+                value, error = evaluator.evaluate()
+                values.append(value)
+                errors.append(error)
+        return pd.concat(values).sort_index(), pd.concat(errors).sort_index()
 
     def to_hdf5(self):
         return dict(cheap_evaluators=self._cheap_evaluators,

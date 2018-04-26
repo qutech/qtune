@@ -11,8 +11,9 @@ from qtune.storage import HDF5Serializable
 
 def make_target(desired: pd.Series=np.nan,
                 maximum: pd.Series=np.nan,
-                minimum: pd.Series=np.nan):
-    for ser in (desired, maximum, minimum):
+                minimum: pd.Series=np.nan,
+                tolerance: pd.Series=np.nan):
+    for ser in (desired, maximum, minimum, tolerance):
         if isinstance(ser, pd.Series):
             parameters = ser.index
             break
@@ -27,7 +28,8 @@ def make_target(desired: pd.Series=np.nan,
 
     return pd.DataFrame({'desired': to_series(desired),
                          'minimum': to_series(minimum),
-                         'maximum': to_series(maximum)},
+                         'maximum': to_series(maximum),
+                         'tolerance': to_series(tolerance)},
                         index=parameters)
 
 
@@ -74,19 +76,19 @@ class NewtonSolver(Solver):
     @property
     def jacobian(self) -> pd.DataFrame:
         gradients = [gradient.estimate() for gradient in self._gradient_estimators]
-        return pd.DataFrame(gradients, columns=self._target.index)
+        return pd.concat(gradients, axis=1, keys=self._target.index).T
 
     def suggest_next_voltage(self) -> pd.Series:
         for estimator in self._gradient_estimators:
             suggestion = estimator.require_measurement()
-            if suggestion:
+            if suggestion is not None and not suggestion.empty:
                 return suggestion
 
         if self._current_position is None:
             raise RuntimeError('NewtonSolver: Position not initialized.')
 
         # our jacobian is sufficiently accurate
-        required_diff = self.target.desired - self._current_position
+        required_diff = self.target.desired - self._current_values
 
         step, *_ = np.linalg.lstsq(self.jacobian, required_diff)
         return self._current_position + step
@@ -94,7 +96,7 @@ class NewtonSolver(Solver):
     def update_after_step(self, voltages: pd.Series, parameters: pd.Series, variances: pd.Series):
         for estimator, value, variance in zip(self._gradient_estimators, parameters, variances):
             estimator.update(voltages, value, variance, is_new_position=True)
-        self._current_position = parameters[self._current_position.index]
+        self._current_position = voltages[self._current_position.index]
         self._current_values = parameters[self._current_values.index]
 
     def to_hdf5(self):

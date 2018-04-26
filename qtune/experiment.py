@@ -4,13 +4,14 @@ import numpy as np
 import pandas as pd
 
 from qtune.util import time_string
+from qtune.storage import HDF5Serializable
 
 __all__ = ['Experiment', 'Measurement', 'GateIdentifier']
 
 GateIdentifier = str
 
 
-class Measurement(str):
+class Measurement(str, metaclass=HDF5Serializable):
     """
     This class saves all necessary information for a measurement.
     """
@@ -24,6 +25,10 @@ class Measurement(str):
 
     def get_file_name(self):
         return time_string()
+
+    def to_hdf5(self):
+        return dict(self.parameter,
+                    name=str(self))
 
 
 class Experiment:
