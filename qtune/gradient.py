@@ -146,13 +146,19 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
 
 
 class KalmanGradientEstimator(GradientEstimator):
-    def __init__(self, kalman_gradient: KalmanGradient, current_position: pd.Series, current_value: float,
-                 maximum_covariance: float, epsilon: Union[pd.Series, float]):
+    def __init__(self,
+                 kalman_gradient: KalmanGradient,
+                 current_position: pd.Series,
+                 current_value: float,
+                 maximum_covariance: Union[pd.Series, float],
+                 epsilon: Union[pd.Series, float]):
         self._kalman_gradient = kalman_gradient
         self._current_position = pd.Series(current_position)
         self._current_value = current_value
 
-        self._maximum_covariance = maximum_covariance
+        if not isinstance(maximum_covariance, pd.Series):
+            maximum_covariance = pd.Series(maximum_covariance, index=self._current_position.index)
+        self._maximum_covariance = maximum_covariance[current_position.index]
 
         if not isinstance(epsilon, pd.Series):
             epsilon = pd.Series(epsilon, index=current_position.index)
@@ -176,10 +182,19 @@ class KalmanGradientEstimator(GradientEstimator):
         return pd.Series(np.squeeze(self._kalman_gradient.grad), index=self._current_position.index)
 
     def require_measurement(self):
-        if self._maximum_covariance:
-            if np.any(np.linalg.eigvals(self._kalman_gradient.cov) > self._maximum_covariance):
-                print(self._kalman_gradient.cov)
-                return self._current_position + self._epsilon * self._kalman_gradient.sugg_diff_volts
+        eigenvalues, eigenvectors = np.linalg.eigh(self._kalman_gradient.cov)
+
+        # scale the eigenvectors with their eigenvalues (vector-wise)
+        scaled_eigenvectors = eigenvalues[np.newaxis, :] * eigenvectors
+
+        # divide them by the maximum covariance (dimension-wise)
+        rescaled_eigenvectors = scaled_eigenvectors / self._maximum_covariance.values[:, np.newaxis]
+
+        # check whether the rescaled vectors are longer than one
+        lengths = np.linalg.norm(rescaled_eigenvectors, axis=0)
+        if np.any(lengths > 1):
+            # if so, pick the longest and scale it with epsilon
+            return self._current_position + self._epsilon * eigenvectors[:, np.argmax(lengths)]
 
     def update(self,
                voltages: pd.Series,
