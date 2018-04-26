@@ -152,6 +152,14 @@ class KalmanGradientEstimator(GradientEstimator):
                  current_value: float,
                  maximum_covariance: Union[pd.Series, float],
                  epsilon: Union[pd.Series, float]):
+        """
+
+        :param kalman_gradient:
+        :param current_position:
+        :param current_value:
+        :param maximum_covariance: If a scalar it is used for all dimensions. If inf the dimension is ignored
+        :param epsilon: Step width
+        """
         self._kalman_gradient = kalman_gradient
         self._current_position = pd.Series(current_position)
         self._current_value = current_value
@@ -182,6 +190,7 @@ class KalmanGradientEstimator(GradientEstimator):
         return pd.Series(np.squeeze(self._kalman_gradient.grad), index=self._current_position.index)
 
     def require_measurement(self):
+        """I do not think this is good math. Julian to the rescue!"""
         eigenvalues, eigenvectors = np.linalg.eigh(self._kalman_gradient.cov)
 
         # scale the eigenvectors with their eigenvalues (vector-wise)
