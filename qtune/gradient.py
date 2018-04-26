@@ -187,3 +187,51 @@ class KalmanGradientEstimator(GradientEstimator):
         if is_new_position:
             self._current_value = value
             self._current_position = voltages[self._current_position.index]
+
+
+class SelfInitializingKalmanEstimator(GradientEstimator):
+    """A kalman gradient estimator that initializes itself with finite differences"""
+    def __init__(self, finite_differences_arguments: dict, kalman_gradient_arguments: dict=None):
+        self._finite_difference_estimator = FiniteDifferencesGradientEstimator(**finite_differences_arguments)
+        if kalman_gradient_arguments:
+            self._kalman_estimator = KalmanGradientEstimator(**kalman_gradient_arguments)
+        else:
+            self._kalman_estimator = None
+
+    @property
+    def kalman_estimator(self) -> Optional[KalmanGradientEstimator]:
+        return self._kalman_estimator
+
+    @property
+    def finite_difference_estimator(self) -> FiniteDifferencesGradientEstimator:
+        return self._finite_difference_estimator
+
+    def estimate(self):
+        if self.kalman_estimator:
+            return self.kalman_estimator.estimate()
+        else:
+            return self.finite_difference_estimator.estimate()
+
+    def change_position(self, new_position: pd.Series):
+        self._finite_difference_estimator.change_position(new_position)
+        if self.kalman_estimator:
+            self.kalman_estimator.change_position(new_position)
+
+    def require_measurement(self):
+        if self.kalman_estimator:
+            return self.kalman_estimator.require_measurement()
+        else:
+            return self.finite_difference_estimator.require_measurement()
+
+    def update(self, voltages: pd.Series, value: float, covariance: float, is_new_position=False):
+        self.finite_difference_estimator.update(voltages, value, covariance, is_new_position)
+
+        if self.kalman_estimator:
+            self.kalman_estimator.update(voltages, value, covariance, is_new_position)
+        elif self.finite_difference_estimator.estimate():
+            # we collected enough values to initialize the kalman
+            initial_estimate = self.finite_difference_estimator.estimate()
+            kalman_gradient = KalmanGradient(n_gates=initial_estimate.size, n_params=1,
+                                             initial_gradient=initial_estimate,
+                                             initial_covariance_matrix=self.finite_difference_estimator.covariance())
+            self._kalman_estimator = KalmanGradientEstimator(kalman_gradient=kalman_gradient, )
