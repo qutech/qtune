@@ -214,27 +214,27 @@ class LegacyDQD(BasicDQD):
         if not self._qpc_tuned:
             self.tune_qpc()
 
-        if measurement == 'line_scan':
+        if measurement.name == 'line_scan':
             parameters = measurement.parameter.copy()
             parameters['file_name'] = "line_scan" + measurement.get_file_name()
             parameters['N_points'] = float(parameters['N_points'])
             parameters['N_average'] = float(parameters['N_average'])
             return np.asarray(self._matlab.engine.qtune.PythonChargeLineScan(parameters))
-        elif measurement == 'detune_scan':
+        elif measurement.name == 'detune_scan':
             parameters = measurement.parameter.copy()
             parameters['file_name'] = "detune_scan_" + measurement.get_file_name()
             parameters['N_points'] = float(parameters['N_points'])
             parameters['N_average'] = float(parameters['N_average'])
             return np.asarray(self._matlab.engine.qtune.PythonLineScan(parameters))
-        elif measurement == 'lead_scan':
+        elif measurement.name == 'lead_scan':
             parameters = measurement.parameter.copy()
             parameters['file_name'] = "lead_scan" + measurement.get_file_name()
             return np.asarray(self._matlab.engine.qtune.LeadScan(parameters))
-        elif measurement == "load_scan":
+        elif measurement.name == "load_scan":
             parameters = measurement.parameter.copy()
             parameters["file_name"] = "load_scan" + measurement.get_file_name()
             return np.asarray(self._matlab.engine.qtune.LoadScan(parameters))
-        elif measurement == "2d_scan":
+        elif measurement.name == "2d_scan":
             qpc_2d_tune_input = {"range": measurement.parameter["scan_range"], "file_name": time_string()}
             return np.asarray(self._matlab.engine.qtune.PythonQPCScan2D(qpc_2d_tune_input))
         else:

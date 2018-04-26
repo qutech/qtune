@@ -11,17 +11,18 @@ __all__ = ['Experiment', 'Measurement', 'GateIdentifier']
 GateIdentifier = str
 
 
-class Measurement(str, metaclass=HDF5Serializable):
+class Measurement(metaclass=HDF5Serializable):
     """
     This class saves all necessary information for a measurement.
     """
-    def __new__(cls, name, **kwargs):
-        return super().__new__(cls, name)
-
     def __init__(self, name, **kwargs):
         super().__init__()
-
+        self._name = name
         self.parameter = kwargs
+
+    @property
+    def name(self):
+        return self._name
 
     def get_file_name(self):
         return time_string()
