@@ -40,7 +40,7 @@ class KalmanGradient(metaclass=HDF5Serializable):
         Measurement function
 
     """
-    def __init__(self, n_gates: int, n_params: int, *,
+    def __init__(self, n_pos_dim: int, n_values: int, *,
                  state_transition_function=None,
                  initial_gradient=None,
                  initial_covariance_matrix=None,
@@ -53,34 +53,34 @@ class KalmanGradient(metaclass=HDF5Serializable):
 
         Parameters
         ----------
-        n_gates : int
+        n_pos_dim : int
             Number of Gates in your system.
         
-        n_params : int
+        n_values : int
             Number of Parameters in your system.
         
-        state_transition_function : 2D np.array with dimensions = (n_params*n_gates, n_params*n_gates), optional
+        state_transition_function : 2D np.array with dimensions = (n_values*n_pos_dim, n_values*n_pos_dim), optional
             Optional state transition function. If you know your system has a
             certain determinable  dynamic, you can specify it here to greatly
             increase filter performance. When no function is given, a diagonal
             unit matrix is used (that means the filter expects no dynamics).
         
-        initial_gradient : list or 1D np.array with dimension = n_gates*n_params, optional
+        initial_gradient : list or 1D np.array with dimension = n_pos_dim*n_values, optional
             Optional initial state vector (gradient matrix). It can be helpful
             to set this to the first measurement to increase convergence speed.
             If no initial state vector is given, a null vector is used.
 
-        initial_covariance_matrix : 2D np.array with dimensions = (n_params*n_gates, n_params*n_gates), optional
+        initial_covariance_matrix : 2D np.array with dimensions = (n_values*n_pos_dim, n_values*n_pos_dim), optional
             Optional initial covariance matrix.
             If no inital covariance matrix is given, a diagonal unit matrix is
             used.
         
-        measurement_covariance_matrix : 2D np.array with dimensions = (n_params, n_params), optional
+        measurement_covariance_matrix : 2D np.array with dimensions = (n_values, n_values), optional
             Optional measurement noise/covariance matrix for the measurement of
             the parameters. You probably should specify it. If no measurement 
             covariance matrix is given, a diagonal unit matrix is used.
             
-        process_noise : 2D np.array with dimensions = (n_params*n_gates, n_params*n_gates), optional
+        process_noise : 2D np.array with dimensions = (n_values*n_pos_dim, n_values*n_pos_dim), optional
             Optional process noise matrix.
             If no process noise matrix is given, null matrix is used.
             
@@ -92,15 +92,15 @@ class KalmanGradient(metaclass=HDF5Serializable):
             If no alpha is given, 1.00 is used (no fading memory).
         """
         
-        self.n_gates = int(n_gates)
-        self.n_params = int(n_params)
+        self.n_pos_dim = int(n_pos_dim)
+        self.n_values = int(n_values)
         
         # the dimension of our state vector is equal 
         # to the product of the number of gates and the number of parameters
-        dim_x = self.n_gates*self.n_params
+        dim_x = self.n_pos_dim*self.n_values
         
         # creating the KalmanFilter object
-        self.filter = KalmanFilter(dim_x, self.n_params)
+        self.filter = KalmanFilter(dim_x, self.n_values)
         
         # if no state transition function is given, 
         # we assume our system has no dynamics
@@ -119,7 +119,7 @@ class KalmanGradient(metaclass=HDF5Serializable):
             
         # set measurement and process covariance matrix
         if measurement_covariance_matrix is not None:
-            self.filter.R = np.array(measurement_covariance_matrix).reshape(self.n_params, self.n_params)
+            self.filter.R = np.array(measurement_covariance_matrix).reshape(self.n_values, self.n_values)
         if process_noise is None:
             self.filter.Q = np.zeros((dim_x, dim_x))
         else:
@@ -129,8 +129,8 @@ class KalmanGradient(metaclass=HDF5Serializable):
         self.filter.alpha = alpha
 
     def to_hdf5(self):
-        return dict(n_gates=self.n_gates,
-                    n_params=self.n_params,
+        return dict(n_pos_dim=self.n_pos_dim,
+                    n_values=self.n_values,
                     state_transition_function=self.filter.F,
                     initial_gradient=self.grad,
                     initial_covariance_matrix=self.cov,
@@ -138,7 +138,7 @@ class KalmanGradient(metaclass=HDF5Serializable):
                     process_noise=self.filter.Q,
                     alpha=self.filter.alpha)
 
-    def update(self, diff_volts, diff_params,
+    def update(self, diff_position, diff_values,
                measurement_covariance=None,
                process_covariance=None,
                predict=True):
@@ -148,18 +148,18 @@ class KalmanGradient(metaclass=HDF5Serializable):
         Parameters
         ----------
 
-        diff_volts : list or 1D np.array with dimension = n_gates
+        diff_position : list or 1D np.array with dimension = n_pos_dim
             Vector of the voltage differences that were used to create the new
             measurement. 
 
-        diff_params : list or 1D np.array with dimension = n_params
+        diff_values : list or 1D np.array with dimension = n_values
             Vector of the measured parameter differences.
 
-        measurement_covariance : 2D np.array with dimensions = (n_params, n_params), optional
+        measurement_covariance : 2D np.array with dimensions = (n_values, n_values), optional
             Optional matrix of measurement covariance. If it is given, it will
             be used only for this update. Else self.filter.R is used.
 
-        process_covariance : 2D np.array with dimensions = (n_params*n_gates, n_params*n_gates), optional
+        process_covariance : 2D np.array with dimensions = (n_values*n_pos_dim, n_values*n_pos_dim), optional
             Optional matrix of process covariance. If it is given, it will
             be used only for this update. Else self.filter.Q is used.
             Since it is used only in the prediction step, if predict is set
@@ -180,15 +180,15 @@ class KalmanGradient(metaclass=HDF5Serializable):
             set to False).
         """
         
-        diff_params = np.array(diff_params).reshape(self.n_params, 1)
-        diff_volts = np.array(diff_volts).reshape(self.n_gates)
+        diff_values = np.array(diff_values).reshape(self.n_values, 1)
+        diff_position = np.array(diff_position).reshape(self.n_pos_dim)
         
         if predict:
             self.filter.predict(Q=process_covariance)
 
-        self.filter.update(diff_params, R=measurement_covariance, H=self.__createMatrixH(diff_volts))
+        self.filter.update(diff_values, R=measurement_covariance, H=self.__createMatrixH(diff_position))
     
-    def __createMatrixH(self, diff_volts):
+    def __createMatrixH(self, diff_position):
         """
         Creates the necessary H matrix (the so called measurement function)
         that is tailored to the voltage differences that were used in a 
@@ -197,7 +197,7 @@ class KalmanGradient(metaclass=HDF5Serializable):
         Parameters
         ----------
 
-        diff_volts : list or 1D np.array with dimension = n_gates
+        diff_position : list or 1D np.array with dimension = n_pos_dim
             Vector of the voltage differences that were used to create the new
             measurement. 
         
@@ -205,16 +205,16 @@ class KalmanGradient(metaclass=HDF5Serializable):
         Returns
         ------
         
-        H : 2D np.array with dimensions = (n_params,n_gates*n_params)
+        H : 2D np.array with dimensions = (n_values,n_pos_dim*n_values)
             The measurement function that will be used in an update step.
         """
 
-        diff_volts = np.asarray(diff_volts)
+        diff_position = np.asarray(diff_position)
 
-        if diff_volts.shape != (self.n_gates, ):
+        if diff_position.shape != (self.n_pos_dim, ):
             raise ValueError('Voltage differences have the wrong dimension')
 
-        return scipy.linalg.block_diag(*[diff_volts]*self.n_params)
+        return scipy.linalg.block_diag(*[diff_position]*self.n_values)
     
     @property
     def grad(self):
@@ -224,11 +224,11 @@ class KalmanGradient(metaclass=HDF5Serializable):
         Returns
         -------
 
-        grad : 2D np.array with dimension = (n_params, n_gates)
+        grad : 2D np.array with dimension = (n_values, n_pos_dim)
             The updated gradient matrix.
         """
         
-        return self.filter.x.reshape(self.n_params, self.n_gates)
+        return self.filter.x.reshape(self.n_values, self.n_pos_dim)
     
     @property
     def cov(self):
@@ -238,14 +238,14 @@ class KalmanGradient(metaclass=HDF5Serializable):
         Returns
         -------
 
-        cov : 2D np.array with dimensions = (n_params*n_gates, n_params*n_gates)
+        cov : 2D np.array with dimensions = (n_values*n_pos_dim, n_values*n_pos_dim)
             The covariance matrix of the gradient matrix.
         """
         
         return self.filter.P
     
     @property
-    def sugg_diff_volts(self):
+    def sugg_diff_position(self):
         """
         Returns a suggestion for the next vector of voltage differences in the
         next measurement.
@@ -253,7 +253,7 @@ class KalmanGradient(metaclass=HDF5Serializable):
         Returns
         -------
 
-        cov : 1D np.array with dimension = n_gates
+        cov : 1D np.array with dimension = n_pos_dim
             The suggested vector of voltage differences for the next
             measurement.
         """
@@ -262,10 +262,10 @@ class KalmanGradient(metaclass=HDF5Serializable):
         w, v = np.linalg.eigh(self.filter.P)
         
         # split the eigenvector in parts (one part contains the actual vector,
-        # all else are just null vectors). They will have the length of n_gates
+        # all else are just null vectors). They will have the length of n_pos_dim
         # after that. The eigenvector with the biggest eigenvalue is used,
         # because that is the vector with the greatest uncertainty                               
-        z = np.split(v[:, np.argmax(w)], self.n_params)
+        z = np.split(v[:, np.argmax(w)], self.n_values)
         
         # just use the one vector which has a non trivial norm
         return next(i for i in z if np.linalg.norm(i) != 0)
