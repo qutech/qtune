@@ -2,7 +2,6 @@ from typing import Sequence, List, Tuple
 
 import numpy as np
 import pandas as pd
-import math
 
 from qtune.evaluator import Evaluator
 from qtune.solver import Solver
@@ -15,10 +14,10 @@ class ParameterTuner(metaclass=HDF5Serializable):
     def __init__(self,
                  evaluators: Sequence[Evaluator],
                  solver: Solver,
-                 tuned_positions=None,
+                 tuned_voltages=None,
                  last_voltage=None,
                  last_parameter_values=None):
-        self._tuned_positions = tuned_positions or []
+        self._tuned_voltages = tuned_voltages or []
 
         self._last_voltage = last_voltage
         self._last_parameter_values = last_parameter_values
@@ -40,16 +39,8 @@ class ParameterTuner(metaclass=HDF5Serializable):
         return self._solver
 
     @property
-    def desired_values(self) -> pd.Series:
-        return self.solver.target["desired"]
-
-    @property
-    def minimal_values(self) -> pd.Series:
-        return self.solver.target.minimal_values
-
-    @property
-    def maximal_values(self) -> pd.Series:
-        return self.solver.target.maximal_values
+    def target(self) -> pd.DataFrame:
+        return self.solver.target
 
     @property
     def parameters(self) -> Sequence[str]:
@@ -57,19 +48,19 @@ class ParameterTuner(metaclass=HDF5Serializable):
         return self.solver.target.index
 
     @property
-    def tuned_positions(self) -> List[pd.Series]:
+    def tuned_voltages(self) -> List[pd.Series]:
         """A list of the positions where the parameter set was successfully tuned."""
-        return self._tuned_positions
+        return self._tuned_voltages
 
     def evaluate(self) -> Tuple[pd.Series, pd.Series]:
         #  no list comprehension for easier debugging
-        values = []
+        parameters = []
         variances = []
         for evaluator in self._evaluators:
-            value, variance = evaluator.evaluate()
-            values.append(value)
+            parameter, variance = evaluator.evaluate()
+            parameters.append(parameter)
             variances.append(variance)
-        return pd.concat(values)[self.parameters], pd.concat(variances)[self.parameters]
+        return pd.concat(parameters)[self.parameters], pd.concat(variances)[self.parameters]
 
     def is_tuned(self, voltages: pd.Series) -> bool:
         """Tell the tuner, the voltages have changed and that he might have to re-tune.
@@ -89,7 +80,7 @@ class ParameterTuner(metaclass=HDF5Serializable):
     def to_hdf5(self) -> dict:
         return dict(evaluators=self._evaluators,
                     solver=self._solver,
-                    tuned_positions=self._tuned_positions,
+                    tuned_voltages=self._tuned_voltages,
                     last_voltage=self._last_voltage,
                     last_parameter_values=self._last_parameter_values)
 
@@ -102,7 +93,7 @@ class SubsetTuner(ParameterTuner):
         """
         :param evaluators:
         :param gates: Gates which are used tu tune the parameters
-        :param tuned_positions:
+        :param tuned_voltages:
         :param last_voltage:
         :param last_parameter_values:
         """
@@ -111,16 +102,16 @@ class SubsetTuner(ParameterTuner):
         self._gates = sorted(gates)
 
     def is_tuned(self, voltages: pd.Series):
-        current_values, current_variances = self.evaluate()
+        current_parameters, current_variances = self.evaluate()
 
         solver_voltages = voltages[self._gates]
 
-        self._solver.update_after_step(solver_voltages, current_values, current_variances)
+        self._solver.update_after_step(solver_voltages, current_parameters, current_variances)
 
         self._last_voltage = voltages
 
-        if ((self.desired_values - current_values).abs() < self.solver.target['tolerance']).all():
-            self._tuned_positions.append(voltages)
+        if ((self.target.desired - current_parameters).abs() < self.target['tolerance']).all():
+            self._tuned_voltages.append(voltages)
             return True
         else:
             return False
@@ -163,18 +154,18 @@ class SensingDotTuner(ParameterTuner):
         self._cost_threshold = cost_threshold
 
     def is_tuned(self, voltages: pd.Series):
-        current_parameter, errors = self.evaluate(cheap=True)
+        current_parameter, variances = self.evaluate(cheap=True)
         solver_voltages = voltages[self._gates]
         self._last_voltage = voltages
 
         if current_parameter.le(self._min_threshold).any():
             if current_parameter.le(self._cost_threshold).any:
-                current_parameter, errors = self.evaluate(cheap=False)
+                current_parameter, variances = self.evaluate(cheap=False)
 
-            self.solver.update_after_step(solver_voltages, current_parameter, errors)
+            self.solver.update_after_step(solver_voltages, current_parameter, variances)
             return False
         else:
-            self._tuned_positions.append(voltages)
+            self._tuned_voltages.append(voltages)
             return True
 
     def get_next_voltages(self):
@@ -182,22 +173,22 @@ class SensingDotTuner(ParameterTuner):
 
         return self._last_voltage.add(solver_step, fill_value=0)
 
-    def evaluate(self, **kwargs) -> pd.Series:
+    def evaluate(self, **kwargs) -> (pd.Series, pd.Series):
         #  no list comprehension for easier debugging
         cheap = kwargs["cheap"]
-        values = []
-        errors = []
+        parameters = []
+        variances = []
         if cheap:
             for evaluator in self._cheap_evaluators:
-                value, error = evaluator.evaluate()
-                values.append(value)
-                errors.append(error)
+                parameter, variance = evaluator.evaluate()
+                parameters.append(parameter)
+                variances.append(variance)
         else:
             for evaluator in self._expensive_evaluators:
-                value, error = evaluator.evaluate()
-                values.append(value)
-                errors.append(error)
-        return pd.concat(values).sort_index(), pd.concat(errors).sort_index()
+                parameter, variance = evaluator.evaluate()
+                parameters.append(parameter)
+                variances.append(variance)
+        return pd.concat(parameters).sort_index(), pd.concat(variances).sort_index()
 
     def to_hdf5(self):
         return dict(cheap_evaluators=self._cheap_evaluators,
