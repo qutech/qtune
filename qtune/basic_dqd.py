@@ -25,27 +25,8 @@ class BasicDQD(Experiment):
     def measurements(self) -> Tuple[Measurement, ...]:
         return self.default_line_scan, self.default_detune_scan, self.default_lead_scan, self.default_load_scan
 
-    # TODO Should this be removed from the interface?
-    def tune_qpc(self, qpc_position=None, tuning_range=4e-3, gate='SDB2'):
-        raise NotImplementedError()
-
-    # TODO Should this be removed from the interface?
-    def tune_qpc_2d(self, tuning_range):
-        raise NotImplementedError
-
     def read_qpc_voltage(self) -> pd.Series:
         raise NotImplementedError()
-
-# TODO QQB or general QDArray? Move to other file
-class BasicQQD(Experiment):
-
-    @property
-    def measurements(self) -> Tuple[Measurement, ...]:
-        return NotImplementedError
-
-    def read_sensing_dot_voltages(self):
-        raise NotImplementedError
-
 
 class TestExperiment(Experiment):
     def __init__(self, initial_voltages:pd.Series, measurements: Sequence[Measurement], simulation_functions: dict):
@@ -91,9 +72,6 @@ def load_simulation(gate_voltages, measurement: Measurement):
 
 def ss1d_simulation(gate_voltages, measurement: Measurement):
     ss1d_simulation.dependancy_gate = "SDB2"
-
-
-
 
 
 class TestDQD(BasicDQD):
