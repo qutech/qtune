@@ -26,9 +26,11 @@ class BasicDQD(Experiment):
     def measurements(self) -> Tuple[Measurement, ...]:
         return self.default_line_scan, self.default_detune_scan, self.default_lead_scan, self.default_load_scan
 
+    # TODO Should this be removed from the interface?
     def tune_qpc(self, qpc_position=None, tuning_range=4e-3, gate='SDB2'):
         raise NotImplementedError()
 
+    # TODO Should this be removed from the interface?
     def tune_qpc_2d(self, tuning_range):
         raise NotImplementedError
 
@@ -38,27 +40,9 @@ class BasicDQD(Experiment):
 # TODO QQB or general QDArray? Move to other file
 class BasicQQD(Experiment):
 
-    def __init__(self):
-        # Do wen want this hardcoded list here? Its not really used
-        self.left_sensing_gates = ["LT", "LB"]
-        self.right_sensing_gates = ["RT", "RB"]
-        self.primarily_left_sensing_gate = "LT"
-        self.primarily_right_sensing_gate = "RT"
-        self.centralizing_gates = ["PA", "PB", "PC", "PD"]
-        self.left_signal_strength = 0.
-        self.right_signal_strength = 0.
-        self.tunable_gates = ["SA", "NAB", "NBC", "NCD", "SD", "TAB", "TBC", "TCD"]
-        self.tunable_gates.sort()
-
     @property
     def measurements(self) -> Tuple[Measurement, ...]:
         return NotImplementedError
-
-    def tune_sensing_dot_1d(self, prior_position, tuning_range, gate):
-        raise NotImplementedError
-
-    def tune_tune_sensing_dot_2d(self, side, tuning_range):
-        raise NotImplementedError
 
     def read_sensing_dot_voltages(self):
         raise NotImplementedError

@@ -255,11 +255,10 @@ class LegacyQQD(BasicQQD):
     def __init__(self, matlab_instance: SpecialMeasureMatlab):
         super().__init__()
         self._matlab = matlab_instance
-        self._left_sensing_dot_tuned = False
-        self._right_sensing_dot_tuned = False
-        # TODO Load tunedata to Python?
+        # TODO Load tunedata to Python or interface it?
 
         # TODO List all possible arguments for the functions here!
+        # TODO How do we feed the index into the measurement?
         self._measurements = {'sensor_2d': qtune.experiment.Measurement('sensor_2d'),
                               'sensor': qtune.experiment.Measurement('sensor'),
                               'chrg': None,
@@ -394,6 +393,8 @@ class SMQQDLineScan(Evaluator):
 
     def evaluate(self) -> pd.Series:
         data = pd.Series()
+        failed = True
+
         for measurement in self.measurements:
             data['measurement'] = self.experiment.measure(measurement)
 
@@ -402,6 +403,83 @@ class SMQQDLineScan(Evaluator):
 
 
         return pd.Series((tc, failed), ('parameter_tunnel_coupling', 'failed'))
+
+class SMQQDLineScan(Evaluator):
+    """
+    foo
+    """
+
+    def __init__(self, experiment: BasicQQD, measurements: Tuple[Measurement],
+                 parameters: pd.Series() = pd.Series({'parameter_tunnel_coupling': np.nan}), name: str):
+
+        # This seems weired since the parameter is to be returned ^^^^^^^^^^^^^^^^
+        if measurements is None:
+           measurements = qqd._measurements[
+                    'line']  # can we pevent hardcoding indices or accessing private vars here?
+        super().__init__(qqd, measurements, parameters, name)
+
+        def evaluate(self) -> pd.Series:
+            data = pd.Series()
+            failed = True
+
+        for measurement in self.measurements:
+            data['measurement'] = self.experiment.measure(measurement)
+
+        # TODO Process data
+        # TODO Append to Series -> How do we connect measurements and parameters?
+
+        return pd.Series((tc, failed), ('parameter_tunnel_coupling', 'failed'))
+
+class SMQQDSensor2d(Evaluator):
+        """
+        foo
+        """
+
+        def __init__(self, experiment: BasicQQD, measurements: Tuple[Measurement],
+                     parameters: pd.Series() = pd.Series({'sensor_position': np.nan}), name: str):
+
+            if measurements is None:
+                measurements = qqd._measurements['sensor']
+            # can we pevent hardcoding indices or accessing private vars here?
+            super().__init__(qqd, measurements, parameters, name)
+
+        def evaluate(self) -> pd.Series:
+            data = pd.Series()
+            failed = True
+
+            for measurement in self.measurements:
+                data['measurement'] = self.experiment.measure(measurement)
+
+                # TODO Process data
+                # TODO Append to Series -> How do we connect measurements and parameters?
+
+            return pd.Series((tc, failed), ('sensor_position', 'failed'))
+
+class SMQQDSensor(Evaluator):
+            """
+            foo
+            """
+
+            def __init__(self, experiment: BasicQQD, measurements: Tuple[Measurement],
+                         parameters: pd.Series() = pd.Series({'sensor_position_2d': np.full(2,np.nan)}), name: str):
+
+                # This seems weired since the parameter is to be returned ^^^^^^^^^^^^^^^^
+                if measurements is None:
+                    measurements = qqd._measurements['sensor']  # can we pevent hardcoding indices or accessing private vars here?
+                super().__init__(qqd, measurements, parameters, name)
+
+            def evaluate(self) -> pd.Series:
+                data = pd.Series()
+                failed=True
+
+                for measurement in self.measurements:
+                    data['measurement'] = self.experiment.measure(measurement)
+
+                    # TODO Process data
+                    # TODO Append to Series -> How do we connect measurements and parameters?
+
+                return pd.Series((tc, failed), ('sensor_position_2d', 'failed'))
+
 
 # Deprecated
 class LegacyChargeDiagram(ChargeDiagram):
