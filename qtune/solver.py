@@ -15,32 +15,32 @@ def make_target(desired: pd.Series=np.nan,
                 tolerance: pd.Series=np.nan):
     for ser in (desired, maximum, minimum, tolerance):
         if isinstance(ser, pd.Series):
-            parameters = ser.index
+            values = ser.index
             break
     else:
-        raise RuntimeError('Could not extract parameter names from arguments')
+        raise RuntimeError('Could not extract values names from arguments')
 
     def to_series(arg):
         if not isinstance(arg, pd.Series):
-            return pd.Series(arg, index=parameters)
+            return pd.Series(arg, index=values)
         else:
-            return arg[parameters]
+            return arg[values]
 
     return pd.DataFrame({'desired': to_series(desired),
                          'minimum': to_series(minimum),
                          'maximum': to_series(maximum),
                          'tolerance': to_series(tolerance)},
-                        index=parameters)
+                        index=values)
 
 
 class Solver(metaclass=HDF5Serializable):
     """
-    The solver class implements an algorithm to minimise the difference of the parameters to the target values.
+    The solver class implements an algorithm to minimise the difference of the values to the target values.
     """
-    def suggest_next_voltage(self) -> pd.Series:
+    def suggest_next_position(self) -> pd.Series:
         raise NotImplementedError()
 
-    def update_after_step(self, voltages: pd.Series, parameters: pd.Series, variances: pd.Series):
+    def update_after_step(self, position: pd.Series, values: pd.Series, variances: pd.Series):
         raise NotImplementedError()
 
     def to_hdf5(self):
@@ -78,7 +78,7 @@ class NewtonSolver(Solver):
         gradients = [gradient.estimate() for gradient in self._gradient_estimators]
         return pd.concat(gradients, axis=1, keys=self._target.index).T
 
-    def suggest_next_voltage(self) -> pd.Series:
+    def suggest_next_position(self) -> pd.Series:
         for estimator in self._gradient_estimators:
             suggestion = estimator.require_measurement()
             if suggestion is not None and not suggestion.empty:
@@ -93,11 +93,11 @@ class NewtonSolver(Solver):
         step, *_ = np.linalg.lstsq(self.jacobian, required_diff)
         return self._current_position + step
 
-    def update_after_step(self, voltages: pd.Series, parameters: pd.Series, variances: pd.Series):
-        for estimator, value, variance in zip(self._gradient_estimators, parameters, variances):
-            estimator.update(voltages, value, variance, is_new_position=True)
-        self._current_position = voltages[self._current_position.index]
-        self._current_values = parameters[self._current_values.index]
+    def update_after_step(self, position: pd.Series, values: pd.Series, variances: pd.Series):
+        for estimator, value, variance in zip(self._gradient_estimators, values, variances):
+            estimator.update(position, value, variance, is_new_position=True)
+        self._current_position = position[self._current_position.index]
+        self._current_values = values[self._current_values.index]
 
     def to_hdf5(self):
         return dict(target=self.target,
@@ -107,15 +107,18 @@ class NewtonSolver(Solver):
 
 
 class NelderMeadSolver(Solver):
-    def __init__(self, target: pd.Series, simplex: Sequence[Tuple[pd.Series, pd.Series]], weights: pd.Series,
-                 current_voltages: pd.Series):
+    def __init__(self,
+                 target: pd.Series,
+                 simplex: Sequence[Tuple[pd.Series, pd.Series]],
+                 weights: pd.Series,
+                 current_position: pd.Series):
         self.target = target
         self.simplex = list(simplex)
         self.weights = weights
-        self.current_voltages = current_voltages
+        self.current_position = current_position
 
-    def suggest_next_voltage(self) -> pd.Series:
-        if len(self.simplex) < len(self.current_voltages) + 1:
+    def suggest_next_position(self) -> pd.Series:
+        if len(self.simplex) < len(self.current_position) + 1:
             pass
 
         def intercept(requested_point: np.ndarray):
@@ -136,43 +139,43 @@ class NelderMeadSolver(Solver):
 
 
 class ForwardingSolver(Solver):
-    """Solves by forwarding the values of the given parameters and renaming them to a voltage vector which updates the
-    given voltages"""
+    """Solves by forwarding the values of the given values and renaming them to a voltage vector which updates the
+    given position"""
     def __init__(self,
                  target: pd.DataFrame,
-                 parameter_to_voltage: pd.Series,
+                 values_to_position: pd.Series,
                  current_position: pd.Series,
-                 next_voltage: pd.Series=None):
+                 next_position: pd.Series=None):
         """
 
-        :param parameter_to_voltage: A series of strings
-        :param next_voltage:
+        :param values_to_position: A series of strings
+        :param next_position:
         """
         self._target = target
-        self._parameter_to_voltage = parameter_to_voltage
+        self._values_to_position = values_to_position
         self._current_position = current_position
-        if next_voltage is None:
-            next_voltage = self._current_position.copy()
+        if next_position is None:
+            next_position = self._current_position.copy()
         else:
-            next_voltage = next_voltage[self._current_position]
-        self._next_voltage = next_voltage
+            next_position = next_position[self._current_position]
+        self._next_position = next_position
 
     @property
     def target(self) -> pd.DataFrame:
         return self._target
 
-    def suggest_next_voltage(self) -> pd.Series:
-        return self._next_voltage
+    def suggest_next_position(self) -> pd.Series:
+        return self._next_position
 
-    def update_after_step(self, voltages: pd.Series, parameters: pd.Series, variances: pd.Series):
-        self._current_position[voltages.index] = voltages
-        self._next_voltage[voltages.index] = voltages
+    def update_after_step(self, position: pd.Series, values: pd.Series, variances: pd.Series):
+        self._current_position[position.index] = position
+        self._next_position[position.index] = position
 
-        new_voltage_names = self._parameter_to_voltage[parameters.index]
-        self._next_voltage[new_voltage_names] = parameters
+        new_position_names = self._values_to_position[values.index]
+        self._next_position[new_position_names] = values
 
     def to_hdf5(self):
         return dict(target=self._target,
-                    parameter_to_voltage=self._parameter_to_voltage,
+                    values_to_position=self._values_to_position,
                     current_position=self._current_position,
-                    next_voltage=self._next_voltage)
+                    next_position=self._next_position)
