@@ -15,22 +15,22 @@ def make_target(desired: pd.Series=np.nan,
                 tolerance: pd.Series=np.nan):
     for ser in (desired, maximum, minimum, tolerance):
         if isinstance(ser, pd.Series):
-            values = ser.index
+            names = ser.index
             break
     else:
         raise RuntimeError('Could not extract values names from arguments')
 
     def to_series(arg):
         if not isinstance(arg, pd.Series):
-            return pd.Series(arg, index=values)
+            return pd.Series(arg, index=names)
         else:
-            return arg[values]
+            return arg[names]
 
     return pd.DataFrame({'desired': to_series(desired),
                          'minimum': to_series(minimum),
                          'maximum': to_series(maximum),
                          'tolerance': to_series(tolerance)},
-                        index=values)
+                        index=names)
 
 
 class Solver(metaclass=HDF5Serializable):
