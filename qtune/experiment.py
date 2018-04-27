@@ -52,12 +52,10 @@ class Experiment:
     def set_gate_voltages(self, new_gate_voltages: pd.Series):
         raise NotImplementedError()
 
-    def measure(self,
-                measurement: Measurement) -> np.ndarray:
-        """Conduct specified measurements with given gate_voltages
+    def measure(self, measurement: Measurement) -> np.ndarray:
+        """Conduct specified measurement
 
-        :param gate_voltages:
         :param measurement:
-        :return:
+        :return data:
         """
         raise NotImplementedError()
