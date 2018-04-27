@@ -93,8 +93,8 @@ class InterDotTCByLineScan(Evaluator):
 
     def evaluate(self) -> (pd.Series, pd.Series):
         ydata = self.experiment.measure(self.measurements[0])
-        center = self.measurements[0].parameter['center']
-        scan_range = self.measurements[0].parameter['range']
+        center = self.measurements[0].options['center']
+        scan_range = self.measurements[0].options['range']
 #        npoints = self.measurements.parameter['N_points']
         if len(ydata.shape) == 1:
             npoints = ydata.size
@@ -176,19 +176,19 @@ class LeadTransition(Evaluator):
         for gate in self._shifting_gates:
             shift = pd.Series(-1. * self._charge_diagram_width, [gate])
             self.experiment.set_gate_voltages(current_gate_voltages.add(shift, fill_value=0.))
-            self.measurements[0].parameter["gate"] = gate
+            self.measurements[0].options["gate"] = gate
             data = self.experiment.measure(self.measurements[0])
             transition_position["position_" + gate] = qtune.util.find_lead_transition(data,
                                                                                       float(
                                                                                           self.measurements[
-                                                                                              0].parameter[
+                                                                                              0].options[
                                                                                               "center"]),
                                                                                       float(
                                                                                           self.measurements[
-                                                                                              0].parameter[
+                                                                                              0].options[
                                                                                               "range"]),
                                                                                       int(self.measurements[
-                                                                                              0].parameter[
+                                                                                              0].options[
                                                                                               "N_points"]))
             error["position_" + gate] = .1e-3
         self.experiment.set_gate_voltages(current_gate_voltages)
@@ -222,8 +222,8 @@ class SensingDot1D(Evaluator):
         values = pd.Series()
         error = pd.Series()
         for gate in self._sweeping_gates:
-            sensing_dot_measurement.parameter["gate"] = gate
-            sensing_dot_measurement.parameter["center"] = self.experiment.read_gate_voltages()[gate]
+            sensing_dot_measurement.options["gate"] = gate
+            sensing_dot_measurement.options["center"] = self.experiment.read_gate_voltages()[gate]
 
             data = self.experiment.measure(sensing_dot_measurement)
             data_filterd = scipy.ndimage.filters.gaussian_filter1d(input=data, sigma=.5, axis=0, order=0,
@@ -234,13 +234,13 @@ class SensingDot1D(Evaluator):
                                                                                   axis=0, order=0,
                                                                                   mode="nearest",
                                                                                   truncate=4.)
-            current_signal = abs(data_filtered_diff_smoothed[int(self.measurements[0].parameter["N_points"] / 2)])
+            current_signal = abs(data_filtered_diff_smoothed[int(self.measurements[0].options["N_points"] / 2)])
             optimal_signal = abs(data_filtered_diff_smoothed.min())
             optimal_position = data_filtered_diff_smoothed.argmin()
-            optimal_position = float(optimal_position) / float(self.measurements[0].parameter["N_points"]) * 2 * \
-                self.measurements[0].parameter["range"] - self.measurements[0].parameter["range"]
+            optimal_position = float(optimal_position) / float(self.measurements[0].options["N_points"]) * 2 * \
+                self.measurements[0].options["range"] - self.measurements[0].options["range"]
 
-            values["position_" + gate] = sensing_dot_measurement.parameter["center"] + optimal_position
+            values["position_" + gate] = sensing_dot_measurement.options["center"] + optimal_position
             error["position_" + gate] = 0.1e-3
             values["current_signal"] = current_signal
             error["current_signal"] = np.nan
@@ -273,9 +273,9 @@ class SensingDot2D(Evaluator):
         super().__init__(experiment, (sensing_dot_measurement,), parameters=parameters)
 
     def evaluate(self):
-        self.measurements[0].parameter["center"] = [
-            self.experiment.read_gate_voltages()[self.measurements[0].parameter["gate1"]],
-            self.experiment.read_gate_voltages()[self.measurements[0].parameter["gate2"]]]
+        self.measurements[0].options["center"] = [
+            self.experiment.read_gate_voltages()[self.measurements[0].options["gate1"]],
+            self.experiment.read_gate_voltages()[self.measurements[0].options["gate2"]]]
         data = self.experiment.measure(self.measurements[0])
         data_filterd = scipy.ndimage.filters.gaussian_filter1d(input=data, sigma=.5, axis=0, order=0,
                                                                mode="nearest",
@@ -284,14 +284,14 @@ class SensingDot2D(Evaluator):
         mins_in_lines = data_diff.min(1)
         min_line = np.argmin(mins_in_lines)
         min_point = np.argmin(data_diff[min_line])
-        gate_1_pos = float(min_line) / float(self.measurements[0].parameter["n_lines"]) * 2 * \
-            self.measurements[0].parameter["range"] - self.measurements[0].parameter["range"]
-        gate_2_pos = float(min_point) / float(self.measurements[0].parameter["N_points"]) * 2 * \
-            self.measurements[0].parameter["range"] - self.measurements[0].parameter["range"]
-        new_voltages = pd.Series([gate_1_pos, gate_2_pos], ["position_" + self.measurements[0].parameter["gate1"],
-                                                            "position_" + self.measurements[0].parameter["gate2"]])
-        error = pd.Series([.1e-3, .1e-3], ["position_" + self.measurements[0].parameter["gate1"],
-                                           "position_" + self.measurements[0].parameter["gate2"]])
+        gate_1_pos = float(min_line) / float(self.measurements[0].options["n_lines"]) * 2 * \
+            self.measurements[0].options["range"] - self.measurements[0].options["range"]
+        gate_2_pos = float(min_point) / float(self.measurements[0].options["N_points"]) * 2 * \
+            self.measurements[0].options["range"] - self.measurements[0].options["range"]
+        new_voltages = pd.Series([gate_1_pos, gate_2_pos], ["position_" + self.measurements[0].options["gate1"],
+                                                            "position_" + self.measurements[0].options["gate2"]])
+        error = pd.Series([.1e-3, .1e-3], ["position_" + self.measurements[0].options["gate1"],
+                                           "position_" + self.measurements[0].options["gate2"]])
         return new_voltages, error
 
     def to_hdf5(self):

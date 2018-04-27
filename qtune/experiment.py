@@ -18,7 +18,7 @@ class Measurement(metaclass=HDF5Serializable):
     def __init__(self, name, **kwargs):
         super().__init__()
         self._name = name
-        self.parameter = kwargs
+        self.options = kwargs
 
     @property
     def name(self):
@@ -28,7 +28,7 @@ class Measurement(metaclass=HDF5Serializable):
         return time_string()
 
     def to_hdf5(self):
-        return dict(self.parameter,
+        return dict(self.options,
                     name=str(self))
 
 
@@ -55,7 +55,6 @@ class Experiment:
                 measurement: Measurement) -> np.ndarray:
         """Conduct specified measurements with given gate_voltages
 
-        :param gate_voltages:
         :param measurement:
         :return:
         """
