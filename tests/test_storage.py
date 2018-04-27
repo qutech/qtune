@@ -18,7 +18,7 @@ class SerializationTests(unittest.TestCase):
 
     def test_pure_python_serialization(self):
         data = {'asd': [1, 2, 3],
-                'ggg': [{'a': 1}, [1, 2, 3], (1, 2, 3)]}
+                'ggg': [{'a': 1}, [1, 2, 3], (1, 2, 3), 'test_stringüöäß', None]}
 
         to_hdf5(self.temp_file.name, 'data', data)
 
