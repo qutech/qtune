@@ -25,8 +25,7 @@ class SMTuneQQD(Experiment):
         self._matlab = matlab_instance
         # TODO Load tunedata to Python or interface it?
 
-        # TODO List all possible arguments for the functions here!
-        # TODO How do we feed the index into the measurement?
+        # TODO List all possible arguments for Measurements here!
         self._measurements = {'sensor_2d': Measurement('sensor_2d'),
                               'sensor': Measurement('sensor'),
                               'chrg': None,
@@ -36,7 +35,9 @@ class SMTuneQQD(Experiment):
                               'jac': None,  # Probably part of the autotuner
                               'measp': None}
 
-        self._sensors = [{'T': "LT", 'P': "LP", 'B': "LB"},
+        self._n_dqds = 3
+        self._n_sensors = 2
+        self._sensor_gates = [{'T': "LT", 'P': "LP", 'B': "LB"},
                          {'T': "RT", 'P': "RP", 'B': "RB"}]
 
     def measurements(self) -> Tuple[Measurement, ...]:
@@ -150,7 +151,7 @@ class SMQQDLineScan(Evaluator):
     the width calculated as parameter for the inter dot coupling. Fitted with Matlab functions. Can be replaced by python  code
     """
     def __init__(self, experiment: SMTuneQQD, measurements: Tuple[Measurement],
-                 parameters: pd.Series() = pd.Series({'parameter_tunnel_coupling': np.nan})):
+                 parameters: pd.Series() = pd.Series({'tunnel_coupling': np.nan})):
 
         # This seems weired since the parameter is to be returned ^^^^^^^^^^^^^^^^
         if measurements is None:
@@ -178,7 +179,7 @@ class SMQQDLeadScan(Evaluator):
     """
 
     def __init__(self, experiment: SMTuneQQD, measurements: Tuple[Measurement],
-                 parameters: pd.Series() = pd.Series({'parameter_tunnel_coupling': np.nan})):
+                 parameters: pd.Series() = pd.Series({'lead time': np.nan})):
 
         # This seems weired since the parameter is to be returned ^^^^^^^^^^^^^^^^
         if measurements is None:
@@ -204,7 +205,7 @@ class SMQQDSensor2d(Evaluator):
         """
 
         def __init__(self, experiment: SMTuneQQD, measurements: Tuple[Measurement],
-                     parameters: pd.Series() = pd.Series({'sensor_position': np.nan})):
+                     parameters: pd.Series() = pd.Series({'sensor_position_2d': np.full(2,np.nan)})):
 
             if measurements is None:
                 measurements = experiment._measurements['sensor']
@@ -230,9 +231,9 @@ class SMQQDSensor(Evaluator):
             """
 
             def __init__(self, experiment: SMTuneQQD, measurements: Tuple[Measurement],
-                         parameters: pd.Series() = pd.Series({'sensor_position_2d': np.full(2,np.nan)})):
+                         parameters: pd.Series() = pd.Series({'sensor_position': np.nan})):
 
-                # This seems weired since the parameter is to be returned ^^^^^^^^^^^^^^^^
+
                 if measurements is None:
                     measurements = experiment._measurements['sensor']  # can we pevent hardcoding indices or accessing private vars here?
                 super().__init__(experiment, measurements, parameters)
@@ -249,3 +250,48 @@ class SMQQDSensor(Evaluator):
                     # TODO Append to Series -> How do we connect measurements and parameters?
 
                 return pd.Series((tc, failed), ('sensor_position_2d', 'failed'))
+
+class SMQQDJacobian(Evaluator):
+
+            def __init__(self, experiment: SMTuneQQD, measurements: Tuple[Measurement],
+                         parameters: pd.Series() = pd.Series({'jacobian': np.nan})):
+
+                if measurements is None:
+                    measurements = experiment._measurements['sensor']  # can we pevent hardcoding indices or accessing private vars here?
+                super().__init__(experiment, measurements, parameters)
+
+            def evaluate(self) -> pd.Series:
+                data = pd.Series()
+                failed = True
+                tc = np.nan
+
+                for measurement in self.measurements:
+                    data['measurement'] = self.experiment.measure(measurement)
+
+            # TODO Process data
+            # TODO Append to Series -> How do we connect measurements and parameters?
+
+                return pd.Series((tc, failed), ('sensor_position_2d', 'failed'))
+
+class SMQQDMeasuremetPoint(Evaluator):
+
+    def __init__(self, experiment: SMTuneQQD, measurements: Tuple[Measurement],
+                 parameters: pd.Series() = pd.Series({'measp': np.nan})):
+
+        if measurements is None:
+            measurements = experiment._measurements[
+                'sensor']  # can we pevent hardcoding indices or accessing private vars here?
+        super().__init__(experiment, measurements, parameters)
+
+    def evaluate(self) -> pd.Series:
+        data = pd.Series()
+        failed = True
+        tc = np.nan
+
+        for measurement in self.measurements:
+            data['measurement'] = self.experiment.measure(measurement)
+
+        # TODO Process data
+        # TODO Append to Series -> How do we connect measurements and parameters?
+
+        return pd.Series((tc, failed), ('sensor_position_2d', 'failed'))
