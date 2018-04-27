@@ -27,7 +27,7 @@ def static_vars(**kwargs) -> Callable[[Callable], Callable]:
 
 
 def time_string() -> str:
-    return datetime.datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
+    return datetime.datetime.now().strftime('%Y_%m_%d_%H_%M_%S_%f')
 
 
 def find_lead_transition(data: np.ndarray, center: float, scan_range: float, npoints: int, width: float = .2e-3) -> float:
