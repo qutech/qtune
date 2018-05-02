@@ -62,15 +62,36 @@ class BasicQQD(Experiment):
         raise NotImplementedError
 
 
+
+class Simulator:
+    def __init__(self, simulation_function, **options):
+        """
+        This function simulates measurements for the TestExperiment class.
+        :param parameters: List of names of parameters, which will be extracted by the evaluator
+        :param simulation_function: function handle which will compute the Data
+        """
+        self._options = options
+        self._simulation_function = simulation_function
+
+    def simulate_measurement(self, gate_voltages, measurement):
+        return self._simulation_function(gate_voltages, measurement, self._options)
+
+
 class TestExperiment(Experiment):
-    def __init__(self, initial_voltages:pd.Series, measurements: Sequence[Measurement], simulation_functions: dict):
+    def __init__(self, initial_voltages: pd.Series, measurements: Sequence[Measurement],
+                 simulator_dict: dict):
         self._gate_voltages = initial_voltages
+
         self._measurements = measurements
-        self._simulation_functions = simulation_functions
+        self._simulator_dict = simulator_dict
         for measurement in measurements:
-            if str(measurement) not in simulation_functions.keys():
-                print("There is no simulation function implemented for the measurement " + str(measurement))
+            if measurement not in simulator_dict.keys():
+                print("There is no simulation function implemented for the measurement " + measurement.name)
                 raise RuntimeError
+
+    @property
+    def simulator_dict(self):
+        return self._simulator_dict
 
     def measurements(self):
         return self._measurements
@@ -84,31 +105,25 @@ class TestExperiment(Experiment):
     def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
         for gate in new_gate_voltages.index:
             self._gate_voltages[gate] = new_gate_voltages[gate]
-        print("new Voltages:")
-        print(self._gate_voltages)
         return new_gate_voltages
 
     def measure(self, measurement: Measurement):
-        simulation_function = self._simulation_functions[str(measurement)]
+        simulator = self.simulator_dict[measurement]
+        return simulator.simulate_measurement(self.read_gate_voltages(), measurement.options)
 
 
-def load_simulation(gate_voltages, measurement: Measurement):
-    load_simulation.gate1 = "T"
-    load_simulation.gate2 = "SA"
-    load_simulation.load_time_noise = 2.
-    load_simulation.over_all_noise = 0.
-    simulated_curvature = 15. + np.exp(- gate_voltages[load_simulation.gate1] - gate_voltages[
-        load_simulation.gate2]) + load_simulation.load_time_noise * (np.random.rand(1)[0] - 0.5)
-    ydata = np.exp(np.arange(0., 500, 5) * -1. / simulated_curvature) + load_simulation.over_all_noise * (
-                np.rand(100) - .5)
+def load_simulation(gate_voltages, measurement_options, simulation_options):
+    load_time_noise = 2.
+    over_all_noise = 0.
+    simulated_curvature = 15. + np.exp(- gate_voltages[simulation_options["gate1"]] - gate_voltages[
+        simulation_options["gate2"]]) + load_time_noise * (np.random.rand(1)[0] - 0.5)
+    ydata = np.exp(np.arange(0., 500, 5) * -1. / simulated_curvature) + over_all_noise * (
+                np.random.rand(100) - .5)
     xdata = np.arange(0., 500, 5)
     return np.reshape(np.concatenate((ydata, xdata)), (2, 100))
 
 def ss1d_simulation(gate_voltages, measurement: Measurement):
     ss1d_simulation.dependancy_gate = "SDB2"
-
-
-
 
 
 class TestDQD(BasicDQD):
