@@ -1,10 +1,10 @@
 import h5py
+import os
 from qtune.util import time_string
 from qtune.experiment import Experiment
 from typing import List
 from qtune.parameter_tuner import ParameterTuner
 from qtune.storage import to_hdf5, HDF5Serializable
-import qtune.util
 
 
 class Autotuner(metaclass=HDF5Serializable):
@@ -13,13 +13,13 @@ class Autotuner(metaclass=HDF5Serializable):
     """
 
     def __init__(self, experiment: Experiment, tuning_hierarchy: List[ParameterTuner] = None, current_tuner_index=0,
-                 current_tuner_status=False, voltage_to_set=None, hdf5_filename=None):
+                 current_tuner_status=False, voltage_to_set=None, hdf5_storage_path=None):
         self._experiment = experiment
         self._tuning_hierarchy = tuning_hierarchy
         self._current_tuner_index = current_tuner_index
         self._current_tuner_status = current_tuner_status
         self._voltage_to_set = voltage_to_set
-        self._hdf5_filename = hdf5_filename
+        self._hdf5_storage_path = hdf5_storage_path
 
     def tuning_complete(self) -> bool:
         if self._current_tuner_index == len(self._tuning_hierarchy):
@@ -51,12 +51,14 @@ class Autotuner(metaclass=HDF5Serializable):
 #        if not self.ready_to_tune():
 #            print("Setup incomplete!")
 #            return
+
+        tuning_storage_path = self._hdf5_storage_path + r"\\" + time_string()
+        os.makedirs(path=tuning_storage_path)
+
         while not self.tuning_complete():
             self.iterate()
-            if self._hdf5_filename:
-                filename = self._hdf5_filename + r"\\" + time_string() + ".hdf5"
-            else:
-                filename = time_string() + ".hdf5"
+
+            filename = tuning_storage_path + r"\\" + time_string() + ".hdf5"
             hdf5_file = h5py.File(filename, 'w-')
             to_hdf5(hdf5_file, name="autotuner", obj=self, reserved={"experiment": self._experiment})
 
@@ -67,5 +69,5 @@ class Autotuner(metaclass=HDF5Serializable):
             current_tuner_index=self._current_tuner_index,
             current_tuner_status=self._current_tuner_status,
             voltage_to_set=self._voltage_to_set,
-            hdf5_filename=self._hdf5_filename
+            hdf5_storage_path=self._hdf5_storage_path
         )
