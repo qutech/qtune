@@ -28,12 +28,12 @@ class SMTuneQQD(Experiment):
         # TODO List all possible arguments for Measurements here!
         self._measurements = {'sensor_2d': Measurement('sensor_2d'),
                               'sensor': Measurement('sensor'),
-                              'chrg': None,
-                              'resp': None,
-                              'line': None,
-                              'lead': None,
-                              'jac': None,  # Probably part of the autotuner
-                              'measp': None}
+                              'chrg': Measurement('chrg'),
+                              'resp': Measurement('resp'),
+                              'line': Measurement('line'),
+                              'lead': Measurement('lead'),
+                              'jac': Measurement('jac'),  # Probably part of the autotuner
+                              'measp': Measurement('measp')}
 
         self._n_dqds = 3
         self._n_sensors = 2
@@ -52,59 +52,6 @@ class SMTuneQQD(Experiment):
     def _read_sensing_dot_voltages(self) -> pd.Series:
         # TODO: Maybe allow for getting only one sensor at a time?
         return pd.Series(self._matlab.engine.qtune.read_qqd_sensing_dot_voltages()).sort_index()
-
-    # Deprecated
-    def tune_sensing_dot_1d(self, sensor: int, stepping_gate=None):
-        """Provide functionality for 1d sensor dot tuning"""
-
-        if sensor <= 0 or sensor >= len(self._sensors):
-            raise ValueError("Sensor index out of range!")
-
-        sensing_dot_measurement = self._measurements['sensor']
-        sensing_dot_measurement.parameters.index = sensor
-
-        # check stepping gate
-        if stepping_gate is not None:
-            if stepping_gate not in self._sensors[sensor].values():
-                raise ValueError("Stepping gate clashes with selected sensor!")
-            else:
-                sensing_dot_measurement.parameters.stepping_gate=stepping_gate
-
-        # Execute measurement and store data
-        # TODO Pass data for further analysis by autotuner?
-        data = self.measure(sensing_dot_measurement)
-
-        # Set gates here or in MATLAB script?
-        # detuning = qtune.util.find_stepes_point_sensing_dot(data, scan_range=scan_range, npoints=n_points)
-        # self._set_sensing_dot_voltages(pd.Series({gate: prior_position + detuning}))
-
-    # Deprecated
-    def tune_sensing_dot_2d(self, sensor: int):
-        """Provide functionality for 2d sensor dot tuning"""
-        # TODO Should these functions allow for passing of kwargs to measurement?
-        # TODO decide how much is done in MATLAB script. The autotuner could be completely agnostic of the sensor gates!
-        # check if sensor index is in range
-        if sensor <= 0 or sensor >= len(self._sensors):
-            raise ValueError("Sensor index out of range!")
-
-        # Read values of top and bottom gate -> also automatically done by the MATLAB script,
-        # no need to go back and forth
-        positions = self._read_sensing_dot_voltages()
-        T_position = positions[self._sensors[sensor]['T']]
-        B_position = positions[self._sensors[sensor]['B']]
-
-        # Standard arguments are provided on a MATLAB level by tune script
-        sensing_dot_measurement = self._measurements['sensor_2d']
-        sensing_dot_measurement.parameters.index = sensor
-
-        # Start Measurement
-        # Data processing and further adjustments are done on the MATLAB level for now
-        # -> pass data for further analysis if needed for the tuning process
-        data = self.measure(sensing_dot_measurement)
-
-        # 1d tuning at the end is done by the MATLAB script,
-        # we could of course disable it and call it here if needed for the tuning stack
-        # self.tune_sensing_dot_1d(gate=gate_T)
 
     def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
         self._left_sensing_dot_tuned = False
@@ -132,7 +79,7 @@ class SMTuneQQD(Experiment):
 
     def measure(self, measurement: Measurement) -> np.ndarray:
         """This function basically wraps the tune.m script on the Trition 200 setup"""
-        if measurement not in self._measurements:
+        if measurement._name not in self._measurements.keys():
             raise ValueError('Unknown measurement: {}'.format(measurement))
 
         # Make sure ints are converted to float
@@ -173,6 +120,11 @@ class SMQQDLineScan(Evaluator):
 
         return pd.Series((tc, failed), ('parameter_tunnel_coupling', 'failed'))
 
+    def to_hdf5(self):
+        return dict(experiment=self.experiment,
+                    measurements=self.measurements,
+                    parameters=self.parameters)
+
 class SMQQDLeadScan(Evaluator):
     """
     foo
@@ -198,6 +150,11 @@ class SMQQDLeadScan(Evaluator):
         # TODO Append to Series -> How do we connect measurements and parameters?
 
         return pd.Series((tc, failed), ('parameter_tunnel_coupling', 'failed'))
+
+    def to_hdf5(self):
+        return dict(experiment=self.experiment,
+                    measurements=self.measurements,
+                    parameters=self.parameters)
 
 class SMQQDSensor2d(Evaluator):
         """
@@ -225,6 +182,11 @@ class SMQQDSensor2d(Evaluator):
 
             return pd.Series((tc, failed), ('sensor_position', 'failed'))
 
+        def to_hdf5(self):
+            return dict(experiment=self.experiment,
+                        measurements=self.measurements,
+                        parameters=self.parameters)
+
 class SMQQDSensor(Evaluator):
             """
             foo
@@ -251,6 +213,11 @@ class SMQQDSensor(Evaluator):
 
                 return pd.Series((tc, failed), ('sensor_position_2d', 'failed'))
 
+            def to_hdf5(self):
+                return dict(experiment=self.experiment,
+                            measurements=self.measurements,
+                            parameters=self.parameters)
+
 class SMQQDJacobian(Evaluator):
 
             def __init__(self, experiment: SMTuneQQD, measurements: Tuple[Measurement],
@@ -272,6 +239,11 @@ class SMQQDJacobian(Evaluator):
             # TODO Append to Series -> How do we connect measurements and parameters?
 
                 return pd.Series((tc, failed), ('sensor_position_2d', 'failed'))
+
+            def to_hdf5(self):
+                return dict(experiment=self.experiment,
+                            measurements=self.measurements,
+                            parameters=self.parameters)
 
 class SMQQDMeasuremetPoint(Evaluator):
 
@@ -295,3 +267,8 @@ class SMQQDMeasuremetPoint(Evaluator):
         # TODO Append to Series -> How do we connect measurements and parameters?
 
         return pd.Series((tc, failed), ('sensor_position_2d', 'failed'))
+
+    def to_hdf5(self):
+        return dict(experiment=self.experiment,
+                    measurements=self.measurements,
+                    parameters=self.parameters)
