@@ -77,19 +77,50 @@ class SMTuneQQD(Experiment):
             new_sensing_dot_voltage[key] = new_sensing_dot_voltage[key].item()
         self._matlab.engine.qtune.set_sensing_dot_gate_voltages()
 
-    def measure(self, measurement: Measurement) -> np.ndarray:
+    def tune(self, measurement_name, index: np.int, **kwargs) -> pd.Series:
+        # Tune wrapper using the MATLAB syntax
+
+        options = kwargs
+        for parameter, value in options.items():
+            if isinstance(value, Number):
+                options[parameter] = float(value)
+
+        # kwargs 2 name value pairs
+        keys = list(options.keys())
+        vals = list(options.values())
+        name_value_pairs = [x for t in zip(keys, vals) for x in t]
+
+        # check data structure of returned values -> Most likely MATLAB struct
+        # TODO This WILL need to be parsed into a usable matlab structure!
+        # data ---  args        <<<< contains struct arrays!
+        #       |-  data        <<<< Important RAW data
+        #       |-  ana         <<<< Result of analysis (if run!)
+        #       |-  successful  <<<< duh!
+        # Tune usage                         Operation string , INDEX (int)        , name value pair parameters
+        data = self._matlab.engine.tune.tune(measurement_name, index, name_value_pairs)
+
+        return data
+
+    def pytune(self, measurement) -> pd.Series:
+        # Tune wrapper using the autotune syntax
+
+        data = self.tune(measurement._name, measurement.options['index'], **measurement.options)
+
+        return data
+
+    def measure(self, measurement: Measurement) -> pd.Series:
         """This function basically wraps the tune.m script on the Trition 200 setup"""
         if measurement._name not in self._measurements.keys():
             raise ValueError('Unknown measurement: {}'.format(measurement))
 
         # Make sure ints are converted to float
-        parameters = measurement.parameter.copy()
+        parameters = measurement.options.copy()
         for parameter, value in parameters.items():
             if isinstance(value, Number):
                 parameters[parameter] = float(value)
 
-        # check data structure of returned values -> Most likely MATLAB struct
-        data = self._matlab.engine.tune.tune(measurement, parameters['index'], parameters)
+        data = self.pytune(measurement)
+
         return data
 
 class SMQQDLineScan(Evaluator):
@@ -109,16 +140,15 @@ class SMQQDLineScan(Evaluator):
     def evaluate(self) -> pd.Series:
         data = pd.Series()
         failed = True
-        tc = np.nan
+        tunnel_coupling = np.nan
 
         for measurement in self.measurements:
             data['measurement'] = self.experiment.measure(measurement)
 
             # TODO Process data
-            # TODO Append to Series -> How do we connect measurements and parameters?
 
 
-        return pd.Series((tc, failed), ('parameter_tunnel_coupling', 'failed'))
+        return pd.Series({'tunnel_coupling': tunnel_coupling, 'failed': failed})
 
     def to_hdf5(self):
         return dict(experiment=self.experiment,
@@ -131,7 +161,7 @@ class SMQQDLeadScan(Evaluator):
     """
 
     def __init__(self, experiment: SMTuneQQD, measurements: Tuple[Measurement],
-                 parameters: pd.Series() = pd.Series({'lead time': np.nan})):
+                 parameters: pd.Series() = pd.Series({'lead_time': np.nan})):
 
         # This seems weired since the parameter is to be returned ^^^^^^^^^^^^^^^^
         if measurements is None:
@@ -142,14 +172,13 @@ class SMQQDLeadScan(Evaluator):
     def evaluate(self) -> pd.Series:
         data = pd.Series()
         failed = True
-        tc = np.nan
+        lead_time = np.nan
         for measurement in self.measurements:
                 data['measurement'] = self.experiment.measure(measurement)
 
         # TODO Process data
-        # TODO Append to Series -> How do we connect measurements and parameters?
 
-        return pd.Series((tc, failed), ('parameter_tunnel_coupling', 'failed'))
+                return pd.Series({'lead_time': lead_time, 'failed': failed})
 
     def to_hdf5(self):
         return dict(experiment=self.experiment,
@@ -172,15 +201,14 @@ class SMQQDSensor2d(Evaluator):
         def evaluate(self) -> pd.Series:
             data = pd.Series()
             failed = True
-            tc = np.nan
+            position = np.full(2,np.nan)
 
             for measurement in self.measurements:
                 data['measurement'] = self.experiment.measure(measurement)
 
                 # TODO Process data
-                # TODO Append to Series -> How do we connect measurements and parameters?
 
-            return pd.Series((tc, failed), ('sensor_position', 'failed'))
+            return pd.Series({'sensor_position_2d': position, 'failed': failed})
 
         def to_hdf5(self):
             return dict(experiment=self.experiment,
@@ -203,15 +231,14 @@ class SMQQDSensor(Evaluator):
             def evaluate(self) -> pd.Series:
                 data = pd.Series()
                 failed = True
-                tc = np.nan
+                position = np.nan
 
                 for measurement in self.measurements:
                     data['measurement'] = self.experiment.measure(measurement)
 
                     # TODO Process data
-                    # TODO Append to Series -> How do we connect measurements and parameters?
 
-                return pd.Series((tc, failed), ('sensor_position_2d', 'failed'))
+                    return pd.Series({'sensor_position': position, 'failed': failed})
 
             def to_hdf5(self):
                 return dict(experiment=self.experiment,
@@ -221,7 +248,7 @@ class SMQQDSensor(Evaluator):
 class SMQQDJacobian(Evaluator):
 
             def __init__(self, experiment: SMTuneQQD, measurements: Tuple[Measurement],
-                         parameters: pd.Series() = pd.Series({'jacobian': np.nan})):
+                         parameters: pd.Series() = pd.Series({'jacobian': None})):
 
                 if measurements is None:
                     measurements = experiment._measurements['sensor']  # can we pevent hardcoding indices or accessing private vars here?
@@ -230,15 +257,14 @@ class SMQQDJacobian(Evaluator):
             def evaluate(self) -> pd.Series:
                 data = pd.Series()
                 failed = True
-                tc = np.nan
+                jacobian = pd.DataFrame()
 
                 for measurement in self.measurements:
                     data['measurement'] = self.experiment.measure(measurement)
 
             # TODO Process data
-            # TODO Append to Series -> How do we connect measurements and parameters?
 
-                return pd.Series((tc, failed), ('sensor_position_2d', 'failed'))
+                return pd.Series({'jacobian': jacobian,'failed': failed})
 
             def to_hdf5(self):
                 return dict(experiment=self.experiment,
@@ -258,15 +284,14 @@ class SMQQDMeasuremetPoint(Evaluator):
     def evaluate(self) -> pd.Series:
         data = pd.Series()
         failed = True
-        tc = np.nan
+        position = np.nan
 
         for measurement in self.measurements:
             data['measurement'] = self.experiment.measure(measurement)
 
         # TODO Process data
-        # TODO Append to Series -> How do we connect measurements and parameters?
 
-        return pd.Series((tc, failed), ('sensor_position_2d', 'failed'))
+            return pd.Series({'measp': position, 'failed': failed})
 
     def to_hdf5(self):
         return dict(experiment=self.experiment,
