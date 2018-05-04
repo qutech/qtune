@@ -53,7 +53,7 @@ class Autotuner(metaclass=HDF5Serializable):
 #            return
 
         tuning_storage_path = self._hdf5_storage_path + r"\\" + time_string()
-        os.makedirs(path=tuning_storage_path)
+        os.makedirs(name=tuning_storage_path)
 
         while not self.tuning_complete():
             self.iterate()
