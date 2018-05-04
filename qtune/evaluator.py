@@ -159,12 +159,16 @@ class LeadTransition(Evaluator):
                  experiment: Experiment,
                  shifting_gates: Sequence[str]=("RFA", "RFB"),
                  charge_diagram_width: float=4e-3,
-                 parameters: Sequence[str]=("position_RFA", "position_RFB")):
-        default_line_scan_a = Measurement('line_scan', center=0., range=4e-3,
-                                          gate='RFA', N_points=320,
-                                          ramptime=.001,
-                                          N_average=7,
-                                          AWGorDecaDAC='DecaDAC')
+                 parameters: Sequence[str]=("position_RFA", "position_RFB"),
+                 line_scan: Measurement=None):
+        if line_scan is None:
+            default_line_scan_a = Measurement('line_scan', center=0., range=4e-3,
+                                              gate='RFA', N_points=320,
+                                              ramptime=.001,
+                                              N_average=7,
+                                              AWGorDecaDAC='DecaDAC')
+        else:
+            default_line_scan_a = line_scan
         self._shifting_gates = shifting_gates
         self._charge_diagram_width = charge_diagram_width
         super().__init__(experiment, (default_line_scan_a, ), parameters)
@@ -209,12 +213,14 @@ class SensingDot1D(Evaluator):
     def __init__(self,
                  experiment: Experiment,
                  sweeping_gates: Sequence[str]=("SDB2", ),
-                 parameters: Sequence[str]=("position_SDB2", "current_signal", "optimal_signal")):
+                 parameters: Sequence[str]=("position_SDB2", "current_signal", "optimal_signal"),
+                 sensing_dot_measurement: Measurement=None):
         self._sweeping_gates = sweeping_gates
-        sensing_dot_measurement = Measurement('line_scan',
-                                              center=None, range=4e-3, gate="SDB2",
-                                              N_points=1280, ramptime=.0005,
-                                              N_average=1, AWGorDecaDAC='DecaDAC')
+        if sensing_dot_measurement is None:
+            sensing_dot_measurement = Measurement('line_scan',
+                                                  center=None, range=4e-3, gate="SDB2",
+                                                  N_points=1280, ramptime=.0005,
+                                                  N_average=1, AWGorDecaDAC='DecaDAC')
         super().__init__(experiment, measurements=(sensing_dot_measurement,), parameters=parameters)
 
     def evaluate(self):
@@ -261,15 +267,17 @@ class SensingDot2D(Evaluator):
     def __init__(self, experiment: Experiment,
                  sweeping_gates: Sequence[str]=("SDB1", "SDB2"),
                  scan_range: float=15e-3,
-                 parameters: Sequence[str]=("position_SDB1", "position_SDB2")):
+                 parameters: Sequence[str]=("position_SDB1", "position_SDB2"),
+                 sensing_dot_measurement: Measurement=None):
         self._sweeping_gates = sweeping_gates
         self._scan_range = scan_range
-        sensing_dot_measurement = Measurement('2d_scan', center=[None, None],
-                                              range=scan_range,
-                                              gate1=sweeping_gates[0],
-                                              gate2=sweeping_gates[1],
-                                              N_points=1280, ramptime=.0005, n_lines=20,
-                                              n_points=104, N_average=1, AWGorDecaDAC='DecaDAC')
+        if sensing_dot_measurement is None:
+            sensing_dot_measurement = Measurement('2d_scan', center=[None, None],
+                                                  range=scan_range,
+                                                  gate1=sweeping_gates[0],
+                                                  gate2=sweeping_gates[1],
+                                                  N_points=1280, ramptime=.0005, n_lines=20,
+                                                  n_points=104, N_average=1, AWGorDecaDAC='DecaDAC')
         super().__init__(experiment, (sensing_dot_measurement,), parameters=parameters)
 
     def evaluate(self):

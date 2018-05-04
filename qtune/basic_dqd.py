@@ -84,7 +84,7 @@ class TestExperiment(Experiment):
         self._measurements = measurements
         self._simulator_dict = simulator_dict
         for measurement in measurements:
-            if measurement not in simulator_dict.keys():
+            if id(measurement) not in simulator_dict.keys():
                 print("There is no simulation function implemented for the measurement " + measurement.name)
                 raise RuntimeError
 
@@ -107,8 +107,8 @@ class TestExperiment(Experiment):
         return new_gate_voltages
 
     def measure(self, measurement: Measurement):
-        simulator = self.simulator_dict[measurement]
-        return simulator.simulate_measurement(self.read_gate_voltages(), measurement.options)
+        simulator = self.simulator_dict[id(measurement)]
+        return simulator.simulate_measurement(self.read_gate_voltages(), measurement)
 
 
 def load_simulation(gate_voltages, measurement_options, simulation_options):
@@ -140,7 +140,7 @@ def detune_simulation(gate_voltages, measurement: Measurement, simulation_option
     central_lower_gate = simulation_options["central_lower_gate"]
     left_gate = simulation_options["left_gate"]
     right_gate = simulation_options["right_gate"]
-    parameters = measurement.parameter.copy()
+    parameters = measurement.options.copy()
     parameters['file_name'] = "detune_scan_" + measurement.get_file_name()
     parameters['N_points'] = float(parameters['N_points'])
     parameters['N_average'] = float(parameters['N_average'])
