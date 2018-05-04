@@ -6,8 +6,6 @@ from numbers import Number
 from qtune.experiment import Experiment, Measurement
 from qtune.evaluator import Evaluator
 from qtune.sm import SpecialMeasureMatlab
-from qtune.storage import HDF5Serializable
-
 # This file bundles everything connected to the QQD
 # Is this the file structure we want?
 
@@ -112,12 +110,6 @@ class SMTuneQQD(Experiment):
         """This function basically wraps the tune.m script on the Trition 200 setup"""
         if measurement._name not in self._measurements.keys():
             raise ValueError('Unknown measurement: {}'.format(measurement))
-
-        # Make sure ints are converted to float
-        parameters = measurement.options.copy()
-        for parameter, value in parameters.items():
-            if isinstance(value, Number):
-                parameters[parameter] = float(value)
 
         data = self.pytune(measurement)
 
