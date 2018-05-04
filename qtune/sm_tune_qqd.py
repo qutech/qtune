@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from typing import Tuple, Sequence
+from typing import Tuple
 from numbers import Number
 
 from qtune.experiment import Experiment, Measurement
@@ -36,13 +36,13 @@ class SMTuneQQD(Experiment):
         self._n_dqds = 3
         self._n_sensors = 2
         self._sensor_gates = [{'T': "LT", 'P': "LP", 'B': "LB"},
-                         {'T': "RT", 'P': "RP", 'B': "RB"}]
+                              {'T': "RT", 'P': "RP", 'B': "RB"}]
 
     def measurements(self) -> Tuple[Measurement, ...]:
         return tuple(self._measurements.values())
 
     def gate_voltage_names(self) -> Tuple:
-        return tuple(sorted(self._matlab.engine.qtune.read_qqd_gate_voltages().keys())) # Why call MATLAB engine here?
+        return tuple(sorted(self._matlab.engine.qtune.read_qqd_gate_voltages().keys()))  # Why call MATLAB engine here?
 
     def read_gate_voltages(self) -> pd.Series:
         return pd.Series(self._matlab.engine.qtune.read_qqd_gate_voltages()).sort_index()
@@ -52,9 +52,6 @@ class SMTuneQQD(Experiment):
         return pd.Series(self._matlab.engine.qtune.read_qqd_sensing_dot_voltages()).sort_index()
 
     def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
-        self._left_sensing_dot_tuned = False
-        self._right_sensing_dot_tuned = False
-
         current_gate_voltages = self.read_gate_voltages()
         for key in current_gate_voltages.index.tolist():
             if key not in new_gate_voltages.index.tolist():
@@ -101,8 +98,11 @@ class SMTuneQQD(Experiment):
 
     def pytune(self, measurement) -> pd.Series:
         # Tune wrapper using the autotune syntax
-
-        data = self.tune(measurement._name, measurement.options['index'], **measurement.options)
+        options = dict(measurement.options)
+        index = options['index']
+        del options['index']
+        # TODO This creates a 1x0 cell if only index is passed, might conflict with the tune script
+        data = self.tune(measurement_name=measurement._name, index=index, **options)
 
         return data
 
@@ -115,19 +115,21 @@ class SMTuneQQD(Experiment):
 
         return data
 
+
 class SMQQDLineScan(Evaluator):
     """
-    Adiabaticly sweeps the detune over the transition between the (2,0) and the (1,1) region for ith DQD. An Scurve is fitted and
-    the width calculated as parameter for the inter dot coupling. Fitted with Matlab functions. Can be replaced by python  code
+    Adiabaticly sweeps the detune over the transition between the (2,0) and the (1,1) region for ith DQD. An Scurve is
+    fitted and the width calculated as parameter for the inter dot coupling. Fitted with Matlab functions.
+    Can be replaced by python  code
     """
     def __init__(self, experiment: SMTuneQQD, measurements: Tuple[Measurement],
                  parameters: pd.Series() = pd.Series({'tunnel_coupling': np.nan})):
 
         # This seems weired since the parameter is to be returned ^^^^^^^^^^^^^^^^
         if measurements is None:
-            measurements = experiment._measurements['line'] # can we prevent hardcoding indices or accessing private vars here?
-        super().__init__(experiment,measurements, parameters)
-
+            measurements = experiment._measurements['line']
+            # can we prevent hardcoding indices or accessing private vars here?
+        super().__init__(experiment, measurements, parameters)
 
     def evaluate(self) -> pd.Series:
         data = pd.Series()
@@ -139,13 +141,13 @@ class SMQQDLineScan(Evaluator):
 
             # TODO Process data
 
-
         return pd.Series({'tunnel_coupling': tunnel_coupling, 'failed': failed})
 
     def to_hdf5(self):
         return dict(experiment=self.experiment,
                     measurements=self.measurements,
                     parameters=self.parameters)
+
 
 class SMQQDLeadScan(Evaluator):
     """
@@ -157,7 +159,7 @@ class SMQQDLeadScan(Evaluator):
 
         # This seems weired since the parameter is to be returned ^^^^^^^^^^^^^^^^
         if measurements is None:
-           measurements = experiment._measurements[
+            measurements = experiment._measurements[
                     'lead']  # can we pevent hardcoding indices or accessing private vars here?
         super().__init__(experiment, measurements, parameters)
 
@@ -177,13 +179,14 @@ class SMQQDLeadScan(Evaluator):
                     measurements=self.measurements,
                     parameters=self.parameters)
 
+
 class SMQQDSensor2d(Evaluator):
         """
         foo
         """
 
         def __init__(self, experiment: SMTuneQQD, measurements: Tuple[Measurement],
-                     parameters: pd.Series() = pd.Series({'sensor_position_2d': np.full(2,np.nan)})):
+                     parameters: pd.Series() = pd.Series({'sensor_position_2d': np.full(2, np.nan)})):
 
             if measurements is None:
                 measurements = experiment._measurements['sensor']
@@ -193,7 +196,7 @@ class SMQQDSensor2d(Evaluator):
         def evaluate(self) -> pd.Series:
             data = pd.Series()
             failed = True
-            position = np.full(2,np.nan)
+            position = np.full(2, np.nan)
 
             for measurement in self.measurements:
                 data['measurement'] = self.experiment.measure(measurement)
@@ -207,6 +210,7 @@ class SMQQDSensor2d(Evaluator):
                         measurements=self.measurements,
                         parameters=self.parameters)
 
+
 class SMQQDSensor(Evaluator):
             """
             foo
@@ -215,9 +219,9 @@ class SMQQDSensor(Evaluator):
             def __init__(self, experiment: SMTuneQQD, measurements: Tuple[Measurement],
                          parameters: pd.Series() = pd.Series({'sensor_position': np.nan})):
 
-
                 if measurements is None:
-                    measurements = experiment._measurements['sensor']  # can we pevent hardcoding indices or accessing private vars here?
+                    measurements = experiment._measurements['sensor']
+                    # can we pevent hardcoding indices or accessing private vars here?
                 super().__init__(experiment, measurements, parameters)
 
             def evaluate(self) -> pd.Series:
@@ -237,13 +241,15 @@ class SMQQDSensor(Evaluator):
                             measurements=self.measurements,
                             parameters=self.parameters)
 
+
 class SMQQDJacobian(Evaluator):
 
             def __init__(self, experiment: SMTuneQQD, measurements: Tuple[Measurement],
                          parameters: pd.Series() = pd.Series({'jacobian': None})):
 
                 if measurements is None:
-                    measurements = experiment._measurements['sensor']  # can we pevent hardcoding indices or accessing private vars here?
+                    measurements = experiment._measurements['sensor']
+                    # can we pevent hardcoding indices or accessing private vars here?
                 super().__init__(experiment, measurements, parameters)
 
             def evaluate(self) -> pd.Series:
@@ -256,12 +262,13 @@ class SMQQDJacobian(Evaluator):
 
             # TODO Process data
 
-                return pd.Series({'jacobian': jacobian,'failed': failed})
+                return pd.Series({'jacobian': jacobian, 'failed': failed})
 
             def to_hdf5(self):
                 return dict(experiment=self.experiment,
                             measurements=self.measurements,
                             parameters=self.parameters)
+
 
 class SMQQDMeasuremetPoint(Evaluator):
 
