@@ -109,7 +109,7 @@ class SubsetTuner(ParameterTuner):
         self._solver.update_after_step(solver_voltages, current_parameters, current_variances)
 
         self._last_voltage = voltages
-
+        self._last_parameter_values = current_parameters
         if ((self.target.desired - current_parameters).abs() < self.target['tolerance']).all():
             self._tuned_voltages.append(voltages)
             return True
@@ -117,7 +117,7 @@ class SubsetTuner(ParameterTuner):
             return False
 
     def get_next_voltages(self):
-        solver_voltage = self._solver.suggest_next_voltage()
+        solver_voltage = self._solver.suggest_next_position()
         result = pd.Series(self._last_voltage)
 
         result[solver_voltage.index] = solver_voltage
