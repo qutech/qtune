@@ -259,12 +259,14 @@ class AsynchronousHDF5Writer:
 
             self._queue.task_done()
 
-    def stop(self):
+    def join(self):
+        """Stop writing and join thread."""
         self._queue.put(None)
+        self._queue.join()
         self._thread.join()
 
     def __del__(self):
-        self.stop()
+        self.join()
 
     def write(self, obj, name=None):
         if name is None:
