@@ -1,8 +1,31 @@
 import os
 import h5py
+import operator
 import pandas as pd
 import qtune.storage
 import qtune.autotuner
+
+
+def read_files(file_or_files, reserved=None):
+    if isinstance(file_or_files, str):
+        files = [file_or_files]
+    else:
+        files = list(file_or_files)
+
+    data = []
+
+    for file_name in files:
+        with h5py.File(file_name, 'r') as root:
+            entries = [key for key in root.keys() if not key.startswith('#')]
+
+            for entry in entries:
+                entry_data = qtune.storage.from_hdf5(root[entry], reserved)
+
+                data.append((entry, entry_data))
+
+    return data.sort(key=operator.itemgetter(0))
+
+
 
 class Reader:
     def __init__(self, path):
