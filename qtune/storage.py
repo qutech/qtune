@@ -1,9 +1,14 @@
 import warnings
+import copy
+import threading
+import queue
 from typing import Union
 
 import h5py
 import numpy as np
 import pandas as pd
+
+from qtune.util import time_string
 
 
 __all__ = ["serializables", "HDF5Serializable"]
@@ -108,7 +113,8 @@ def _to_hdf5(hdf5_parent_group: h5py.Group, name, obj, serialized):
     raise RuntimeError()
 
 
-def to_hdf5(filename_or_handle: Union[str, h5py.Group], name: str, obj, reserved=None):
+def to_hdf5(filename_or_handle: Union[str, h5py.Group], name: str, obj,
+            reserved=None):
     if isinstance(filename_or_handle, h5py.Group):
         root = filename_or_handle
     else:
@@ -167,7 +173,6 @@ def _from_hdf5(root: h5py.File, hdf5_obj: h5py.HLObject, deserialized=None):
             deserialized[hdf5_obj.id] = result
             return result
 
-
         else:
             warnings.warn('Unknown type: ', hdf5_obj.attrs['#type'])
 
@@ -219,3 +224,52 @@ def from_hdf5(filename_or_handle, reserved):
             deserialized[value.id] = reserved[key]
 
     return _from_hdf5(root, root, deserialized)
+
+
+class AsynchronousHDF5Writer:
+    def __init__(self, filename_or_handle, reserved):
+        if isinstance(filename_or_handle, h5py.Group):
+            self.root = filename_or_handle
+        else:
+            self.root = h5py.File(filename_or_handle, mode='w')
+
+        reserved = reserved.copy()
+
+        for key, value in reserved.items():
+            dset = self.root.create_dataset(name=key, dtype='f')
+            reserved[id(value)] = dset
+            dset.attrs["#type"] = "#reserved"
+
+        self.reserved = reserved
+
+        self._queue = queue.Queue()
+        self._thread = threading.Thread(target=self._async_write)
+        self._thread.start()
+
+    def _async_write(self):
+        while True:
+            task = self._queue.get()
+            if task is None:
+                break
+            else:
+                name, obj = task
+            serialized = self.reserved.copy()
+
+            _to_hdf5(self.root, name, obj, serialized=serialized)
+
+            self._queue.task_done()
+
+    def stop(self):
+        self._queue.put(None)
+        self._thread.join()
+
+    def __del__(self):
+        self.stop()
+
+    def write(self, obj, name=None):
+        if name is None:
+            name = time_string()
+
+        obj = copy.deepcopy(obj)
+
+        self._queue.put((name, obj))
