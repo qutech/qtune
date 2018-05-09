@@ -1,7 +1,10 @@
 import warnings
 import copy
+
 import threading
 import queue
+import multiprocessing
+
 from typing import Union
 
 import h5py
@@ -227,11 +230,8 @@ def from_hdf5(filename_or_handle, reserved):
 
 
 class AsynchronousHDF5Writer:
-    def __init__(self, filename_or_handle, reserved):
-        if isinstance(filename_or_handle, h5py.Group):
-            self.root = filename_or_handle
-        else:
-            self.root = h5py.File(filename_or_handle, mode='w')
+    def __init__(self, filename, reserved, multiprocess=True):
+        self.filename = filename
 
         reserved = reserved.copy()
 
@@ -242,36 +242,49 @@ class AsynchronousHDF5Writer:
 
         self.reserved = reserved
 
-        self._queue = queue.Queue()
-        self._thread = threading.Thread(target=self._async_write)
-        self._thread.start()
+        if multiprocess:
+            Queue = multiprocessing.Queue
+            Worker = multiprocessing.Process
+        else:
+            Queue = queue.Queue
+            Worker = threading.Thread
+        self._queue = Queue()
+        self._worker = Worker(target=self._async_write)
+        self._worker.start()
 
     def _async_write(self):
-        while True:
-            task = self._queue.get()
-            if task is None:
-                break
-            else:
-                name, obj = task
-            serialized = self.reserved.copy()
+        with h5py.File(self.filename, 'w') as root:
+            while True:
+                task = self._queue.get()
+                if task is None:
+                    self._queue.task_done()
+                    break
+                else:
+                    name, obj, reserved = task
 
-            _to_hdf5(self.root, name, obj, serialized=serialized)
+                _to_hdf5(root, name, obj, serialized=reserved)
 
-            self._queue.task_done()
+                self._queue.task_done()
 
     def join(self):
         """Stop writing and join thread."""
         self._queue.put(None)
         self._queue.join()
-        self._thread.join()
+        self._worker.join()
 
     def __del__(self):
         self.join()
 
     def write(self, obj, name=None):
+        if not self._worker.is_alive():
+            raise RuntimeError('Writer already stopped')
+
         if name is None:
             name = time_string()
 
-        obj = copy.deepcopy(obj)
+        if isinstance(self._worker, threading.Thread):
+            obj, reserved = copy.deepcopy((obj, self.reserved))
+        else:
+            reserved = self.reserved
 
-        self._queue.put((name, obj))
+        self._queue.put((name, obj, reserved))
