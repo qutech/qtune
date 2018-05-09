@@ -4,6 +4,8 @@ import operator
 import pandas as pd
 import qtune.storage
 import qtune.autotuner
+import qtune.solver
+import qtune.gradient
 
 
 def read_files(file_or_files, reserved=None):
@@ -26,7 +28,6 @@ def read_files(file_or_files, reserved=None):
     return data.sort(key=operator.itemgetter(0))
 
 
-
 class Reader:
     def __init__(self, path):
         self._file_path = path
@@ -34,10 +35,14 @@ class Reader:
 
         self.voltage_list = []
         self.parameter_list = []
+        self.gradient_list = []
+        self.covariance_list = []
         for tuning_hierarchy in self.tuner_list:
             self.voltage_list.append(extract_voltages_from_hierarchy(tuning_hierarchy))
             self.parameter_list.append(extract_parameters_from_hierarchy(tuning_hierarchy))
-
+            grad, cov = extract_gradients_from_hierarchy(tuning_hierarchy)
+            self.gradient_list.append(grad)
+            self.covariance_list.append(cov)
 
     def load_data(self):
         """
@@ -71,7 +76,21 @@ def extract_voltages_from_hierarchy(tuning_hierarchy):
 def extract_parameters_from_hierarchy(tuning_hierarchy):
     parameters = pd.Series()
     for par_tuner in tuning_hierarchy:
-        parameters.append(pd.Series(par_tuner._last_parameter_values))
+        parameters = parameters.append(par_tuner._last_parameter_values)
     return parameters
 
-#def extract_gradients_from_hierarchy
+
+def extract_gradients_from_hierarchy(tuning_hierarchy):
+    gradients = dict()
+    covariances = dict()
+    for tuner in tuning_hierarchy:
+        if isinstance(tuner.solver, qtune.solver.NewtonSolver):
+            with tuner.solver._gradient_estimators as grad_estimators:
+                for i in range(len(grad_estimators)):
+                    if isinstance(grad_estimators[i], qtune.gradient.KalmanGradientEstimator):
+                        gradients[tuner.solver.target.index[i]] = grad_estimators[i]._kalman_gradient.grad
+                        covariances[tuner.solver.target.index[i]] = grad_estimators[i]._kalman_gradient.cov
+                    elif isinstance(grad_estimators[i], qtune.gradient.FiniteDifferencesGradientEstimator):
+                        gradients[tuner.solver.target.index[i]] = grad_estimators[i]._current_estimate
+                        covariances[tuner.solver.target.index[i]] = grad_estimators[i]._covariance
+    return gradients, covariances
