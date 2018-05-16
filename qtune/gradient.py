@@ -19,6 +19,9 @@ class GradientEstimator(metaclass=HDF5Serializable):
     def estimate(self) -> pd.Series:
         raise NotImplementedError()
 
+    def covariance(self) -> pd.Series:
+        raise NotImplementedError()
+
     def require_measurement(self) -> Optional[pd.Series]:
         raise NotImplementedError()
 
@@ -189,6 +192,10 @@ class KalmanGradientEstimator(GradientEstimator):
     def estimate(self) -> pd.Series:
         return pd.Series(np.squeeze(self._kalman_gradient.grad), index=self._current_position.index)
 
+    def covariance(self) -> pd.DataFrame:
+        return pd.DataFrame(self._kalman_gradient.cov, index=self._current_position.index,
+                            columns=self._current_position.index)
+
     def require_measurement(self):
         """I do not think this is good math. Julian to the rescue!"""
         eigenvalues, eigenvectors = np.linalg.eigh(self._kalman_gradient.cov)
@@ -260,6 +267,9 @@ class SelfInitializingKalmanEstimator(GradientEstimator):
 
     def estimate(self):
         return self.active_estimator.estimate()
+
+    def covariance(self):
+        return self.active_estimator.covariance()
 
     def change_position(self, new_position: pd.Series):
         self._finite_difference_estimator.change_position(new_position)
