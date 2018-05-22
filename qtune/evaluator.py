@@ -20,7 +20,7 @@ class Evaluator(metaclass=HDF5Serializable):
                  measurements: Sequence[Measurement],
                  parameters: Sequence[str]):
         self._experiment = experiment
-        self._measurements = tuple(measurements)
+        self._measurements = tuple(measurements)  # Is this the behaviour that was intended?
         self._parameters = tuple(parameters)
 
     @property

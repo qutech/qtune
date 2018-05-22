@@ -144,19 +144,18 @@ class SMQQDLineScan(Evaluator):
 
         # This seems weired since the parameter is to be returned ^^^^^^^^^^^^^^^^
         if measurements is None:
-            measurements = experiment._measurements['line']
+            self._measurements = experiment._measurements['line']
             # can we prevent hardcoding indices or accessing private vars here?
         super().__init__(experiment, measurements, parameters)
 
     def evaluate(self) -> pd.Series:
-        data = pd.Series()
-        failed = True
-        tunnel_coupling = np.nan
+        tunnel_coupling = tuple()
+        failed = tuple()
 
-        for measurement in self.measurements:
-            data['measurement'] = self.experiment.measure(measurement)
-
-            # TODO Process data
+        for measurement in self.measurements:  # should just be one here, nasty hack since measurements is a tuple
+            data = self.experiment.measure(measurement)
+            tunnel_coupling += (data['data'].ana.width,)
+            failed += (bool(data['data'].successful),)
 
         return pd.Series({'tunnel_coupling': tunnel_coupling, 'failed': failed})
 

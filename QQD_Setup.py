@@ -12,11 +12,15 @@ matlab.engine.local_tune_setup(nargout=0)
 # create QQd Instance
 qqd = sm_tune_qqd.SMTuneQQD(matlab)
 
-#%%
 # Test measurements
 ret = qqd.measure(Measurement('line',index=1,loadFile=r'Y:\GaAs\Triton 200\Backup\DATA\\tune\\run_0001\line\sm_line_3_2018_05_09_16_02_05.mat'))
 
 dat = ret['data']
+#%%
+# Create evaluators for dots 1 and 2
+dqd1_tunnel_coupling = sm_tune_qqd.SMQQDLineScan(experiment=qqd, measurements=(Measurement('line',index=1,
+            loadFile=r'Y:\GaAs\Triton 200\Backup\DATA\\tune\\run_0001\line\sm_line_3_2018_05_09_16_02_05.mat'), ))
+
 #%%
 
 qqd.measure(Measurement('lead',index=1))
@@ -33,8 +37,7 @@ sensor1_2d = sm_tune_qqd.SMQQDSensor2d(experiment=qqd, measurements=(Measurement
 sensor2 = sm_tune_qqd.SMQQDSensor(experiment=qqd, measurements=(Measurement('sensor',index=2),) )
 sensor2_2d = sm_tune_qqd.SMQQDSensor2d(experiment=qqd, measurements=(Measurement('sensor_2d',index=2),) )
 
-# Create evaluators for dots 1 and 2
-dqd1_tunnel_coupling = sm_tune_qqd.SMQQDLineScan(experiment=qqd, measurements=(Measurement('line',index=1),) )
+
 dqd1_lead_A = sm_tune_qqd.SMQQDLeadScan(experiment=qqd, measurements=(Measurement('lead',index=1),) )
 dqd1_lead_B = sm_tune_qqd.SMQQDLeadScan(experiment=qqd, measurements=(Measurement('lead',index=1),) )
 dqd1_chrg = sm_tune_qqd.SMQQDChrgScan(experiment=qqd, measurements=(Measurement('chrg',index=1),) )
