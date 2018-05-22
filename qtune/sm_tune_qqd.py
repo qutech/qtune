@@ -105,7 +105,7 @@ class SMTuneQQD(Experiment):
 
             # data = self._matlab.engine.tune.tune(measurement_name, index, name_value_pairs)
 
-            data_view = tune_view(measurement_name, index, name_value_pairs)
+            data_view = tune_view(measurement_name, *([np.float(index)] + name_value_pairs))
         else:
             data_view = tune_view(measurement_name, index)
         result=None
