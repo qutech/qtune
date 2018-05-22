@@ -82,16 +82,6 @@ class SMTuneQQD(Experiment):
     def tune(self, measurement_name, index: np.int, **kwargs) -> pd.Series:
         # Tune wrapper using the MATLAB syntax
 
-        options = kwargs
-        for parameter, value in options.items():
-            if isinstance(value, Number):
-                options[parameter] = float(value)
-
-        # kwargs 2 name value pairs
-        keys = list(options.keys())
-        vals = list(options.values())
-        name_value_pairs = [x for t in zip(keys, vals) for x in t]
-
         # check data structure of returned values -> Most likely MATLAB struct
         # TODO This WILL need to be parsed into a usable matlab structure!
         # data ---  args        <<<< contains struct arrays!
@@ -100,11 +90,25 @@ class SMTuneQQD(Experiment):
         #       |-  successful  <<<< duh!
         # Tune usage                         Operation string , INDEX (int)        , name value pair parameters
 
-        # data = self._matlab.engine.tune.tune(measurement_name, index, name_value_pairs)
-        tune_view = mat2py.MATLABFunctionView(self._matlab.engine,'tune.tune')
-        data_view = tune_view(measurement_name, index, name_value_pairs)
+        options = kwargs
+        tune_view = mat2py.MATLABFunctionView(self._matlab.engine, 'tune.tune')
 
+        if options:
+            for parameter, value in options.items():
+                if isinstance(value, Number):
+                    options[parameter] = float(value)
 
+          # kwargs 2 name value pairs
+            keys = list(options.keys())
+            vals = list(options.values())
+            name_value_pairs = [x for t in zip(keys, vals) for x in t]
+
+            # data = self._matlab.engine.tune.tune(measurement_name, index, name_value_pairs)
+
+            data_view = tune_view(measurement_name, index, name_value_pairs)
+        else:
+            data_view = tune_view(measurement_name, index)
+        result=None
         return result
 
     def pytune(self, measurement) -> pd.Series:
@@ -113,7 +117,9 @@ class SMTuneQQD(Experiment):
         index = options['index']
         del options['index']
         # TODO This creates a 1x0 cell if only index is passed, might conflict with the tune script
+
         result = self.tune(measurement_name=measurement._name, index=index, **options)
+
 
         return result
 
