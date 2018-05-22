@@ -6,6 +6,8 @@ from numbers import Number
 from qtune.experiment import Experiment, Measurement
 from qtune.evaluator import Evaluator
 from qtune.sm import SpecialMeasureMatlab
+from qtune import mat2py
+
 # This file bundles everything connected to the QQD
 # Is this the file structure we want?
 
@@ -31,7 +33,12 @@ class SMTuneQQD(Experiment):
                               'line': Measurement('line'),
                               'lead': Measurement('lead'),
                               'jac': Measurement('jac'),  # Probably part of the autotuner
-                              'measp': Measurement('measp')}
+                              'measp': Measurement('measp'),
+                              'load': Measurement('load'),
+                              'load pos': Measurement('load pos'),
+                              'chrg rnd': Measurement('chrg rnd'),
+                              'chrg s': Measurement('chrg s'),
+                              'tlp': Measurement('tlp')}
 
         self._n_dqds = 3
         self._n_sensors = 2
@@ -92,9 +99,13 @@ class SMTuneQQD(Experiment):
         #       |-  ana         <<<< Result of analysis (if run!)
         #       |-  successful  <<<< duh!
         # Tune usage                         Operation string , INDEX (int)        , name value pair parameters
-        data = self._matlab.engine.tune.tune(measurement_name, index, name_value_pairs)
 
-        return data
+        # data = self._matlab.engine.tune.tune(measurement_name, index, name_value_pairs)
+        tune_view = mat2py.MATLABFunctionView(self._matlab.engine,'tune')
+        data_view = tune_view(measurement_name, index, name_value_pairs)
+
+
+        return result
 
     def pytune(self, measurement) -> pd.Series:
         # Tune wrapper using the autotune syntax
@@ -102,18 +113,18 @@ class SMTuneQQD(Experiment):
         index = options['index']
         del options['index']
         # TODO This creates a 1x0 cell if only index is passed, might conflict with the tune script
-        data = self.tune(measurement_name=measurement._name, index=index, **options)
+        result = self.tune(measurement_name=measurement._name, index=index, **options)
 
-        return data
+        return result
 
     def measure(self, measurement: Measurement) -> pd.Series:
         """This function basically wraps the tune.m script on the Trition 200 setup"""
         if measurement._name not in self._measurements.keys():
             raise ValueError('Unknown measurement: {}'.format(measurement))
 
-        data = self.pytune(measurement)
+        result = self.pytune(measurement)
 
-        return data
+        return result
 
 
 class SMQQDLineScan(Evaluator):

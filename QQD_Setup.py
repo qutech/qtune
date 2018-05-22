@@ -1,3 +1,4 @@
+#%%
 from qtune import sm
 from qtune import sm_tune_qqd
 from qtune.experiment import Measurement
@@ -10,7 +11,7 @@ matlab = sm.SpecialMeasureMatlab()
 
 # create QQd Instance
 qqd = sm_tune_qqd.SMTuneQQD(matlab)
-
+#%%
 # Test measurements
 qqd.measure(Measurement('line',index=1))
 qqd.measure(Measurement('lead',index=1))
@@ -18,13 +19,14 @@ qqd.measure(Measurement('resp',index=1))
 qqd.measure(Measurement('chrg',index=1))
 qqd.measure(Measurement('sensor',index=1))
 
+#%%
 # Create Evaluators for sensor 1
 sensor1 = sm_tune_qqd.SMQQDSensor(experiment=qqd, measurements=(Measurement('sensor',index=1),) )
 sensor1_2d = sm_tune_qqd.SMQQDSensor2d(experiment=qqd, measurements=(Measurement('sensor_2d',index=1),) )
 
 # Create Evaluators for sensor 2
-sensor2 = sm_tune_qqd.SMQQDSensor(experiment=qqd, measurements=(Measurement('sensor',index=1),) )
-sensor2_2d = sm_tune_qqd.SMQQDSensor2d(experiment=qqd, measurements=(Measurement('sensor_2d',index=1),) )
+sensor2 = sm_tune_qqd.SMQQDSensor(experiment=qqd, measurements=(Measurement('sensor',index=2),) )
+sensor2_2d = sm_tune_qqd.SMQQDSensor2d(experiment=qqd, measurements=(Measurement('sensor_2d',index=2),) )
 
 # Create evaluators for dots 1 and 2
 dqd1_tunnel_coupling = sm_tune_qqd.SMQQDLineScan(experiment=qqd, measurements=(Measurement('line',index=1),) )
