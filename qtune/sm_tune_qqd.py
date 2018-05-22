@@ -108,8 +108,8 @@ class SMTuneQQD(Experiment):
             data_view = tune_view(measurement_name, *([np.float(index)] + name_value_pairs))
         else:
             data_view = tune_view(measurement_name, index)
-        result=None
-        return result
+
+        return pd.Series({'data': data_view})
 
     def pytune(self, measurement) -> pd.Series:
         # Tune wrapper using the autotune syntax
