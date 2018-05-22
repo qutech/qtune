@@ -40,15 +40,15 @@ def size(matlab_view):
 
 
 def _get_item_array(eval_str, idx):
-    return r"subsref(%s, struct('type', {'()'}, 'subs', {%s}))" % (eval_str, idx)
+    return r"subsref(%s, struct('type', {'()'}, 'subs', {'%s'}))" % (eval_str, idx)
 
 
 def _get_item_cell(eval_str, idx):
-    return r"subsref(%s, struct('type', {'{}'}, 'subs', {%s}))" % (eval_str, idx)
+    return r"subsref(%s, struct('type', {'{}'}, 'subs', {'%s'}))" % (eval_str, idx)
 
 
 def _get_field(eval_str, field):
-    return r"subsref(%s, struct('type', {'.'}, 'subs', {%s}))" % (eval_str, field)
+    return r"subsref(%s, struct('type', {'.'}, 'subs', {'%s'}))" % (eval_str, field)
 
 
 def _set_field(eval_str, field, val_str):

@@ -14,9 +14,9 @@ qqd = sm_tune_qqd.SMTuneQQD(matlab)
 
 #%%
 # Test measurements
-qqd.measure(Measurement('line',index=1,loadFile=r'Y:\GaAs\Triton 200\Backup\DATA\\tune\\run_0001\line\sm_line_3_2018_05_09_16_02_05.mat'))
+ret = qqd.measure(Measurement('line',index=1,loadFile=r'Y:\GaAs\Triton 200\Backup\DATA\\tune\\run_0001\line\sm_line_3_2018_05_09_16_02_05.mat'))
 
-
+dat = ret['data']
 #%%
 
 qqd.measure(Measurement('lead',index=1))
