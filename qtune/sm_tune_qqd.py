@@ -101,7 +101,7 @@ class SMTuneQQD(Experiment):
         # Tune usage                         Operation string , INDEX (int)        , name value pair parameters
 
         # data = self._matlab.engine.tune.tune(measurement_name, index, name_value_pairs)
-        tune_view = mat2py.MATLABFunctionView(self._matlab.engine,'tune')
+        tune_view = mat2py.MATLABFunctionView(self._matlab.engine,'tune.tune')
         data_view = tune_view(measurement_name, index, name_value_pairs)
 
 
