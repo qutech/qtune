@@ -57,17 +57,20 @@ class Solver(metaclass=HDF5Serializable):
 class NewtonSolver(Solver):
     """This solver uses (an estimate of) the jacobian and solves by inverting it.(Newton's method)
 
-    The jacobian is put together from the given gradient estimators"""
+    The jacobian is put together from the given gradient estimators
+
+    TODO: The jacobian is not automatically in the correct basis
+    """
     def __init__(self, target: pd.DataFrame,
                  gradient_estimators: Sequence[GradientEstimator],
                  current_position: pd.Series=None,
                  current_values: pd.Series=None):
         self._target = target
         self._gradient_estimators = list(gradient_estimators)
-        assert len(self._target) == len(self._gradient_estimators)
+        assert (len(self._target.index) == len(self._gradient_estimators))
 
         self._current_position = current_position
-        if current_values:
+        if current_values is not None:
             self._current_values = current_values[self._target.index]
         else:
             self._current_values = pd.Series(np.nan, index=self._target.index)
@@ -91,7 +94,10 @@ class NewtonSolver(Solver):
             raise RuntimeError('NewtonSolver: Position not initialized.')
 
         # our jacobian is sufficiently accurate
-        required_diff = self.target.desired - self._current_values
+        # nan targets are replaced with the current values
+        target = self.target.desired.fillna(self._current_values)
+
+        required_diff = target - self._current_values
 
         step, *_ = np.linalg.lstsq(self.jacobian, required_diff)
         return self._current_position + step

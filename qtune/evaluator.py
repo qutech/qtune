@@ -77,7 +77,9 @@ class LeadTunnelTimeByLeadScan(Evaluator):
             [error_t_rise, error_t_fall], ['parameter_time_rise', 'parameter_time_fall'])
 
     def to_hdf5(self):
-        return super().to_hdf5()
+        return dict(dqd=self.experiment,
+                    parameters=self.parameters,
+                    lead_scan=self.measurements[0])
 
 
 class InterDotTCByLineScan(Evaluator):
@@ -113,7 +115,9 @@ class InterDotTCByLineScan(Evaluator):
         return pd.Series([tc], ["parameter_tunnel_coupling"]), pd.Series([residual], ["parameter_tunnel_coupling"])
 
     def to_hdf5(self):
-        return super().to_hdf5()
+        return dict(dqd=self.experiment,
+                    parameters=self.parameters,
+                    line_scan=self.measurements[0])
 
 
 class LoadTime(Evaluator):
@@ -147,7 +151,9 @@ class LoadTime(Evaluator):
         return pd.Series([parameter_time_load], ['parameter_time_load']), pd.Series([residual], ["parameter_time_load"])
 
     def to_hdf5(self):
-        return super().to_hdf5()
+        return dict(dqd=self.experiment,
+                    parameters=self.parameters,
+                    load_scan=self.measurements[0])
 
 
 class LeadTransition(Evaluator):
@@ -200,7 +206,9 @@ class LeadTransition(Evaluator):
         return transition_position, error
 
     def to_hdf5(self):
-        return dict(super().to_hdf5(),
+        return dict(experiment=self.experiment,
+                    parameters=self.parameters,
+                    line_scan=self.measurements[0],
                     shifting_gates=self._shifting_gates,
                     charge_diagram_width=self._charge_diagram_width)
 
@@ -255,7 +263,9 @@ class SensingDot1D(Evaluator):
         return values, error
 
     def to_hdf5(self):
-        return dict(super().to_hdf5(),
+        return dict(experiment=self.experiment,
+                    parameters=self.parameters,
+                    sensing_dot_measurement=self.measurements[0],
                     sweeping_gates=self._sweeping_gates)
 
 
@@ -303,7 +313,9 @@ class SensingDot2D(Evaluator):
         return new_voltages, error
 
     def to_hdf5(self):
-        return dict(super().to_hdf5(),
+        return dict(experiment=self.experiment,
+                    parameters=self.parameters,
+                    sensing_dot_measurement=self.measurements[0],
                     sweeping_gates=self._sweeping_gates,
                     scan_range=self._scan_range)
 

@@ -8,10 +8,11 @@ from mpl_toolkits.mplot3d import Axes3D
 import qtune.evaluator
 from qtune.kalman_gradient import KalmanGradient
 
+"""
 known_evaluators = pd.Series([["parameter_tunnel_coupling"], ["parameter_time_rise", "parameter_time_fall"]],
                              ["evaluator_SMInterDotTCByLineScan", "evaluator_SMLeadTunnelTimeByLeadScan"])
 known_evaluators = known_evaluators.sort_index()
-
+"""
 
 class Analyzer:
     def __init__(self, filename: str=None):
@@ -481,7 +482,6 @@ class Analyzer:
         figure_number = 1
         plt.figure(figure_number)
 
-        print(number_steps)
         number_parameter = len(self.parameter_names)
         for i in range(number_parameter):
             if recalculate_parameters:
@@ -681,7 +681,7 @@ class Analyzer:
         plt.figure(1)
         for i in range(1, number_runs):
             number_steps[i] = number_steps[i] + number_steps[i - 1]
-        print(number_steps)
+
         number_parameter = len(self.parameter_names)
         for i in range(number_parameter):
             plt.subplot(number_parameter, 1, i + 1)

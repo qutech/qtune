@@ -20,7 +20,10 @@ class ParameterTuner(metaclass=HDF5Serializable):
         self._tuned_voltages = tuned_voltages or []
 
         self._last_voltage = last_voltage
-        self._last_parameter_values = last_parameter_values
+        if last_parameter_values is None:
+            self._last_parameter_values = pd.Series(index=solver.target.index)
+        else:
+            self._last_parameter_values = last_parameter_values
 
         self._evaluators = tuple(evaluators)
 
@@ -109,7 +112,7 @@ class SubsetTuner(ParameterTuner):
         self._solver.update_after_step(solver_voltages, current_parameters, current_variances)
 
         self._last_voltage = voltages
-
+        self._last_parameter_values = current_parameters[self._last_parameter_values.index]
         if ((self.target.desired - current_parameters).abs() < self.target['tolerance']).all():
             self._tuned_voltages.append(voltages)
             return True
@@ -117,7 +120,7 @@ class SubsetTuner(ParameterTuner):
             return False
 
     def get_next_voltages(self):
-        solver_voltage = self._solver.suggest_next_voltage()
+        solver_voltage = self._solver.suggest_next_position()
         result = pd.Series(self._last_voltage)
 
         result[solver_voltage.index] = solver_voltage
@@ -157,6 +160,9 @@ class SensingDotTuner(ParameterTuner):
         current_parameter, variances = self.evaluate(cheap=True)
         solver_voltages = voltages[self._gates]
         self._last_voltage = voltages
+        for key in self._last_parameter_values.index:
+            if key in current_parameter.index:
+                self._last_parameter_values[key] = current_parameter[key]
 
         if current_parameter.le(self._min_threshold).any():
             if current_parameter.le(self._cost_threshold).any:
@@ -169,7 +175,7 @@ class SensingDotTuner(ParameterTuner):
             return True
 
     def get_next_voltages(self):
-        solver_step = self._solver.suggest_next_voltage()
+        solver_step = self._solver.suggest_next_position()
 
         return self._last_voltage.add(solver_step, fill_value=0)
 
@@ -196,4 +202,5 @@ class SensingDotTuner(ParameterTuner):
                     gates=self._gates,
                     min_threshold=self._min_threshold,
                     cost_threshold=self._cost_threshold,
-                    solver=self.solver)
+                    solver=self.solver,
+                    last_parameter_values=self._last_parameter_values)
