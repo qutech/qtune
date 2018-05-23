@@ -6,7 +6,7 @@ from qtune.experiment import Measurement
 
 # Start/Connect to MATLB
 # Make sure SpecialMeasure and Tunedata are ready to go
-matlab = sm.SpecialMeasureMatlab()
+matlab = sm.SpecialMeasureMatlab(connect='MATLAB_12804')
 # TODO check for global vars
 matlab.engine.local_tune_setup(nargout=0)
 # create QQd Instance

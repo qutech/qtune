@@ -32,8 +32,6 @@ class SMTuneQQD(Experiment):
                               'resp': Measurement('resp'),
                               'line': Measurement('line'),
                               'lead': Measurement('lead'),
-                              'jac': Measurement('jac'),  # Probably part of the autotuner
-                              'measp': Measurement('measp'),
                               'load': Measurement('load'),
                               'load pos': Measurement('load pos'),
                               'chrg rnd': Measurement('chrg rnd'),
@@ -49,6 +47,7 @@ class SMTuneQQD(Experiment):
         return tuple(self._measurements.values())
 
     def gate_voltage_names(self) -> Tuple:
+        # TODO change MATLAB gate names or put them in the python part
         return tuple(sorted(self._matlab.engine.qtune.read_qqd_gate_voltages().keys()))  # Why call MATLAB engine here?
 
     def read_gate_voltages(self) -> pd.Series:
@@ -56,6 +55,7 @@ class SMTuneQQD(Experiment):
 
     def _read_sensing_dot_voltages(self) -> pd.Series:
         # TODO: Maybe allow for getting only one sensor at a time?
+        # TODO change MATLAB gate names or put them in the python part
         return pd.Series(self._matlab.engine.qtune.read_qqd_sensing_dot_voltages()).sort_index()
 
     def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
@@ -82,8 +82,6 @@ class SMTuneQQD(Experiment):
     def tune(self, measurement_name, index: np.int, **kwargs) -> pd.Series:
         # Tune wrapper using the MATLAB syntax
 
-        # check data structure of returned values -> Most likely MATLAB struct
-        # TODO This WILL need to be parsed into a usable matlab structure!
         # data ---  args        <<<< contains struct arrays!
         #       |-  data        <<<< Important RAW data
         #       |-  ana         <<<< Result of analysis (if run!)
@@ -103,8 +101,6 @@ class SMTuneQQD(Experiment):
             vals = list(options.values())
             name_value_pairs = [x for t in zip(keys, vals) for x in t]
 
-            # data = self._matlab.engine.tune.tune(measurement_name, index, name_value_pairs)
-
             data_view = tune_view(measurement_name, *([np.float(index)] + name_value_pairs))
         else:
             data_view = tune_view(measurement_name, index)
@@ -116,10 +112,17 @@ class SMTuneQQD(Experiment):
         options = dict(measurement.options)
         index = options['index']
         del options['index']
-        # TODO This creates a 1x0 cell if only index is passed, might conflict with the tune script
 
         result = self.tune(measurement_name=measurement._name, index=index, **options)
 
+        return result
+
+    def measure_legacy(self, measurement: Measurement) -> pd.Series:
+        """This function basically wraps the tune.m script on the Trition 200 setup"""
+        if measurement._name not in self._measurements.keys():
+            raise ValueError('Unknown measurement: {}'.format(measurement))
+
+        result = self.pytune(measurement)
 
         return result
 
@@ -130,7 +133,56 @@ class SMTuneQQD(Experiment):
 
         result = self.pytune(measurement)
 
+        if measurement._name == 'line':
+            result = result['data'].ana.width
+        elif measurement._name == 'lead':
+            pass
+        elif measurement._name == 'load':
+            pass
+        elif measurement._name == 'load pos':
+            pass
+        elif measurement._name == 'sensor':
+            pass
+        elif measurement._name == 'sensor 2d':
+            pass
+        elif measurement._name == 'chrg':
+            pass
+        elif measurement._name == 'chrg rnd':
+            pass
+        elif measurement._name == 'chrg s':
+            pass
+        elif measurement._name == 'tlp':
+            pass
+
         return result
+
+
+class SMQQDPassThru(Evaluator):
+    """
+    Pass thru Evaluator
+    """
+    def __init__(self, experiment: SMTuneQQD, measurements: Tuple[Measurement],
+                 parameters: pd.Series() = pd.Series({'pass_thru_parameter': np.nan})):
+
+        if measurements is None:
+            self._measurements = experiment.measurements
+
+        super().__init__(experiment, measurements, parameters)
+
+        if not parameters:
+            self._parameters = pd.Series()
+
+    def evaluate(self) -> pd.Series:
+
+        for measurement in self.measurements:  # should just be one here, nasty hack since measurements is a tuple
+            self._parameters[measurement._name] = self.experiment.measure(measurement)
+
+        return self._parameters
+
+    def to_hdf5(self):
+        return dict(experiment=self.experiment,
+                    measurements=self.measurements,
+                    parameters=self.parameters)
 
 
 class SMQQDLineScan(Evaluator):
@@ -153,7 +205,7 @@ class SMQQDLineScan(Evaluator):
         failed = tuple()
 
         for measurement in self.measurements:  # should just be one here, nasty hack since measurements is a tuple
-            data = self.experiment.measure(measurement)
+            data = self.experiment.measure_legacy(measurement)
             tunnel_coupling += (data['data'].ana.width,)
             failed += (bool(data['data'].successful),)
 
