@@ -33,8 +33,8 @@ class GradientEstimator(metaclass=HDF5Serializable):
 
 
 class FiniteDifferencesGradientEstimator(GradientEstimator):
-    def __init__(self,
-                 current_position: pd.Series,
+    def __init__(self, *,
+                 current_position: pd.Series=None,
                  epsilon: Union[pd.Series, float],
                  symmetric: bool=False,
                  current_estimate=None,
@@ -53,6 +53,13 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
         :param stored_measurements:
         :param requested_measurements:
         """
+        if current_position is None:
+            if not isinstance(epsilon, pd.Series):
+                raise TypeError('Epsilon has to be a pandas Series to determine the order of dimensions if '
+                                'current_position is not specified')
+            else:
+                current_position = pd.Series(None, index=epsilon.index)
+
         self._current_position = current_position
 
         if not isinstance(epsilon, pd.Series):
@@ -83,6 +90,9 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
         return self._covariance
 
     def require_measurement(self) -> pd.Series:
+        if self._current_position.isnull().all():
+            raise RuntimeError("No measurement can be requested before defining the current position.")
+
         if self._current_estimate is None:
             measured_points = [v for v, *_ in self._stored_measurements]
 
@@ -94,7 +104,7 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
 
             elif self._symmetric_calculation:
                 if len(measured_points) % 2 == 1:
-                    self._requested_measurements.append(2*self._current_position - measured_points[-1][0])
+                    self._requested_measurements.append(2 * self._current_position - measured_points[-1])
                 else:
                     measured_point_diffs = [v2 - v1 for v2, v1 in zip(measured_points[1::2],
                                                                       measured_points[::2])]
@@ -102,17 +112,26 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
                         self._current_position + get_orthogonal_vector(measured_point_diffs) * self._epsilon)
 
             else:
-                if len(measured_points) < self._current_position.size:
+                if len(measured_points) == 1:
+                    measured_point_diffs = [pd.Series(index=measured_points[0].index, data=0)]
+                elif len(measured_points) <= self._current_position.size:
                     #  request arbitrary orthogonal vector
-                    ov = get_orthogonal_vector(measured_points)
-                    self._requested_measurements.append(self._current_position + ov)
+                    measured_point_diffs = [v - measured_points[0] for v in measured_points[1:]]
                 else:
-                    #  Add the current position as last point
-                    self._requested_measurements.append(self._current_position)
+                    raise RuntimeError("Congratulations! You encountered a bug!")
+                ov = get_orthogonal_vector(measured_point_diffs)
+                self._requested_measurements.append(self._current_position + ov * self._epsilon)
+
             return self._requested_measurements[-1]
 
     def update(self, position: pd.Series, value: float, variance: float, is_new_position=False):
-        if self._current_estimate is None:
+        if self._current_position.isnull().all():
+            self.change_position(position)
+
+            if not self._symmetric_calculation:
+                self._stored_measurements.append((position[self._current_position.index], value, variance))
+
+        elif self._current_estimate is None:
             self._stored_measurements.append((position[self._current_position.index], value, variance))
 
             positions, values, variances = zip(*self._stored_measurements)
@@ -125,7 +144,7 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
             elif not self._symmetric_calculation and len(self._stored_measurements) == self._current_position.size + 1:
                 #  reverse the order as the "base point" is expected to be the first
                 gradient, covariance = calculate_gradient_non_orthogonal(positions=positions[::-1],
-                                                                         values=values[::1],
+                                                                         values=values[::-1],
                                                                          variances=variances[::-1])
 
             else:
