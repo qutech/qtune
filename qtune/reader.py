@@ -76,18 +76,21 @@ class Reader:
 
         self.voltage_list = []
         self.parameter_list = []
+        self.par_covariance_list = []
         self.gradient_list = []
         self.covariance_list = []
         for tuning_hierarchy in self.tuner_list:
             self.voltage_list.append(extract_voltages_from_hierarchy(tuning_hierarchy))
-            self.parameter_list.append(extract_parameters_from_hierarchy(tuning_hierarchy))
+            parameters, par_covariances = extract_parameters_from_hierarchy(tuning_hierarchy)
+            self.parameter_list.append(parameters)
+            self.par_covariance_list.append(par_covariances)
             grad, cov = extract_gradients_from_hierarchy(tuning_hierarchy)
             self.gradient_list.append(grad)
             self.covariance_list.append(cov)
 
     @property
     def gate_names(self):
-        return self.voltage_list[0].index
+        return self.voltage_list[1].index
 
     @property
     def parameter_names(self):
@@ -96,6 +99,11 @@ class Reader:
     @property
     def gradient_controlled_parameter_names(self):
         return tuple(self.gradient_list[0].keys())
+
+    @property
+    def mode_options(self):
+        return ["all_voltages", "all_parameters", "all_gradients", "with_duplicates", "with_grad_covariances",
+                "with_par_covariances"]
 
     def load_data(self):
         """
@@ -127,6 +135,14 @@ class Reader:
             eliminate_duplicates = False
         else:
             eliminate_duplicates = True
+        if "with_grad_covariances" in mode:
+            with_grad_covariances = True
+        else:
+            with_grad_covariances = False
+        if "with_par_covariances" in mode:
+            with_par_covariances = True
+        else:
+            with_par_covariances = False
 
         if voltage_indices is None:
             voltage_fig = None
@@ -141,8 +157,10 @@ class Reader:
             parameter_ax = None
         else:
             parameter_fig, parameter_ax = plot_parameters(self.parameter_list,
+                                                          par_covariance_list=self.par_covariance_list,
                                                           parameter_names=parameter_names,
-                                                          eliminate_duplicates=eliminate_duplicates)
+                                                          eliminate_duplicates=eliminate_duplicates,
+                                                          with_covariances=with_par_covariances)
 
         if gradient_names is None:
             gradient_fig = None
@@ -151,7 +169,8 @@ class Reader:
             gradient_fig, gradient_ax = plot_gradients(gradient_list=self.gradient_list,
                                                        covariance_list=self.covariance_list,
                                                        parameter_names=gradient_names,
-                                                       eliminate_duplicates=eliminate_duplicates)
+                                                       eliminate_duplicates=eliminate_duplicates,
+                                                       with_covariances=with_grad_covariances)
 
         plt.show()
         return voltage_fig, voltage_ax, parameter_fig, parameter_ax, gradient_fig, gradient_ax
@@ -173,8 +192,11 @@ def plot_voltages(voltage_list, voltage_indices: Tuple[str], eliminate_duplicate
     return voltage_fig, voltage_ax
 
 
-def plot_parameters(parameter_list, parameter_names: Tuple[str], eliminate_duplicates: bool=True):
+def plot_parameters(parameter_list, par_covariance_list, parameter_names: Tuple[str], eliminate_duplicates: bool,
+                    with_covariances: bool):
     if eliminate_duplicates:
+        par_covariance_list = [par_covariance_list[i] for i, v in enumerate(parameter_list) if
+                               i == 0 or not v.equals(parameter_list[i - 1])]
         parameter_list = [v for i, v in enumerate(parameter_list) if i == 0 or not v.equals(parameter_list[i - 1])]
     parameter_dataframe = pd.concat(parameter_list, axis=1).T
 
@@ -182,15 +204,20 @@ def plot_parameters(parameter_list, parameter_names: Tuple[str], eliminate_dupli
     if len(parameter_names) == 1:
         parameter_ax = [parameter_ax, ]
     for i, parameter in enumerate(parameter_names):
-        parameter_ax[i].plot(parameter_dataframe[parameter])
+        if with_covariances:
+            cov_data_frame = pd.concat(par_covariance_list, axis=1).fillna(0.)
+            parameter_ax[i].errorbar(x=np.arange(parameter_dataframe.shape[0]), y=parameter_dataframe[parameter],
+                                     yerr=cov_data_frame.applymap(np.sqrt).T[parameter])
+        else:
+            parameter_ax[i].plot(parameter_dataframe[parameter])
         parameter_ax[i].set_ylabel(parameter_information[parameter]["entity_unit"])
         parameter_ax[i].set_title(parameter_information[parameter]["name"])
     parameter_ax[len(parameter_names) - 1].set_xlabel("Measurement Number")
     return parameter_fig, parameter_ax
 
 
-def plot_gradients(gradient_list, covariance_list, parameter_names: Tuple[str], eliminate_duplicates: bool=True,
-                   with_covariances: bool=True):
+def plot_gradients(gradient_list, covariance_list, parameter_names: Tuple[str], eliminate_duplicates: bool,
+                   with_covariances: bool):
     if eliminate_duplicates:
         covariance_list = [covariance_list[i] for i, v in enumerate(gradient_list) if
                            i == 0 or not v.equals(gradient_list[i - 1])]
@@ -200,10 +227,12 @@ def plot_gradients(gradient_list, covariance_list, parameter_names: Tuple[str], 
     for i, parameter in enumerate(parameter_names):
         grad_dataframe = pd.concat([pd.Series(gradients[parameter]) for gradients in gradient_list], axis=1,
                                    ignore_index=True)
+        # drop not existing columns
+        grad_dataframe = grad_dataframe.T.dropna().T
         if with_covariances:
             cov_series_list = [extract_diagonal_from_data_frame(covariances[parameter]) for covariances in
                                covariance_list]
-            cov_data_frame = pd.concat(cov_series_list, axis=1)
+            cov_data_frame = pd.concat(cov_series_list, axis=1).T.dropna().T
             for gate in grad_dataframe.index:
                 grad_ax[i].errorbar(x=np.arange(grad_dataframe.shape[1]), y=grad_dataframe.T[gate],
                                     yerr=cov_data_frame.applymap(np.sqrt).T[gate])
@@ -227,9 +256,12 @@ def extract_voltages_from_hierarchy(tuning_hierarchy):
 
 def extract_parameters_from_hierarchy(tuning_hierarchy):
     parameters = pd.Series()
+    covariances = pd.Series()
     for par_tuner in tuning_hierarchy:
-        parameters = parameters.append(par_tuner._last_parameter_values)
-    return parameters
+        parameter, covariance = par_tuner.last_parameter_covariance
+        parameters = parameters.append(parameter)
+        covariances = covariances.append(covariance)
+    return parameters, covariances
 
 
 def extract_gradients_from_hierarchy(tuning_hierarchy):
@@ -248,6 +280,8 @@ def extract_gradients_from_hierarchy(tuning_hierarchy):
 
 
 def extract_diagonal_from_data_frame(df: pd.DataFrame) -> pd.Series:
+    if df is None:
+        return None
     if not set(df.index) == set(df.columns):
         raise ValueError("The index must match the columns to extract diagonal elements!")
     return pd.Series(data=[df[i][i] for i in df.index], index=df.index)
