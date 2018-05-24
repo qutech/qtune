@@ -83,7 +83,7 @@ def find_stepes_point_sensing_dot(data: np.ndarray, scan_range=5e-3, npoints=128
     return detuning
 
 
-#def gradient_min_evaluations(parameters: List(np.ndarray, ...), voltage_points: List(np.ndarray, ...)):
+# def gradient_min_evaluations(parameters: List(np.ndarray, ...), voltage_points: List(np.ndarray, ...)):
 def gradient_min_evaluations(parameters, voltage_points):
 
     """
@@ -120,11 +120,11 @@ def calculate_gradient_non_orthogonal(positions: Sequence[np.ndarray],
     n_dim = positions[0].size
 
     if n_points == n_dim + 1:
-        voltage_diff = np.stack(positions[1:]) - positions[0]
-        parameter_diff = np.stack(values[1:]) - values[0]
+        voltage_diff = (np.stack(positions[1:]) - np.asarray(positions[0])).T
+        parameter_diff = (np.stack(values[1:]) - values[0]).T
     elif n_points == 2 * n_dim:
-        voltage_diff = np.stack(positions[1::2]) - np.stack(positions[::2])
-        parameter_diff = np.stack(values[1::2]) - np.stack(values[::2])
+        voltage_diff = (np.stack(positions[1::2]) - np.stack(positions[::2])).T
+        parameter_diff = (np.stack(values[1::2]) - np.stack(values[::2])).T
     else:
         raise RuntimeError("Invalid number of points", positions, values)
 
@@ -133,7 +133,7 @@ def calculate_gradient_non_orthogonal(positions: Sequence[np.ndarray],
     except np.linalg.LinAlgError as err:
         raise EvaluationError() from err
 
-    gradient = inverted_volt_diffs @ parameter_diff
+    gradient = parameter_diff @ inverted_volt_diffs
 
     if variances:
         if n_points == n_dim + 1:
@@ -141,7 +141,7 @@ def calculate_gradient_non_orthogonal(positions: Sequence[np.ndarray],
         else:
             diff_variances = np.stack(variances[1::2]) + np.stack(variances[::2])
 
-        gradient_covariance = inverted_volt_diffs @ np.diag(diff_variances) @ inverted_volt_diffs.T
+        gradient_covariance = inverted_volt_diffs.T @ np.diag(diff_variances) @ inverted_volt_diffs
         return gradient, gradient_covariance
 
     return gradient
@@ -150,5 +150,7 @@ def calculate_gradient_non_orthogonal(positions: Sequence[np.ndarray],
 def get_orthogonal_vector(vectors: Sequence[np.ndarray]):
     """Return a vector orthogonal to the given ones"""
     ov, *_ = sp.Matrix(vectors).nullspace()
-    ov = np.asarray(ov, dtype=float)
+    # ov = np.asarray(ov, dtype=float)
+    ov = np.array(ov).astype(float)
+    ov = np.squeeze(ov)
     return ov / np.linalg.norm(ov)
