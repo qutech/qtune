@@ -143,6 +143,8 @@ class MATLABStructView(MATLABView):
             raise AttributeError()
         if field == 'getdoc' and 'getdoc' not in dir(self):
             raise AttributeError()
+        if field == 'next' and 'next' not in dir(self):
+            raise AttributeError()
         if self._eval('isscalar(%s)' % self._eval_str):
             return make_view(self._engine, _get_field(self._eval_str, field))
         else:

@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from typing import Tuple
+from typing import Tuple, List, Sequence
 from numbers import Number
 
 from qtune.experiment import Experiment, Measurement
@@ -26,7 +26,7 @@ class SMTuneQQD(Experiment):
         # TODO Load tunedata to Python or interface it?
 
         # TODO List all possible arguments for Measurements here!
-        self._measurements = {'sensor_2d': Measurement('sensor_2d'),
+        self._measurements = {'sensor 2d': Measurement('sensor 2d'),
                               'sensor': Measurement('sensor'),
                               'chrg': Measurement('chrg'),
                               'resp': Measurement('resp'),
@@ -36,7 +36,8 @@ class SMTuneQQD(Experiment):
                               'load pos': Measurement('load pos'),
                               'chrg rnd': Measurement('chrg rnd'),
                               'chrg s': Measurement('chrg s'),
-                              'tlp': Measurement('tlp')}
+                              'stp': Measurement('stp'),
+                              'tl': Measurement('tl')}
 
         self._n_dqds = 3
         self._n_sensors = 2
@@ -126,7 +127,7 @@ class SMTuneQQD(Experiment):
 
         return result
 
-    def measure(self, measurement: Measurement) -> pd.Series:
+    def measure(self, measurement: Measurement) -> np.ndarray:
         """This function basically wraps the tune.m script on the Trition 200 setup"""
         if measurement._name not in self._measurements.keys():
             raise ValueError('Unknown measurement: {}'.format(measurement))
@@ -134,25 +135,27 @@ class SMTuneQQD(Experiment):
         result = self.pytune(measurement)
 
         if measurement._name == 'line':
-            result = result['data'].ana.width
+            result = np.array(result['data'].ana.width)
         elif measurement._name == 'lead':
-            pass
+            result = np.array(result['data'].ana.fitParams[1][3])
         elif measurement._name == 'load':
             pass
         elif measurement._name == 'load pos':
-            pass
-        elif measurement._name == 'sensor':
-            pass
-        elif measurement._name == 'sensor 2d':
-            pass
-        elif measurement._name == 'chrg':
             pass
         elif measurement._name == 'chrg rnd':
             pass
         elif measurement._name == 'chrg s':
             pass
-        elif measurement._name == 'tlp':
-            pass
+        elif measurement._name == 'sensor':
+            result = np.array(result['data'].ana.xVal)
+        elif measurement._name == 'sensor 2d':
+            result = np.array([result['data'].ana.xVal, result['data'].ana.yVal])
+        elif measurement._name == 'chrg':
+            result = np.squeeze(result['data'].ana.O)
+        elif measurement._name == 'stp':
+            result = np.array([result['data'].ana.STp_x, result['data'].ana.STp_y])
+        elif measurement._name == 'tl':
+            result = np.array([result['data'].ana.Tp_x, result['data'].ana.Tp_y])
 
         return result
 
@@ -161,23 +164,27 @@ class SMQQDPassThru(Evaluator):
     """
     Pass thru Evaluator
     """
-    def __init__(self, experiment: SMTuneQQD, measurements: Tuple[Measurement],
-                 parameters: pd.Series() = pd.Series({'pass_thru_parameter': np.nan})):
-
-        if measurements is None:
-            self._measurements = experiment.measurements
+    def __init__(self, experiment: SMTuneQQD, measurements: List[Measurement],
+                 parameters: List[str]):
 
         super().__init__(experiment, measurements, parameters)
 
-        if not parameters:
-            self._parameters = pd.Series()
 
     def evaluate(self) -> pd.Series:
 
-        for measurement in self.measurements:  # should just be one here, nasty hack since measurements is a tuple
-            self._parameters[measurement._name] = self.experiment.measure(measurement)
+        result = pd.Series(index=self._parameters)
 
-        return self._parameters
+        for index, element in enumerate(self.parameters):
+            return_value = self.experiment.measure(self.measurements[index])
+            if return_value.size==1:
+                result[element] = return_value
+            elif return_value.size==2:
+                del result[element]
+                result[element+' x'] = return_value[0]
+                result[element+' y'] = return_value[1]
+
+
+        return result
 
     def to_hdf5(self):
         return dict(experiment=self.experiment,
