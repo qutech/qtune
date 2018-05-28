@@ -16,14 +16,21 @@ class ParameterTuner(metaclass=HDF5Serializable):
                  solver: Solver,
                  tuned_voltages=None,
                  last_voltage=None,
-                 last_parameter_values=None):
+                 last_parameter_values=None,
+                 last_parameter_covariances=None):
         self._tuned_voltages = tuned_voltages or []
 
         self._last_voltage = last_voltage
+
         if last_parameter_values is None:
             self._last_parameter_values = pd.Series(index=solver.target.index)
         else:
             self._last_parameter_values = last_parameter_values
+
+        if last_parameter_covariances is None:
+            self._last_parameter_covariances = pd.Series(index=solver.target.index)
+        else:
+            self._last_parameter_covariances = last_parameter_covariances
 
         self._evaluators = tuple(evaluators)
 
@@ -49,6 +56,11 @@ class ParameterTuner(metaclass=HDF5Serializable):
     def parameters(self) -> Sequence[str]:
         """Alphabetically sorted parameters"""
         return self.solver.target.index
+
+    @property
+    def last_parameter_covariance(self) -> Tuple[pd.Series, pd.Series]:
+        """Last parameter values with covariances."""
+        return self._last_parameter_values, self._last_parameter_covariances
 
     @property
     def tuned_voltages(self) -> List[pd.Series]:
@@ -85,7 +97,8 @@ class ParameterTuner(metaclass=HDF5Serializable):
                     solver=self._solver,
                     tuned_voltages=self._tuned_voltages,
                     last_voltage=self._last_voltage,
-                    last_parameter_values=self._last_parameter_values)
+                    last_parameter_values=self._last_parameter_values,
+                    last_parameter_covariances=self._last_parameter_covariances)
 
 
 class SubsetTuner(ParameterTuner):
@@ -113,6 +126,7 @@ class SubsetTuner(ParameterTuner):
 
         self._last_voltage = voltages
         self._last_parameter_values = current_parameters[self._last_parameter_values.index]
+        self._last_parameter_covariances = current_variances[self._last_parameter_values.index]
         if ((self.target.desired - current_parameters).abs() < self.target['tolerance']).all():
             self._tuned_voltages.append(voltages)
             return True
@@ -160,9 +174,13 @@ class SensingDotTuner(ParameterTuner):
         current_parameter, variances = self.evaluate(cheap=True)
         solver_voltages = voltages[self._gates]
         self._last_voltage = voltages
+        """
         for key in self._last_parameter_values.index:
             if key in current_parameter.index:
                 self._last_parameter_values[key] = current_parameter[key]
+                """
+        self._last_parameter_values[current_parameter.index] = current_parameter[current_parameter.index]
+        self._last_parameter_covariances[current_parameter.index] = variances[current_parameter.index]
 
         if current_parameter.le(self._min_threshold).any():
             if current_parameter.le(self._cost_threshold).any:
@@ -203,4 +221,5 @@ class SensingDotTuner(ParameterTuner):
                     min_threshold=self._min_threshold,
                     cost_threshold=self._cost_threshold,
                     solver=self.solver,
-                    last_parameter_values=self._last_parameter_values)
+                    last_parameter_values=self._last_parameter_values,
+                    last_parameter_covariances=self._last_parameter_covariances)
