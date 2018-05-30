@@ -22,7 +22,7 @@ class SerializationTests(unittest.TestCase):
 
         to_hdf5(self.temp_file.name, 'data', data)
 
-        recovered_data = from_hdf5(self.temp_file.name)
+        recovered_data = from_hdf5(self.temp_file.name, reserved=[])
 
         self.assertEqual({'data': data}, recovered_data)
 
@@ -34,7 +34,7 @@ class SerializationTests(unittest.TestCase):
 
         to_hdf5(self.temp_file.name, 'data', data)
 
-        recovered_data = from_hdf5(self.temp_file.name)
+        recovered_data = from_hdf5(self.temp_file.name, reserved=[])
 
         self.assertEqual({'data': data}, recovered_data)
 
@@ -46,7 +46,7 @@ class SerializationTests(unittest.TestCase):
 
         to_hdf5(self.temp_file.name, 'data', data)
 
-        recovered_data = from_hdf5(self.temp_file.name)
+        recovered_data = from_hdf5(self.temp_file.name, reserved=[])
 
         np.testing.assert_equal({'data': data}, recovered_data)
 
@@ -57,7 +57,7 @@ class SerializationTests(unittest.TestCase):
 
         to_hdf5(self.temp_file.name, 'data', data)
 
-        recovered_data = from_hdf5(self.temp_file.name)
+        recovered_data = from_hdf5(self.temp_file.name, reserved=[])
 
         pd.testing.assert_frame_equal(recovered_data['data']['ggg'][2], data['ggg'][2])
 
@@ -72,7 +72,7 @@ class SerializationTests(unittest.TestCase):
 
         to_hdf5(self.temp_file.name, 'data', data)
 
-        recovered_data = from_hdf5(self.temp_file.name)
+        recovered_data = from_hdf5(self.temp_file.name, reserved=[])
 
         pd.testing.assert_series_equal(recovered_data['data']['ggg'][2], data['ggg'][2])
 
@@ -107,6 +107,6 @@ class SerializationTests(unittest.TestCase):
 
         to_hdf5(self.temp_file.name, 'data', data)
 
-        recovered_data = from_hdf5(self.temp_file.name)
+        recovered_data = from_hdf5(self.temp_file.name, reserved=[])
 
         np.testing.assert_equal({'data': data}, recovered_data)

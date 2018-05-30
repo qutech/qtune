@@ -260,7 +260,7 @@ class SelfInitializingKalmanEstimator(GradientEstimator):
 
     @classmethod
     def from_scratch(cls,
-                     current_position: pd.Series,
+                     current_position: Optional[pd.Series],
                      epsilon: pd.Series,
                      maximum_covariance: float,
                      symmetric: bool=False):
@@ -304,7 +304,7 @@ class SelfInitializingKalmanEstimator(GradientEstimator):
         if self.kalman_estimator:
             self.kalman_estimator.update(position, value, covariance, is_new_position)
 
-        elif self.finite_difference_estimator.estimate():
+        elif self.finite_difference_estimator.estimate() is not None:
             # we collected enough values to initialize the kalman
             initial_estimate = self.finite_difference_estimator.estimate()
             kalman_gradient = KalmanGradient(n_pos_dim=initial_estimate.size,

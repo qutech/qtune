@@ -104,7 +104,9 @@ class NewtonSolver(Solver):
         return self._current_position + step
 
     def update_after_step(self, position: pd.Series, values: pd.Series, variances: pd.Series):
-        for estimator, value, value_index, variance in zip(self._gradient_estimators, values, values.index, variances):
+        for estimator, value, value_index, variance in zip(self._gradient_estimators,
+                                                           values[self._current_values.index],
+                                                           self._current_values.index, variances):
             if not math.isnan(self.target.desired[value_index]):
                 estimator.update(position, value, variance, is_new_position=True)
         self._current_position = position[self._current_position.index]
