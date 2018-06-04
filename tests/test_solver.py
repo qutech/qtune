@@ -1,4 +1,5 @@
 import unittest
+import unittest.mock
 
 import pandas as pd
 import numpy as np
@@ -75,4 +76,33 @@ class NewtonSolverTest(unittest.TestCase):
                             b=current_values + np.asarray(solver.jacobian).dot(np.asarray(next_step - start))))
         self.assertAlmostEqual(next_step.tolist(), [.5, 1.5, 7])
 
+    def test_update_after_step(self):
+        target = make_target(desired=pd.Series(index=["value1", "value2"], data=np.random.rand(2)))
+        start = pd.Series(index=["position1", "position2", "position3"], data=np.random.rand(3))
+        current_values = pd.Series(index=["value1", "value2", "value3"], data=np.random.rand(3))
+        initial_gradient = np.random.rand(2, 3)
+        gradient_estimators = []
+        for i in range(2):
+            gradient_estimators.append(FiniteDifferencesGradientEstimator(current_position=start,
+                                                                          epsilon=1.,
+                                                                          symmetric=True,
+                                                                          current_estimate=pd.Series(
+                                                                              initial_gradient[i][:])))
+            gradient_estimators[-1].update = unittest.mock.Mock()
+        solver = NewtonSolver(target=target, gradient_estimators=gradient_estimators,
+                              current_position=start,
+                              current_values=current_values)
 
+        update_args = dict(position=pd.Series(index=["position2", "position3", "position1"], data=[2, 3, 1]),
+                           values=pd.Series(index=["value3", "value2", "value1", "value4"], data=[3, 2, 1, 4]),
+                           variances=pd.Series(index=["value1", "value2", "value4", "value3"], data=[2, 4, 8, 6]))
+        solver.update_after_step(**update_args)
+        gradient_estimators[0].update.assert_called_once_with(update_args["position"],
+                                                              update_args["values"][target.index[0]],
+                                                              update_args["variances"][target.index[0]],
+                                                              is_new_position=True)
+        gradient_estimators[1].update.assert_called_once_with(
+            update_args["position"],
+            2,
+            4,
+            is_new_position=True)

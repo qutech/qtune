@@ -1,12 +1,14 @@
 import unittest
 import tempfile
 import os
+import random
 
 import numpy as np
 import pandas as pd
 
 from qtune.storage import serializables, to_hdf5, from_hdf5
 from qtune.gradient import KalmanGradientEstimator
+from qtune.gradient import FiniteDifferencesGradientEstimator
 from qtune.kalman_gradient import KalmanGradient
 
 
@@ -14,7 +16,7 @@ class GradientSerializationTest(unittest.TestCase):
     def test_serialization(self):
         self.assertIn('KalmanGradientEstimator', serializables)
 
-        kal_args = dict(n_params=3, n_gates=2,
+        kal_args = dict(n_values=3, n_pos_dim=2,
                         state_transition_function=np.random.randn(6, 6),
                         initial_gradient=np.random.rand(3, 2),
                         initial_covariance_matrix=np.random.rand(6, 6),
@@ -27,7 +29,8 @@ class GradientSerializationTest(unittest.TestCase):
 
         est_args = dict(kalman_gradient=kal_grad, current_position=pd.Series([1, 2], index=['abba', 'xy']),
                         current_value=10.,
-                        maximum_covariance=0.5)
+                        maximum_covariance=0.5,
+                        epsilon=.1)
 
         estimator = KalmanGradientEstimator(**est_args)
         hdf5 = estimator.to_hdf5()
@@ -35,7 +38,12 @@ class GradientSerializationTest(unittest.TestCase):
         self.assertIs(hdf5['kalman_gradient'], kal_grad)
         pd.testing.assert_series_equal(hdf5['current_position'], est_args['current_position'])
         self.assertEqual(hdf5['current_value'], est_args['current_value'])
-        self.assertEqual(hdf5['maximum_covariance'], est_args['maximum_covariance'])
+        if isinstance(est_args['maximum_covariance'], float):
+            pd.testing.assert_series_equal(hdf5['maximum_covariance'],
+                                           pd.Series(index=est_args['current_position'].index,
+                                                     data=est_args['maximum_covariance']))
+        else:
+            pd.testing.assert_series_equal(hdf5['maximum_covariance'], est_args['maximum_covariance'])
 
         temp_file = tempfile.NamedTemporaryFile(suffix='.hdf5', delete=False)
         temp_file.close()
@@ -43,14 +51,75 @@ class GradientSerializationTest(unittest.TestCase):
         try:
             to_hdf5(temp_file.name, 'estimator', estimator)
 
-            recovered = from_hdf5(temp_file.name)['estimator']
+            recovered = from_hdf5(temp_file.name, reserved=[])['estimator']
 
             hdf5 = recovered.to_hdf5()
             pd.testing.assert_series_equal(hdf5['current_position'], est_args['current_position'])
             self.assertEqual(hdf5['current_value'], est_args['current_value'])
-            self.assertEqual(hdf5['maximum_covariance'], est_args['maximum_covariance'])
+            if isinstance(est_args['maximum_covariance'], float):
+                pd.testing.assert_series_equal(hdf5['maximum_covariance'],
+                                               pd.Series(index=est_args['current_position'].index,
+                                                         data=est_args['maximum_covariance']))
+            else:
+                pd.testing.assert_series_equal(hdf5['maximum_covariance'], est_args['maximum_covariance'])
 
             np.testing.assert_equal(kal_args, hdf5['kalman_gradient'].to_hdf5())
         finally:
             os.remove(temp_file.name)
 
+
+class FiniteDiffGradientTest(unittest.TestCase):
+    def test_require_update_measurement(self):
+
+        for symmetric in [True, False]:
+            f_d_args = dict(current_position=pd.Series(data=[1, 2, 3], index=["a", "b", "c"]),
+                            epsilon=.1,
+                            symmetric=symmetric)
+
+            f_d_grad_estimator = FiniteDifferencesGradientEstimator(**f_d_args)
+            if symmetric:
+                n_meas = 2 * f_d_args['current_position'].size
+            else:
+                n_meas = f_d_args['current_position'].size
+
+            requested_measurements = []
+
+            if not symmetric:
+                f_d_grad_estimator.update(f_d_args["current_position"], random.random(), 1,
+                                          is_new_position=True)
+                requested_measurements.append(f_d_args["current_position"])
+            for i in range(n_meas):
+                requested_measurements.append(f_d_grad_estimator.require_measurement())
+                f_d_grad_estimator.update(requested_measurements[-1], random.random(), 1, is_new_position=True)
+
+            if symmetric:
+                voltage_diff = (np.stack(requested_measurements[1::2]) - np.stack(requested_measurements[::2])).T
+            else:
+                voltage_diff = (np.stack(requested_measurements[1:]) - np.asarray(requested_measurements[0])).T
+
+            for diff_vec in voltage_diff.T:
+                if symmetric:
+                    self.assertAlmostEqual(2 * f_d_args['epsilon'], np.linalg.norm(diff_vec))
+                else:
+                    self.assertAlmostEqual(f_d_args['epsilon'], np.linalg.norm(diff_vec))
+
+
+class KalmanGradientTest(unittest.TestCase):
+    def test_require_measurement(self):
+        kalman_grad = KalmanGradient(n_pos_dim=3, n_values=1, initial_gradient=None,
+                                                           initial_covariance_matrix=np.diag([2, .9, .9]))
+        kalman_args = dict(kalman_gradient=kalman_grad,
+                           current_position=pd.Series(data=[1, 2, 3], index=["a", "b", "c"]), current_value=1.,
+                           maximum_covariance=1., epsilon=0.1)
+
+        kalman_grad_est = KalmanGradientEstimator(**kalman_args)
+
+        req_meas = kalman_grad_est.require_measurement()
+
+        self.assertAlmostEqual(0, np.linalg.norm(req_meas - kalman_args["current_position"] - [.1, 0, 0]))
+
+        kalman_grad_est.update(position=req_meas, value=1, covariance=.01, is_new_position=True)
+
+        req_meas = kalman_grad_est.require_measurement()
+
+        self.assertTrue(req_meas is None)
