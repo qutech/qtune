@@ -108,7 +108,7 @@ class NewtonSolver(Solver):
                                                            values[self._current_values.index],
                                                            self._current_values.index, variances):
             if not math.isnan(self.target.desired[value_index]):
-                estimator.update(position, value, variance, is_new_position=True)
+                estimator.update(position[self._current_position.index], value, variance, is_new_position=True)
         self._current_position = position[self._current_position.index]
         self._current_values = values[self._current_values.index]
 

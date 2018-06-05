@@ -1,8 +1,11 @@
 import unittest
 import unittest.mock
+import pandas.testing
 
 import pandas as pd
 import numpy as np
+
+from typing import List
 
 from qtune.solver import ForwardingSolver
 from qtune.solver import NewtonSolver
@@ -97,12 +100,18 @@ class NewtonSolverTest(unittest.TestCase):
                            values=pd.Series(index=["value3", "value2", "value1", "value4"], data=[3, 2, 1, 4]),
                            variances=pd.Series(index=["value1", "value2", "value4", "value3"], data=[2, 4, 8, 6]))
         solver.update_after_step(**update_args)
-        gradient_estimators[0].update.assert_called_once_with(update_args["position"],
-                                                              update_args["values"][target.index[0]],
-                                                              update_args["variances"][target.index[0]],
-                                                              is_new_position=True)
-        gradient_estimators[1].update.assert_called_once_with(
-            update_args["position"],
-            2,
-            4,
-            is_new_position=True)
+
+        # assert_called_with cannot be used because the overloaded == operator doesnt return bool values for pd.Series
+        self.assertEqual(gradient_estimators[0].update.call_count, 1)
+        call_args_1 = gradient_estimators[0].update.call_args
+        pandas.testing.assert_series_equal(call_args_1[0][0], update_args["position"][start.index])
+        self.assertAlmostEqual(call_args_1[0][1:],
+                               (update_args["values"][target.index[0]], update_args["variances"][target.index[0]]))
+        self.assertEqual(call_args_1[1], dict(is_new_position=True))
+
+        self.assertEqual(gradient_estimators[0].update.call_count, 1)
+        call_args_2 = gradient_estimators[1].update.call_args
+        pandas.testing.assert_index_equal(call_args_2[0][0].index, pd.Index(["position1", "position2", "position3"]))
+        self.assertAlmostEqual(call_args_2[0][1:], (2, 4))
+        self.assertEqual(call_args_2[1], dict(is_new_position=True))
+
