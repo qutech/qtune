@@ -17,20 +17,20 @@ new_point=[args.SB, args.BB, args.T, args.N, args.SA, args.BA, args.RFA, args.RF
 
 go_back = false;
 for i=1:8
-	if abs(pretuned_point(i)-new_point(i)) > 100e-3
+	if abs(pretuned_point(i)-new_point(i)) > 20e-3
  		go_back = true;
-        disp(gatechannels()
-        disp(' is 100mV away from pretuned!')
+        disp(gatechannels)
+        disp(' is 20mV away from pretuned!')
 	end
 end
 
-if (args.SDB2 - sensor_pretuned) > 50e-3
+if (args.SDB2 - sensor_pretuned) > 20e-3
     go_back = true;
-    disp('SDB2 is 50mV away from pretuned!')
+    disp('SDB2 is 20mV away from pretuned!')
 end
-if (args.SDB1 - sensor_gate1_pretuned) > 50e-3
+if (args.SDB1 - sensor_gate1_pretuned) > 20e-3
     go_back = true;
-    disp('SDB1 is 50mV away from pretuned!')
+    disp('SDB1 is 20mV away from pretuned!')
 end
 
 
@@ -40,7 +40,7 @@ if go_back
     end
     smset('SDB2', sensor_pretuned)
     smset('SDB1', sensor_gate1_pretuned)
-    error('The dot is 100mV away from pretuned point on a dot defining gate or 50 mV away from a sensing dot gate!')
+    error('The dot is 20mV away from pretuned point on a dot defining gate or 20 mV away from a sensing dot gate!')
 end
 
 % str = input('The program wants to set the gates to the values above! [Y/N]','s')
