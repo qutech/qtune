@@ -21,7 +21,7 @@ import qtune.util
 from qtune.basic_dqd import BasicDQD
 from qtune.basic_dqd import BasicQQD
 from qtune.basic_dqd import BasicDQDRefactored
-from qtune.chrg_diag import ChargeDiagram
+#from qtune.chrg_diag import ChargeDiagram
 from qtune.evaluator import Evaluator
 
 
@@ -177,6 +177,7 @@ class LegacyDQDRefactored(BasicDQDRefactored):
             parameters['file_name'] = "line_scan" + measurement.get_file_name()
             parameters['N_points'] = float(parameters['N_points'])
             parameters['N_average'] = float(parameters['N_average'])
+            parameters['center'] = float(parameters['center'])
             return np.asarray(self._matlab.engine.qtune.PythonChargeLineScan(parameters))
         elif measurement.name == 'detune_scan':
             parameters = measurement.options.copy()
@@ -193,7 +194,7 @@ class LegacyDQDRefactored(BasicDQDRefactored):
             parameters["file_name"] = "load_scan" + measurement.get_file_name()
             return np.asarray(self._matlab.engine.qtune.LoadScan(parameters))
         elif measurement.name == "2d_scan":
-            qpc_2d_tune_input = {"range": measurement.options["scan_range"], "file_name": time_string()}
+            qpc_2d_tune_input = {"range": measurement.options["range"], "file_name": time_string()}
             return np.asarray(self._matlab.engine.qtune.PythonQPCScan2D(qpc_2d_tune_input))
         else:
             raise ValueError('Unknown measurement: {}'.format(measurement))
@@ -411,11 +412,12 @@ class LegacyQQD(BasicQQD):
             raise ValueError('Unknown measurement: {}'.format(measurement))
 
 
+"""
 class LegacyChargeDiagram(ChargeDiagram):
-    """
+    ""
     Charge diagram class using Matlab functions to detect lead transitions. Has already been replaced by the python
     version.
-    """
+    ""
     def __init__(self, dqd: LegacyDQD,
                  matlab_engine: SpecialMeasureMatlab,
                  charge_line_scan_lead_A: Measurement = None,
@@ -454,11 +456,11 @@ class LegacyChargeDiagram(ChargeDiagram):
 
 
 class SMInterDotTCByLineScan(Evaluator):
-    """
+    "
     Adiabaticly sweeps the detune over the transition between the (2,0) and the (1,1) region. An Scurve is fitted and
     the width calculated as parameter for the inter dot coupling. Fitted with Matlab functions. Already replaced by a
     python version.
-    """
+    ""
     def __init__(self, dqd: BasicDQD, matlab_instance: SpecialMeasureMatlab,
                  parameters: pd.Series() = pd.Series((np.nan, ), ('parameter_tunnel_coupling', )), line_scan: Measurement=None):
         if line_scan is None:
@@ -488,11 +490,11 @@ class SMInterDotTCByLineScan(Evaluator):
 
 
 class SMLeadTunnelTimeByLeadScan(Evaluator):
-    """
+    ""
     RF gates pulse over the transition between the (2,0) and the (1,0) region. Then exponential functions are fitted
     to calculate the time required for an electron to tunnel through the lead. Fitted with Matlab functions. Already
     replaced by a python version.
-    """
+    ""
     def __init__(self, dqd: BasicDQD, matlab_instance: SpecialMeasureMatlab,
                  parameters: pd.Series() = pd.Series([np.nan, np.nan], ['parameter_time_rise', 'parameter_time_fall']),
                  lead_scan: Measurement = None):
@@ -520,10 +522,10 @@ class SMLeadTunnelTimeByLeadScan(Evaluator):
 
 
 class SMLoadTime(Evaluator):
-    """
+    ""
     Measures the time required to reload a (2,0) singlet state. Fits an exponential function. Fitted with Matlab
     functions. Already replaced by a python version.
-    """
+    ""
     def __init__(self, dqd: BasicDQD, matlab_instance: SpecialMeasureMatlab,
                  parameters: pd.Series() = pd.Series([np.nan], ['parameter_time_load']),
                  load_scan: Measurement = None):
@@ -546,7 +548,7 @@ class SMLoadTime(Evaluator):
         return pd.Series([parameter_time_load, failed], ['parameter_time_load', 'failed'])
 
 
-
+"""
 
 
 

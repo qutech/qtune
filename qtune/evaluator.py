@@ -220,10 +220,10 @@ class SensingDot1D(Evaluator):
 
     def __init__(self,
                  experiment: Experiment,
-                 sweeping_gates: Sequence[str]=("SDB2", ),
+                 sweeping_gate: str="SDB2",
                  parameters: Sequence[str]=("position_SDB2", "current_signal", "optimal_signal"),
                  sensing_dot_measurement: Measurement=None):
-        self._sweeping_gates = sweeping_gates
+        self._sweeping_gate = sweeping_gate
         if sensing_dot_measurement is None:
             sensing_dot_measurement = Measurement('line_scan',
                                                   center=None, range=4e-3, gate="SDB2",
@@ -235,31 +235,32 @@ class SensingDot1D(Evaluator):
         sensing_dot_measurement = self.measurements[0]
         values = pd.Series()
         error = pd.Series()
-        for gate in self._sweeping_gates:
-            sensing_dot_measurement.options["gate"] = gate
-            sensing_dot_measurement.options["center"] = self.experiment.read_gate_voltages()[gate]
+        gate = self._sweeping_gate
+        sensing_dot_measurement.options["gate"] = gate
+        sensing_dot_measurement.options["center"] = self.experiment.read_gate_voltages()[gate]
 
-            data = self.experiment.measure(sensing_dot_measurement)
-            data_filterd = scipy.ndimage.filters.gaussian_filter1d(input=data, sigma=.5, axis=0, order=0,
-                                                                   mode="nearest",
-                                                                   truncate=4.)
-            data_filtered_diff = np.diff(data_filterd, n=1)
-            data_filtered_diff_smoothed = scipy.ndimage.filters.gaussian_filter1d(input=data_filtered_diff, sigma=.5,
-                                                                                  axis=0, order=0,
-                                                                                  mode="nearest",
-                                                                                  truncate=4.)
-            current_signal = abs(data_filtered_diff_smoothed[int(self.measurements[0].options["N_points"] / 2)])
-            optimal_signal = abs(data_filtered_diff_smoothed.min())
-            optimal_position = data_filtered_diff_smoothed.argmin()
-            optimal_position = float(optimal_position) / float(self.measurements[0].options["N_points"]) * 2 * \
-                self.measurements[0].options["range"] - self.measurements[0].options["range"]
+        data = self.experiment.measure(sensing_dot_measurement)
+        data_filterd = scipy.ndimage.filters.gaussian_filter1d(input=data, sigma=.5, axis=0, order=0,
+                                                               mode="nearest",
+                                                               truncate=4.)
+        data_filtered_diff = np.diff(data_filterd, n=1)
+        data_filtered_diff_smoothed = scipy.ndimage.filters.gaussian_filter1d(input=data_filtered_diff, sigma=.5,
+                                                                              axis=0, order=0,
+                                                                              mode="nearest",
+                                                                              truncate=4.)
+        data_filtered_diff_smoothed = np.squeeze(data_filtered_diff_smoothed)
+        current_signal = abs(data_filtered_diff_smoothed[int(self.measurements[0].options["N_points"] / 2)])
+        optimal_signal = abs(data_filtered_diff_smoothed.min())
+        optimal_position = data_filtered_diff_smoothed.argmin()
+        optimal_position = float(optimal_position) / float(self.measurements[0].options["N_points"]) * 2 * \
+            self.measurements[0].options["range"] - self.measurements[0].options["range"]
 
-            values["position_" + gate] = sensing_dot_measurement.options["center"] + optimal_position
-            error["position_" + gate] = 0.1e-3
-            values["current_signal"] = current_signal
-            error["current_signal"] = np.nan
-            values["optimal_signal"] = optimal_signal
-            error["optimal_signal"] = np.nan
+        values["position_" + gate] = sensing_dot_measurement.options["center"] + optimal_position
+        error["position_" + gate] = 0.1e-3
+        values["current_signal"] = current_signal
+        error["current_signal"] = np.nan
+        values["optimal_signal"] = optimal_signal
+        error["optimal_signal"] = np.nan
         return values, error
 
     def to_hdf5(self):
