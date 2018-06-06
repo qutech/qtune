@@ -35,6 +35,25 @@ class BasicDQD(Experiment):
         raise NotImplementedError()
 
 
+class BasicDQDRefactored(Experiment):
+    """
+    The BasicDQD class implements the characteristics of a double quantum dot experiment. It saves the default scans
+    which are useful for fine tuning any double quantum dot.
+    """
+    default_line_scan = Measurement('line_scan',
+                                    center=0., range=3e-3, gate='RFA', N_points=1280, ramptime=.0005,
+                                    N_average=3, AWGorDecaDAC='DecaDAC')
+    default_detune_scan = Measurement('detune_scan',
+                                      center=0., range=2e-3, N_points=100, ramptime=.02,
+                                      N_average=10, AWGorDecaDAC='AWG')
+    default_lead_scan = Measurement('lead_scan', gate='B', AWGorDecaDAC='DecaDAC')
+    default_load_scan = Measurement("load_scan")
+
+    @property
+    def measurements(self) -> Tuple[Measurement, ...]:
+        return self.default_line_scan, self.default_detune_scan, self.default_lead_scan, self.default_load_scan
+
+
 class BasicQQD(Experiment):
 
     def __init__(self):
@@ -112,7 +131,7 @@ class TestExperiment(Experiment):
 
 
 def load_simulation(gate_voltages, measurement_options, simulation_options):
-    load_time_noise = 2.
+    load_time_noise = .0
     over_all_noise = 0.
     simulated_curvature = 15. + np.exp(- gate_voltages[simulation_options["gate1"]] - gate_voltages[
         simulation_options["gate2"]]) + load_time_noise * (np.random.rand(1)[0] - 0.5)

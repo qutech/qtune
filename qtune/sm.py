@@ -18,11 +18,11 @@ from qtune.experiment import *
 import qtune.experiment
 from qtune.util import time_string
 import qtune.util
-from qtune.GradKalman import GradKalmanFilter
 from qtune.basic_dqd import BasicDQD
 from qtune.basic_dqd import BasicQQD
+from qtune.basic_dqd import BasicDQDRefactored
 from qtune.chrg_diag import ChargeDiagram
-from qtune.solver import Evaluator
+from qtune.evaluator import Evaluator
 
 
 def redirect_output(func):
@@ -146,6 +146,57 @@ class SpecialMeasureMatlab:
 
     def get_variable(self, var_name):
         return self.engine.util.py.get_from_workspace(var_name)
+
+
+class LegacyDQDRefactored(BasicDQDRefactored):
+    def __init__(self, matlab_instance: SpecialMeasureMatlab):
+        super().__init__()
+        self._matlab = matlab_instance
+
+    @property
+    def gate_voltage_names(self) -> Tuple:
+        return tuple(sorted(self._matlab.engine.qtune.read_gate_voltages().keys()))
+
+    def read_gate_voltages(self) -> pd.Series:
+        return pd.Series(self._matlab.engine.qtune.read_gate_voltages()).sort_index()
+
+    def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
+        current_gate_voltages = self.read_gate_voltages()
+        for key in current_gate_voltages.index.tolist():
+            if key not in new_gate_voltages.index.tolist():
+                new_gate_voltages[key] = current_gate_voltages[key]
+        new_gate_voltages = dict(new_gate_voltages)
+        for key in new_gate_voltages:
+            new_gate_voltages[key] = new_gate_voltages[key].item()
+        return pd.Series(self._matlab.engine.qtune.set_gates_v_pretuned(new_gate_voltages))
+
+    def measure(self, measurement: Measurement) -> np.ndarray:
+
+        if measurement.name == 'line_scan':
+            parameters = measurement.options.copy()
+            parameters['file_name'] = "line_scan" + measurement.get_file_name()
+            parameters['N_points'] = float(parameters['N_points'])
+            parameters['N_average'] = float(parameters['N_average'])
+            return np.asarray(self._matlab.engine.qtune.PythonChargeLineScan(parameters))
+        elif measurement.name == 'detune_scan':
+            parameters = measurement.options.copy()
+            parameters['file_name'] = "detune_scan_" + measurement.get_file_name()
+            parameters['N_points'] = float(parameters['N_points'])
+            parameters['N_average'] = float(parameters['N_average'])
+            return np.asarray(self._matlab.engine.qtune.PythonLineScan(parameters))
+        elif measurement.name == 'lead_scan':
+            parameters = measurement.options.copy()
+            parameters['file_name'] = "lead_scan" + measurement.get_file_name()
+            return np.asarray(self._matlab.engine.qtune.LeadScan(parameters))
+        elif measurement.name == "load_scan":
+            parameters = measurement.options.copy()
+            parameters["file_name"] = "load_scan" + measurement.get_file_name()
+            return np.asarray(self._matlab.engine.qtune.LoadScan(parameters))
+        elif measurement.name == "2d_scan":
+            qpc_2d_tune_input = {"range": measurement.options["scan_range"], "file_name": time_string()}
+            return np.asarray(self._matlab.engine.qtune.PythonQPCScan2D(qpc_2d_tune_input))
+        else:
+            raise ValueError('Unknown measurement: {}'.format(measurement))
 
 
 class LegacyDQD(BasicDQD):
