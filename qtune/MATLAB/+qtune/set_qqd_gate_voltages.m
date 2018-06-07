@@ -1,25 +1,33 @@
 function [actual_gate_voltages] = set_qqd_gate_voltages(gate_voltages)
 
 global pretuned_qqd_gate_voltages
-global pretuned_qqd_sensing_dot_voltages
-gate_names = fieldnames(gate_voltages);
-n_gates = size(gate_names);
-n_gates = n_gates(2);
-voltage_values = cell2mat(struct2cell(gate_voltages));
-actual_gate_voltages = struct;
 
-for gate = gate_names(1:end)
-    if abs(pretuned_qqd_gate_voltages.(gate) - gate_voltages.(gate)) > 70e-3
-        qtune.set_qqd_gate_voltages(pretuned_qqd_gate_voltages);
-        qtune.set_qqd_sensing_dot_voltages(pretuned_qqd_sensing_dot_voltages);
-        error(['The Program tried to detune the gate ' gate ' by more than 70meV!'])
-    end
-end
+gateNames = fieldnames(gate_voltages);
 
-smset(gate_names, voltage_values)
-actual_gate_voltage_values = smget(gate_names);
-for i = 1:n_gates
-    actual_gate_voltages.(gate_names(i)) = actual_gate_voltage_values(i); 
+newVoltages = cell2mat(struct2cell(gate_voltages));
+oldVoltages = cell2mat(struct2cell(read_qqd_gate_voltages(gateNames)));
+pretunedVoltages = cellfun(@(x)pretuned_qqd_gate_voltages.(x),gateNames);
+
+
+stepDelta = oldVoltages - newvoltages;
+totalDelta = pretunedVoltages - gateVoltages;
+
+util.disp_section('Step Voltage Delta')
+tune.disp_gate_voltages(gateNames, stepDelta);
+util.disp_section('Total Voltage Delta')
+tune.disp_gate_voltages(gateNames, totalDelta);
+
+if any(abs(totalDelta) > 70e-3)
+  error(['The Program tried to detune a gate by more than 70 mV from starting point!'])
+elseif any(abs(stepDelta) > 5e-3)
+  error(['The Program tried to step a gate by more than 5 mV!'])
+else
+  
+smset(gateNames, newVoltages)
+actualGateVoltageValues = smget(gateNames);
+
+actual_gate_voltages = cell2struct(actualGateVoltageValues,gateNames);
+
 end
 
 end
