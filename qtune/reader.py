@@ -8,6 +8,7 @@ import qtune.storage
 import qtune.autotuner
 import qtune.solver
 import qtune.gradient
+import qtune.parameter_tuner
 
 from typing import Tuple
 
@@ -259,8 +260,14 @@ def extract_parameters_from_hierarchy(tuning_hierarchy):
     covariances = pd.Series()
     for par_tuner in tuning_hierarchy:
         parameter, covariance = par_tuner.last_parameter_covariance
-        parameters = parameters.append(parameter)
-        covariances = covariances.append(covariance)
+        if isinstance(par_tuner, qtune.parameter_tuner.SubsetTuner):
+            relevant_parameters = par_tuner.solver.target.desired.index[
+                ~par_tuner.solver.target.desired.apply(np.isnan)]
+            parameters = parameters.append(parameter[relevant_parameters])
+            covariances = covariances.append(covariance[relevant_parameters])
+        else:
+            parameters = parameters.append(parameter)
+            covariances = covariances.append(covariance)
     return parameters, covariances
 
 

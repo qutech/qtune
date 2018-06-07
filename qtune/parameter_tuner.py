@@ -117,7 +117,13 @@ class SubsetTuner(ParameterTuner):
 
         self._gates = sorted(gates)
 
-    def is_tuned(self, voltages: pd.Series):
+    def is_tuned(self, voltages: pd.Series) -> bool:
+        """
+        Checks if current parameters already match the requirements stated in the solver. Thereby these parameters are
+        evaluated.
+        :param voltages: current voltages
+        :return: True if requirement is met. False otherwise.
+        """
         current_parameters, current_variances = self.evaluate()
 
         solver_voltages = voltages[self._gates]
@@ -127,7 +133,8 @@ class SubsetTuner(ParameterTuner):
         self._last_voltage = voltages
         self._last_parameter_values = current_parameters[self._last_parameter_values.index]
         self._last_parameter_covariances = current_variances[self._last_parameter_values.index]
-        if ((self.target.desired - current_parameters).abs() < self.target['tolerance']).all():
+        if ((self.target.desired - current_parameters).abs().fillna(0.) < self.target['tolerance'].fillna(
+                np.inf)).all():
             self._tuned_voltages.append(voltages)
             return True
         else:

@@ -25,8 +25,60 @@ class BasicDQD(Experiment):
     def measurements(self) -> Tuple[Measurement, ...]:
         return self.default_line_scan, self.default_detune_scan, self.default_lead_scan, self.default_load_scan
 
+    def tune_qpc(self, qpc_position=None, tuning_range=4e-3, gate='SDB2'):
+        raise NotImplementedError()
+
+    def tune_qpc_2d(self, tuning_range):
+        raise NotImplementedError
+
     def read_qpc_voltage(self) -> pd.Series:
         raise NotImplementedError()
+
+
+class BasicDQDRefactored(Experiment):
+    """
+    The BasicDQD class implements the characteristics of a double quantum dot experiment. It saves the default scans
+    which are useful for fine tuning any double quantum dot.
+    """
+    default_line_scan = Measurement('line_scan',
+                                    center=0., range=3e-3, gate='RFA', N_points=1280, ramptime=.0005,
+                                    N_average=3, AWGorDecaDAC='DecaDAC')
+    default_detune_scan = Measurement('detune_scan',
+                                      center=0., range=2e-3, N_points=100, ramptime=.02,
+                                      N_average=10, AWGorDecaDAC='AWG')
+    default_lead_scan = Measurement('lead_scan', gate='B', AWGorDecaDAC='DecaDAC')
+    default_load_scan = Measurement("load_scan")
+
+    @property
+    def measurements(self) -> Tuple[Measurement, ...]:
+        return self.default_line_scan, self.default_detune_scan, self.default_lead_scan, self.default_load_scan
+
+
+class BasicQQD(Experiment):
+
+    def __init__(self):
+        self.left_sensing_gates = ["LT", "LB"]
+        self.right_sensing_gates = ["RT", "RB"]
+        self.primarily_left_sensing_gate = "LT"
+        self.primarily_right_sensing_gate = "RT"
+        self.centralizing_gates = ["PA", "PB", "PC", "PD"]
+        self.left_signal_strength = 0.
+        self.right_signal_strength = 0.
+        self.tunable_gates = ["SA", "NAB", "NBC", "NCD", "SD", "TAB", "TBC", "TCD"]
+        self.tunable_gates.sort()
+
+    @property
+    def measurements(self) -> Tuple[Measurement, ...]:
+        return NotImplementedError
+
+    def tune_sensing_dot_1d(self, prior_position, tuning_range, gate):
+        raise NotImplementedError
+
+    def tune_tune_sensing_dot_2d(self, side, tuning_range):
+        raise NotImplementedError
+
+    def read_sensing_dot_voltages(self):
+        raise NotImplementedError
 
 
 class Simulator:
@@ -51,7 +103,7 @@ class TestExperiment(Experiment):
         self._measurements = measurements
         self._simulator_dict = simulator_dict
         for measurement in measurements:
-            if measurement not in simulator_dict.keys():
+            if id(measurement) not in simulator_dict.keys():
                 print("There is no simulation function implemented for the measurement " + measurement.name)
                 raise RuntimeError
 
@@ -74,12 +126,12 @@ class TestExperiment(Experiment):
         return new_gate_voltages
 
     def measure(self, measurement: Measurement):
-        simulator = self.simulator_dict[measurement]
-        return simulator.simulate_measurement(self.read_gate_voltages(), measurement.options)
+        simulator = self.simulator_dict[id(measurement)]
+        return simulator.simulate_measurement(self.read_gate_voltages(), measurement)
 
 
 def load_simulation(gate_voltages, measurement_options, simulation_options):
-    load_time_noise = 2.
+    load_time_noise = .0
     over_all_noise = 0.
     simulated_curvature = 15. + np.exp(- gate_voltages[simulation_options["gate1"]] - gate_voltages[
         simulation_options["gate2"]]) + load_time_noise * (np.random.rand(1)[0] - 0.5)
@@ -88,8 +140,50 @@ def load_simulation(gate_voltages, measurement_options, simulation_options):
     xdata = np.arange(0., 500, 5)
     return np.reshape(np.concatenate((ydata, xdata)), (2, 100))
 
-def ss1d_simulation(gate_voltages, measurement: Measurement):
-    ss1d_simulation.dependancy_gate = "SDB2"
+
+def ss1d_simulation(gate_voltages, measurement: Measurement, simulation_options):
+    points = np.arange(-4e-3, 4e-3, 8e-3 / 1280.)
+    return np.exp(-.5 * points ** 2 / 2e-6)
+
+
+def ss2d_simulation(gate_voltages, measurement: Measurement, simulation_options):
+    gate1 = simulation_options["gate1"]
+    x = np.linspace(start=-5., stop=5., num=104)
+    y = np.linspace(start=-5., stop=5., num=20)
+    xx, yy = np.meshgrid(x, y, sparse=True)
+    return np.sin(xx + yy + gate_voltages[gate1])
+
+
+def detune_simulation(gate_voltages, measurement: Measurement, simulation_options):
+    central_upper_gate = simulation_options["central_upper_gate"]
+    central_lower_gate = simulation_options["central_lower_gate"]
+    left_gate = simulation_options["left_gate"]
+    right_gate = simulation_options["right_gate"]
+    parameters = measurement.options.copy()
+    parameters['file_name'] = "detune_scan_" + measurement.get_file_name()
+    parameters['N_points'] = float(parameters['N_points'])
+    parameters['N_average'] = float(parameters['N_average'])
+
+    x = np.linspace(parameters["center"] - parameters["range"], parameters["center"] + parameters["range"],
+                    parameters["N_points"])
+    simulated_width = np.exp(gate_voltages[central_upper_gate] - gate_voltages[right_gate]) + np.exp(
+        gate_voltages[central_lower_gate] - gate_voltages[left_gate]) + 190. + 0. * (
+                              np.random.rand(1)[0] - 0.5)
+    y = np.tanh(x / (simulated_width * 1e-6))
+    return y
+
+
+def transition_simulation(gate_voltages, measurement: Measurement, simulation_options):
+
+    gate_lead = simulation_options["gate_lead"]
+    gate_opposite = simulation_options["gate_opposite"]
+    simulated_center = (gate_voltages[gate_lead] - gate_voltages[gate_opposite]) * 1e-3
+    x = np.linspace(measurement.options["center"] - measurement.options["range"],
+                    measurement.options["center"] + measurement.options["range"],
+                    measurement.options['N_points'])
+    simulated_center = simulated_center + 0. * (np.random.rand(1)[0] - 0.5)
+    x = x - simulated_center
+    return np.tanh(x / measurement.options["range"] * 5.) + 0.0 * np.random.rand(x.shape[0])
 
 
 class TestDQD(BasicDQD):
@@ -120,11 +214,11 @@ class TestDQD(BasicDQD):
     def measure(self, measurement: Measurement) -> np.ndarray:
 
         if measurement.name == 'line_scan':
-            if measurement.parameter["gate"] == "SDB2":
+            if measurement.options["gate"] == "SDB2":
                 points = np.arange(-4e-3, 4e-3, 8e-3 / 1280.)
                 return np.exp(-.5 * points**2 / 2e-6)
-            elif measurement.parameter["gate"] == "RFA" or measurement.parameter["gate"] == "RFB":
-                parameters = measurement.parameter.copy()
+            elif measurement.options["gate"] == "RFA" or measurement.options["gate"] == "RFB":
+                parameters = measurement.options.copy()
                 parameters['file_name'] = "line_scan" + measurement.get_file_name()
                 parameters['N_points'] = float(parameters['N_points'])
                 parameters['N_average'] = float(parameters['N_average'])
@@ -141,7 +235,7 @@ class TestDQD(BasicDQD):
                 return np.tanh(x/parameters["range"]*5.) + 0.0 * np.random.rand(x.shape[0])
 
         elif measurement.name == 'detune_scan':
-            parameters = measurement.parameter.copy()
+            parameters = measurement.options.copy()
             parameters['file_name'] = "detune_scan_" + measurement.get_file_name()
             parameters['N_points'] = float(parameters['N_points'])
             parameters['N_average'] = float(parameters['N_average'])
@@ -154,7 +248,7 @@ class TestDQD(BasicDQD):
 
             return y
         elif measurement.name == 'lead_scan':
-            parameters = measurement.parameter.copy()
+            parameters = measurement.options.copy()
             parameters['file_name'] = "lead_scan" + measurement.get_file_name()
             simulated_rise_time = .2 * (self._gate_voltages["SA"] - 1.) + 0.075 * (
                 self._gate_voltages["T"] - 1.) + 0.2 + 0.00005 * (np.random.rand(1)[0] - 0.5)

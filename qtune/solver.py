@@ -1,5 +1,6 @@
 from typing import Tuple, Sequence, Deque, Callable, Optional
 import enum
+import math
 from collections import deque
 
 import numpy as np
@@ -103,8 +104,11 @@ class NewtonSolver(Solver):
         return self._current_position + step
 
     def update_after_step(self, position: pd.Series, values: pd.Series, variances: pd.Series):
-        for estimator, value, variance in zip(self._gradient_estimators, values, variances):
-            estimator.update(position, value, variance, is_new_position=True)
+        for estimator, value, value_index, variance in zip(self._gradient_estimators,
+                                                           values[self._current_values.index],
+                                                           self._current_values.index, variances):
+            if not math.isnan(self.target.desired[value_index]):
+                estimator.update(position[self._current_position.index], value, variance, is_new_position=True)
         self._current_position = position[self._current_position.index]
         self._current_values = values[self._current_values.index]
 
