@@ -133,6 +133,10 @@ class SpecialMeasureMatlab:
             casted = self.engine.reshape(casted, *shape)
 
             return self.engine.transpose(casted)
+        elif isinstance(obj, np.float64):
+            return float(obj)
+        elif isinstance(obj, np.int64):
+            return int(obj)
         else:
             raise NotImplementedError('To MATLAB conversion', obj)
 
@@ -162,13 +166,9 @@ class LegacyDQDRefactored(BasicDQDRefactored):
 
     def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
         current_gate_voltages = self.read_gate_voltages()
-        for key in current_gate_voltages.index.tolist():
-            if key not in new_gate_voltages.index.tolist():
-                new_gate_voltages[key] = current_gate_voltages[key]
-        new_gate_voltages = dict(new_gate_voltages)
-        for key in new_gate_voltages:
-            new_gate_voltages[key] = new_gate_voltages[key].item()
-        return pd.Series(self._matlab.engine.qtune.set_gates_v_pretuned(new_gate_voltages))
+        current_gate_voltages[new_gate_voltages.index] = new_gate_voltages[new_gate_voltages.index]
+        current_gate_voltages.applymap(self._matlab.to_matlab, convert_dtype=False)
+        return pd.Series(self._matlab.engine.qtune.set_gates_v_pretuned(current_gate_voltages))
 
     def measure(self, measurement: Measurement) -> np.ndarray:
 
