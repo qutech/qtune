@@ -46,12 +46,14 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
 
         :param current_position: Position to base the requirements of measurements around. Also determines the order of
         the gradient entries.
-        :param epsilon:
-        :param symmetric:
-        :param current_estimate:
-        :param covariance:
-        :param stored_measurements:
-        :param requested_measurements:
+        :param epsilon: Step size in the calculation of finite differences. Step sizes can be chosen depending on
+        direction by inserting a pd.Series.
+        :param symmetric: If True the finite differences will be calculated symmetrically around the current position.
+        Otherwise only n steps will be done to calculate the finite differences
+        :param current_estimate: Current estimation of the gradient.
+        :param covariance: Current covariance of the gradient.
+        :param stored_measurements: Measurements are stored for calculation and book keeping.
+        :param requested_measurements: Measurements that have been requested to calculate the finite differences.
         """
         if current_position is None:
             if not isinstance(epsilon, pd.Series):
@@ -175,12 +177,14 @@ class KalmanGradientEstimator(GradientEstimator):
                  maximum_covariance: Union[pd.Series, float],
                  epsilon: Union[pd.Series, float]):
         """
-
-        :param kalman_gradient:
+        This gradient estimator uses the Kalman filter to track the gradient.
+        :param kalman_gradient: The Kalman filter tracking the gradient.
         :param current_position:
         :param current_value:
-        :param maximum_covariance: If a scalar it is used for all dimensions. If inf the dimension is ignored
-        :param epsilon: Step width
+        :param maximum_covariance: The gradient estimator will require additional measurements in the directions where
+        the uncertainty is larger then the maximum covariance. If a scalar it is used for all dimensions. If inf the
+        dimension is ignored.
+        :param epsilon: Step width by requested measurements to decrease the covariance
         """
         self._kalman_gradient = kalman_gradient
         self._current_position = pd.Series(current_position)
@@ -195,10 +199,6 @@ class KalmanGradientEstimator(GradientEstimator):
         self._epsilon = epsilon[current_position.index]
 
     def change_position(self, new_position: pd.Series):
-        """
-        :param new_position:
-        :return:
-        """
         self._current_position = new_position[self._current_position.index]
 
     def estimate(self) -> pd.Series:

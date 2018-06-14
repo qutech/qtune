@@ -78,17 +78,17 @@ class ParameterTuner(metaclass=HDF5Serializable):
         return pd.concat(parameters)[self.parameters], pd.concat(variances)[self.parameters]
 
     def is_tuned(self, voltages: pd.Series) -> bool:
-        """Tell the tuner, the voltages have changed and that he might have to re-tune.
-
-        :param voltages: Return if tuning condition is met
-        :return:
+        """
+        Checks if current parameters already match the requirements stated in the solver. Thereby these parameters are
+        evaluated.
+        :param voltages: current voltages
+        :return: True if requirement is met. False otherwise.
         """
         raise NotImplementedError()
 
     def get_next_voltages(self) -> pd.Series:
         """The next voltage in absolute values.
-
-        :return:
+        :return: next_voltages
         """
         raise NotImplementedError()
 
@@ -118,12 +118,6 @@ class SubsetTuner(ParameterTuner):
         self._gates = sorted(gates)
 
     def is_tuned(self, voltages: pd.Series) -> bool:
-        """
-        Checks if current parameters already match the requirements stated in the solver. Thereby these parameters are
-        evaluated.
-        :param voltages: current voltages
-        :return: True if requirement is met. False otherwise.
-        """
         current_parameters, current_variances = self.evaluate()
 
         solver_voltages = voltages[self._gates]
@@ -162,14 +156,20 @@ class SensingDotTuner(ParameterTuner):
                  gates: Sequence[str], **kwargs):
         """
 
-        :param cheap_evaluators:
-        :param expensive_evaluators:
-        :param gates:
+        :param cheap_evaluators: An evaluator with little measurement costs. (i.e. one dimensional sweep of gates
+        defining the sensing dot.) This evaluator needs to detect at least if the parameter already meets the
+        conditions defined in the target. It can also detect additional information (i.e. voltages with higher contrast
+        in the sensing dot.)
+        :param expensive_evaluators: An evaluator which finds the optimal position of the sensing dot, or information
+        leading to its position. (i.e. two dimensional sensing dot scan.)
+        :param gates: The gates which will be used to tune the parameters
         :param min_threshhold: If the parameters are below this threshold, the experiment is not tuned. This doesnt
         regard the optimal signal found but only the current one.
         :param cost_threshhold: If the parameters are below this threshold, the expensive evaluation will be used.
-        :param kwargs:
+        :param kwargs: Must contain the argument 'solver' for the init function of the ParameterTuner parent class.
         """
+        # the parameters can be specified using last_parameter_values and last_parameters_covariances or they will be
+        # deducted from the evaluators.
         last_parameter_values_covariances = []
         for string in ["last_parameter_values", "last_parameter_covariances"]:
             if string not in kwargs:
