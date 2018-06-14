@@ -1,12 +1,9 @@
 from typing import Tuple, Sequence, Deque, Callable, Optional
 import enum
 import math
-from collections import deque
 
 import numpy as np
 import pandas as pd
-
-import scipy.optimize
 
 from qtune.gradient import GradientEstimator
 from qtune.storage import HDF5Serializable
@@ -16,7 +13,8 @@ from qtune.util import get_orthogonal_vector
 def make_target(desired: pd.Series=np.nan,
                 maximum: pd.Series=np.nan,
                 minimum: pd.Series=np.nan,
-                tolerance: pd.Series=np.nan):
+                tolerance: pd.Series=np.nan,
+                cost_threshold: pd.Series=np.nan):
     for ser in (desired, maximum, minimum, tolerance):
         if isinstance(ser, pd.Series):
             names = ser.index
@@ -33,7 +31,8 @@ def make_target(desired: pd.Series=np.nan,
     return pd.DataFrame({'desired': to_series(desired),
                          'minimum': to_series(minimum),
                          'maximum': to_series(maximum),
-                         'tolerance': to_series(tolerance)},
+                         'tolerance': to_series(tolerance),
+                         'cost_threshold': to_series(cost_threshold)},
                         index=names)
 
 

@@ -42,7 +42,7 @@ class ParameterTuner(metaclass=HDF5Serializable):
 
         self._solver = solver
 
-        assert set(self.solver.target.index) == set(parameters)
+        assert set(self.target.index) == set(parameters)
 
     @property
     def solver(self) -> Solver:
@@ -159,7 +159,7 @@ class SensingDotTuner(ParameterTuner):
     """
 
     def __init__(self, cheap_evaluators: Sequence[Evaluator], expensive_evaluators: Sequence[Evaluator],
-                 gates: Sequence[str], min_threshold, cost_threshold, **kwargs):
+                 gates: Sequence[str], **kwargs):
         """
 
         :param cheap_evaluators:
@@ -167,31 +167,36 @@ class SensingDotTuner(ParameterTuner):
         :param gates:
         :param min_threshhold: If the parameters are below this threshold, the experiment is not tuned. This doesnt
         regard the optimal signal found but only the current one.
-        :param cost_threshhold: If the parameters are below this threshold, the expensive parameters will be used.
+        :param cost_threshhold: If the parameters are below this threshold, the expensive evaluation will be used.
         :param kwargs:
         """
-        super().__init__(cheap_evaluators, **kwargs)
+        if "last_parameter_values" not in kwargs:
+            parameter_names = [name for evaluator_list in [cheap_evaluators, expensive_evaluators]
+                               for evaluator in evaluator_list
+                               for name in evaluator.parameters]
+            parameter_names = set(parameter_names)
+            parameter_names = sorted(list(parameter_names))
+            last_parameter_values = pd.Series(index=parameter_names)
+        if "last_parameter_covariances" not in kwargs:
+            last_parameter_covariances = pd.Series(index=parameter_names)
+        super().__init__(cheap_evaluators, last_parameter_values=last_parameter_values,
+                         last_parameter_covariances=last_parameter_covariances, **kwargs)
         self._gates = sorted(gates)
         self._cheap_evaluators = cheap_evaluators
         self._expensive_evaluators = expensive_evaluators
-        self._min_threshold = min_threshold
-        self._cost_threshold = cost_threshold
 
     def is_tuned(self, voltages: pd.Series):
         current_parameter, variances = self.evaluate(cheap=True)
         solver_voltages = voltages[self._gates]
         self._last_voltage = voltages
-        """
-        for key in self._last_parameter_values.index:
-            if key in current_parameter.index:
-                self._last_parameter_values[key] = current_parameter[key]
-                """
         self._last_parameter_values[current_parameter.index] = current_parameter[current_parameter.index]
         self._last_parameter_covariances[current_parameter.index] = variances[current_parameter.index]
 
-        if current_parameter.le(self._min_threshold).any():
-            if current_parameter.le(self._cost_threshold).any:
+        if current_parameter.le(self.target["minimum"]).any():
+            if current_parameter.le(self.target["cost_threshold"]).any():
                 current_parameter, variances = self.evaluate(cheap=False)
+                self._last_parameter_values[current_parameter.index] = current_parameter[current_parameter.index]
+                self._last_parameter_covariances[current_parameter.index] = variances[current_parameter.index]
 
             self.solver.update_after_step(solver_voltages, current_parameter, variances)
             return False
@@ -225,8 +230,6 @@ class SensingDotTuner(ParameterTuner):
         return dict(cheap_evaluators=self._cheap_evaluators,
                     expensive_evaluators=self._expensive_evaluators,
                     gates=self._gates,
-                    min_threshold=self._min_threshold,
-                    cost_threshold=self._cost_threshold,
                     solver=self.solver,
                     last_parameter_values=self._last_parameter_values,
                     last_parameter_covariances=self._last_parameter_covariances)
