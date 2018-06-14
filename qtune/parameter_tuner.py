@@ -170,17 +170,21 @@ class SensingDotTuner(ParameterTuner):
         :param cost_threshhold: If the parameters are below this threshold, the expensive evaluation will be used.
         :param kwargs:
         """
-        if "last_parameter_values" not in kwargs:
-            parameter_names = [name for evaluator_list in [cheap_evaluators, expensive_evaluators]
-                               for evaluator in evaluator_list
-                               for name in evaluator.parameters]
-            parameter_names = set(parameter_names)
-            parameter_names = sorted(list(parameter_names))
-            last_parameter_values = pd.Series(index=parameter_names)
-        if "last_parameter_covariances" not in kwargs:
-            last_parameter_covariances = pd.Series(index=parameter_names)
-        super().__init__(cheap_evaluators, last_parameter_values=last_parameter_values,
-                         last_parameter_covariances=last_parameter_covariances, **kwargs)
+        last_parameter_values_covariances = []
+        for string in ["last_parameter_values", "last_parameter_covariances"]:
+            if string not in kwargs:
+                parameter_names = [name for evaluator_list in [cheap_evaluators, expensive_evaluators]
+                                   for evaluator in evaluator_list
+                                   for name in evaluator.parameters]
+                parameter_names = set(parameter_names)
+                parameter_names = sorted(list(parameter_names))
+                series = pd.Series(index=parameter_names)
+            else:
+                series = kwargs[string]
+            last_parameter_values_covariances.append(series)
+
+        super().__init__(cheap_evaluators, last_parameter_values=last_parameter_values_covariances[0],
+                         last_parameter_covariances=last_parameter_values_covariances[1], **kwargs)
         self._gates = sorted(gates)
         self._cheap_evaluators = cheap_evaluators
         self._expensive_evaluators = expensive_evaluators
