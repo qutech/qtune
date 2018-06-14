@@ -43,13 +43,19 @@ class Experiment:
         raise NotImplementedError()
 
     @property
-    def gate_voltage_names(self) -> Tuple:
+    def gate_voltage_names(self) -> Tuple[str]:
         raise NotImplementedError()
 
     def read_gate_voltages(self) -> pd.Series:
         raise NotImplementedError()
 
-    def set_gate_voltages(self, new_gate_voltages: pd.Series):
+    def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
+        """
+        Set the gate Voltages and return the voltages which have actually been set. (i.e. when the Voltages are saved
+        in a different format.)
+        :param new_gate_voltages:
+        :return: actually set voltages.
+        """
         raise NotImplementedError()
 
     def measure(self, measurement: Measurement) -> np.ndarray:

@@ -267,7 +267,7 @@ class SensingDot1D(Evaluator):
         return dict(experiment=self.experiment,
                     parameters=self.parameters,
                     sensing_dot_measurement=self.measurements[0],
-                    sweeping_gates=self._sweeping_gates)
+                    sweeping_gate=self._sweeping_gate)
 
 
 class SensingDot2D(Evaluator):

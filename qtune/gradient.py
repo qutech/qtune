@@ -194,13 +194,6 @@ class KalmanGradientEstimator(GradientEstimator):
             epsilon = pd.Series(epsilon, index=current_position.index)
         self._epsilon = epsilon[current_position.index]
 
-    def to_hdf5(self):
-        return dict(kalman_gradient=self._kalman_gradient,
-                    current_position=self._current_position,
-                    current_value=self._current_value,
-                    maximum_covariance=self._maximum_covariance,
-                    epsilon=self._epsilon)
-
     def change_position(self, new_position: pd.Series):
         """
         :param new_position:
@@ -247,6 +240,13 @@ class KalmanGradientEstimator(GradientEstimator):
             self._current_value = value
             self._current_position = position[self._current_position.index]
 
+    def to_hdf5(self):
+        return dict(kalman_gradient=self._kalman_gradient,
+                    current_position=self._current_position,
+                    current_value=self._current_value,
+                    maximum_covariance=self._maximum_covariance,
+                    epsilon=self._epsilon)
+
 
 class SelfInitializingKalmanEstimator(GradientEstimator):
     """A kalman gradient estimator that initializes itself with finite differences"""
@@ -284,16 +284,16 @@ class SelfInitializingKalmanEstimator(GradientEstimator):
     def active_estimator(self) -> GradientEstimator:
         return self._kalman_estimator or self._finite_difference_estimator
 
+    def change_position(self, new_position: pd.Series):
+        self._finite_difference_estimator.change_position(new_position)
+        if self.kalman_estimator:
+            self.kalman_estimator.change_position(new_position)
+
     def estimate(self):
         return self.active_estimator.estimate()
 
     def covariance(self):
         return self.active_estimator.covariance()
-
-    def change_position(self, new_position: pd.Series):
-        self._finite_difference_estimator.change_position(new_position)
-        if self.kalman_estimator:
-            self.kalman_estimator.change_position(new_position)
 
     def require_measurement(self):
         return self.active_estimator.require_measurement()
