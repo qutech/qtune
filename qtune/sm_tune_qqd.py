@@ -116,7 +116,7 @@ class SMTuneQQD(Experiment):
 
             data_view = tune_view(measurement_name, *([np.float(index)] + name_value_pairs))
         else:
-            data_view = tune_view(measurement_name, index)
+            data_view = tune_view(measurement_name, np.float(index))
 
         return pd.Series({'data': data_view})
 
@@ -160,9 +160,9 @@ class SMTuneQQD(Experiment):
         elif measurement.name == 'chrg s':
             pass
         elif measurement.name == 'sensor':
-            result = np.array(result['data'].ana.xVal, result['data'].ana.minGradData)
+            result = np.array([result['data'].ana.xVal, np.abs(result['data'].ana.minGradData)])
         elif measurement.name == 'sensor 2d':
-            result = np.array([result['data'].ana.xVal, result['data'].ana.yVal])
+            result = np.array([result['data'].ana.xVal, result['data'].ana.yVal, np.abs(result['data'].ana.minGradData)])
         elif measurement.name == 'chrg':
             result = np.squeeze(result['data'].ana.O)
         elif measurement.name == 'stp':
