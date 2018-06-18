@@ -211,9 +211,9 @@ class SensingDotTuner(ParameterTuner):
 
         return self._last_voltage.add(solver_step, fill_value=0)
 
-    def evaluate(self, **kwargs) -> (pd.Series, pd.Series):
+    def evaluate(self, cheap=True, **kwargs) -> (pd.Series, pd.Series):
         #  no list comprehension for easier debugging
-        cheap = kwargs["cheap"]
+        #  cheap = kwargs["cheap"]
         parameters = []
         variances = []
         if cheap:

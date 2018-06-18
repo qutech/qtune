@@ -390,8 +390,8 @@ class ForwardingSolver(Solver):
         self._current_position[position.index] = position
         self._next_position[position.index] = position
 
-        new_position_names = self._values_to_position[values.index]
-        self._next_position[new_position_names] = values
+        new_position_names = self._values_to_position[values.index].dropna(0)
+        self._next_position[new_position_names] = values[self._values_to_position.index]
 
     def to_hdf5(self):
         return dict(target=self._target,
