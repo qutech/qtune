@@ -115,11 +115,18 @@ class KalmanGradientTest(unittest.TestCase):
         kalman_grad_est = KalmanGradientEstimator(**kalman_args)
 
         req_meas = kalman_grad_est.require_measurement()
+        self.assertAlmostEqual(0, np.linalg.norm(req_meas - kalman_args["current_position"] - [.1, 0, 0]))
 
+        req_meas = kalman_grad_est.require_measurement(gates=["b", "a"])
+        pd.testing.assert_series_equal(req_meas, kalman_args["current_position"] + pd.Series(index=["a", "b", "c"],
+                                                                                             data=[.1, 0, 0]))
+
+        req_meas = kalman_grad_est.require_measurement(gates=["b", "c"])
+        self.assertTrue(req_meas is None)
+
+        req_meas = kalman_grad_est.require_measurement()
         self.assertAlmostEqual(0, np.linalg.norm(req_meas - kalman_args["current_position"] - [.1, 0, 0]))
 
         kalman_grad_est.update(position=req_meas, value=1, covariance=.01, is_new_position=True)
-
         req_meas = kalman_grad_est.require_measurement()
-
         self.assertTrue(req_meas is None)

@@ -86,7 +86,7 @@ class NewtonSolver(Solver):
 
     def suggest_next_position(self) -> pd.Series:
         for estimator in self._gradient_estimators:
-            suggestion = estimator.require_measurement()
+            suggestion = estimator.require_measurement(self._current_position.index)
             if suggestion is not None and not suggestion.empty:
                 return suggestion
 
