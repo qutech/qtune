@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import Optional, Union, Sequence
 
 import numpy as np
 import pandas as pd
@@ -22,7 +22,7 @@ class GradientEstimator(metaclass=HDF5Serializable):
     def covariance(self) -> pd.Series:
         raise NotImplementedError()
 
-    def require_measurement(self) -> Optional[pd.Series]:
+    def require_measurement(self, gates: Sequence[str]=None) -> Optional[pd.Series]:
         raise NotImplementedError()
 
     def update(self, position: pd.Series, value: float, covariance: float, is_new_position=False):
@@ -91,7 +91,7 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
     def covariance(self) -> pd.DataFrame:
         return self._covariance
 
-    def require_measurement(self) -> pd.Series:
+    def require_measurement(self, gates=None) -> pd.Series:
         if self._current_position.isnull().all():
             raise RuntimeError("No measurement can be requested before defining the current position.")
 
@@ -210,21 +210,29 @@ class KalmanGradientEstimator(GradientEstimator):
         return pd.DataFrame(self._kalman_gradient.cov, index=self._current_position.index,
                             columns=self._current_position.index)
 
-    def require_measurement(self):
+    def require_measurement(self, gates: Sequence[str]=None):
         """I do not think this is good math. Julian to the rescue!"""
-        eigenvalues, eigenvectors = np.linalg.eigh(self._kalman_gradient.cov)
+        if gates is None:
+            gates = self._current_position.index
+
+        # extract relevant entries of the covariance matrix
+        full_cov = pd.DataFrame(data=self._kalman_gradient.cov, index=self._current_position.index,
+                                columns=self._current_position.index)
+        relevant_cov = full_cov.loc[gates, gates]
+
+        eigenvalues, eigenvectors = np.linalg.eigh(relevant_cov)
 
         # scale the eigenvectors with their eigenvalues (vector-wise)
         scaled_eigenvectors = eigenvalues[np.newaxis, :] * eigenvectors
 
         # divide them by the maximum covariance (dimension-wise)
-        rescaled_eigenvectors = scaled_eigenvectors / self._maximum_covariance.values[:, np.newaxis]
+        rescaled_eigenvectors = scaled_eigenvectors / self._maximum_covariance[gates].values[:, np.newaxis]
 
         # check whether the rescaled vectors are longer than one
         lengths = np.linalg.norm(rescaled_eigenvectors, axis=0)
         if np.any(lengths > 1):
             # if so, pick the longest and scale it with epsilon
-            return self._current_position + self._epsilon * eigenvectors[:, np.argmax(lengths)]
+            return self._current_position.add(self._epsilon[gates] * eigenvectors[:, np.argmax(lengths)], fill_value=0.)
 
     def update(self,
                position: pd.Series,
@@ -298,8 +306,8 @@ class SelfInitializingKalmanEstimator(GradientEstimator):
     def covariance(self):
         return self.active_estimator.covariance()
 
-    def require_measurement(self):
-        return self.active_estimator.require_measurement()
+    def require_measurement(self, gates: Sequence[str]=None):
+        return self.active_estimator.require_measurement(gates=gates)
 
     def update(self, position: pd.Series, value: float, covariance: float, is_new_position=False):
         self.finite_difference_estimator.update(position, value, covariance, is_new_position)
