@@ -108,7 +108,7 @@ class SubsetTuner(ParameterTuner):
                  **kwargs):
         """
         :param evaluators:
-        :param gates: Gates which are used tu tune the parameters
+        :param gates: Gates which are used to tune the parameters
         :param tuned_voltages:
         :param last_voltage:
         :param last_parameter_values:
@@ -120,9 +120,7 @@ class SubsetTuner(ParameterTuner):
     def is_tuned(self, voltages: pd.Series) -> bool:
         current_parameters, current_variances = self.evaluate()
 
-        solver_voltages = voltages[self._gates]
-
-        self._solver.update_after_step(solver_voltages, current_parameters, current_variances)
+        self._solver.update_after_step(voltages, current_parameters, current_variances)
 
         self._last_voltage = voltages
         self._last_parameter_values = current_parameters[self._last_parameter_values.index]

@@ -46,7 +46,8 @@ class NewtonSolverTest(unittest.TestCase):
                                                                           epsilon=1.,
                                                                           symmetric=True,
                                                                           current_estimate=pd.Series(
-                                                                              initial_gradient[i][:])))
+                                                                              initial_gradient[i][:],
+                                                                              index=start.index)))
 
         solver = NewtonSolver(target=target, gradient_estimators=gradient_estimators, current_position=start,
                               current_values=current_values)
@@ -69,7 +70,8 @@ class NewtonSolverTest(unittest.TestCase):
                                                                           epsilon=1.,
                                                                           symmetric=True,
                                                                           current_estimate=pd.Series(
-                                                                              initial_gradient[i][:])))
+                                                                              initial_gradient[i][:],
+                                                                              index=start.index)))
 
         solver = NewtonSolver(target=target, gradient_estimators=gradient_estimators, current_position=start,
                               current_values=current_values)
@@ -104,14 +106,14 @@ class NewtonSolverTest(unittest.TestCase):
         # assert_called_with cannot be used because the overloaded == operator doesnt return bool values for pd.Series
         self.assertEqual(gradient_estimators[0].update.call_count, 1)
         call_args_1 = gradient_estimators[0].update.call_args
-        pandas.testing.assert_series_equal(call_args_1[0][0], update_args["position"][start.index])
+        pandas.testing.assert_series_equal(call_args_1[0][0], update_args["position"])
         self.assertAlmostEqual(call_args_1[0][1:],
                                (update_args["values"][target.index[0]], update_args["variances"][target.index[0]]))
         self.assertEqual(call_args_1[1], dict(is_new_position=True))
 
         self.assertEqual(gradient_estimators[0].update.call_count, 1)
         call_args_2 = gradient_estimators[1].update.call_args
-        pandas.testing.assert_index_equal(call_args_2[0][0].index, pd.Index(["position1", "position2", "position3"]))
+        pandas.testing.assert_index_equal(call_args_2[0][0].index, pd.Index(["position2", "position3", "position1"]))
         self.assertAlmostEqual(call_args_2[0][1:], (2, 4))
         self.assertEqual(call_args_2[1], dict(is_new_position=True))
 

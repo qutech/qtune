@@ -99,7 +99,9 @@ class NewtonSolver(Solver):
 
         required_diff = target - self._current_values
 
-        step, *_ = np.linalg.lstsq(self.jacobian, required_diff)
+        jacobian = self.jacobian[self._current_position.index]
+
+        step, *_ = np.linalg.lstsq(jacobian, required_diff)
         return self._current_position + step
 
     def update_after_step(self, position: pd.Series, values: pd.Series, variances: pd.Series):
@@ -107,7 +109,7 @@ class NewtonSolver(Solver):
                                                            values[self._current_values.index],
                                                            self._current_values.index, variances):
             if not math.isnan(self.target.desired[value_index]):
-                estimator.update(position[self._current_position.index], value, variance, is_new_position=True)
+                estimator.update(position, value, variance, is_new_position=True)
         self._current_position = position[self._current_position.index]
         self._current_values = values[self._current_values.index]
 

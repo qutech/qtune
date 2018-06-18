@@ -42,7 +42,7 @@ class SubsetTunerTest(unittest.TestCase):
 
         # assert that the solver is called with the right arguments
         self.assertEqual(solver.update_after_step.call_count, 1)
-        pd.testing.assert_series_equal(solver_voltages, solver.update_after_step.call_args[0][0])
+        pd.testing.assert_series_equal(full_voltages, solver.update_after_step.call_args[0][0])
 
         parameter = pd.Series(data=[10 * i for i in range(n_evaluator)],
                               index=["parameter_" + str(i) for i in range(n_evaluator)])

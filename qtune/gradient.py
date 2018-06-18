@@ -127,6 +127,8 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
             return self._requested_measurements[-1]
 
     def update(self, position: pd.Series, value: float, variance: float, is_new_position=False):
+        position = position[self._current_position.index]
+
         if self._current_position.isnull().all():
             self.change_position(position)
 
@@ -229,6 +231,7 @@ class KalmanGradientEstimator(GradientEstimator):
                value: float,
                covariance: float,
                is_new_position=False):
+        position = position[self._current_position.index]
         diff_position = (position - self._current_position)
         diff_values = (value - self._current_value)
 
