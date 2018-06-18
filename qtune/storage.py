@@ -177,7 +177,7 @@ def _from_hdf5(root: h5py.File, hdf5_obj: h5py.HLObject, deserialized=None):
             return result
 
         else:
-            warnings.warn('Unknown type: ', hdf5_obj.attrs['#type'])
+            warnings.warn('Unknown type: "%s"' % hdf5_obj.attrs['#type'])
 
     elif isinstance(hdf5_obj, h5py.Dataset):
         if '#type' in hdf5_obj.attrs:

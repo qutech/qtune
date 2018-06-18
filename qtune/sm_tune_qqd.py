@@ -185,6 +185,8 @@ class SMQQDPassThru(Evaluator):
     def evaluate(self) -> Tuple[pd.Series, pd.Series]:
 
         result = pd.Series(index=self._parameters)
+        error = pd.Series(index=self._parameters)
+
         return_values = np.array([])
 
         # get all measurement results first
@@ -195,8 +197,9 @@ class SMQQDPassThru(Evaluator):
         # one value for each parameter since they have already been evaluated
         for parameter, value in zip(self.parameters, return_values):
             result[parameter] = value
+            error[parameter] = value/10   # Estimate the error as 10% of the value
 
-        return result, pd.Series()
+        return result, error
 
     def to_hdf5(self):
         return dict(experiment=self.experiment,

@@ -13,6 +13,26 @@ import qtune.parameter_tuner
 from typing import Tuple
 
 parameter_information = {
+    "origin x": {
+        "entity_unit": "Transition Position Lead A (V)",
+        "name": "Transition Position Lead A",
+        "gradient_unit": "Gradient Transition Lead A (V/V)"
+    },
+    "origin y": {
+        "entity_unit": "Transition Position Lead B (V)",
+        "name": "Transition Position Lead B",
+        "gradient_unit": "Gradient Transition Lead B (V/V)"
+    },
+    "tunnel_coupling": {
+        "entity_unit": "Transition Position Lead B (V)",
+        "name": "Transition Position Lead B",
+        "gradient_unit": "Gradient Transition Lead B (V/V)"
+    },
+    "lead time": {
+        "entity_unit": "Transition Position Lead B (V)",
+        "name": "Transition Position Lead B",
+        "gradient_unit": "Gradient Transition Lead B (V/V)"
+    },
     "position_RFA": {
         "entity_unit": "Transition Position Lead A (V)",
         "name": "Transition Position Lead A",
