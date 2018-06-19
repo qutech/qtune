@@ -12,6 +12,11 @@ __all__ = ["GradientEstimator", "FiniteDifferencesGradientEstimator", "KalmanGra
 
 class GradientEstimator(metaclass=HDF5Serializable):
     """Estimate the gradient of a scalar function"""
+    _current_position = None
+
+    @property
+    def current_position(self):
+        return self._current_position
 
     def change_position(self, new_position: pd.Series):
         raise NotImplementedError()
@@ -66,11 +71,16 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
 
         if not isinstance(epsilon, pd.Series):
             epsilon = pd.Series(epsilon, index=current_position.index)
+        else:
+            assert set(epsilon.index).issubset(set(self._current_position.index))
         self._epsilon = epsilon[self._current_position.index]
 
         self._current_estimate = current_estimate
         self._covariance = covariance
 
+        if stored_measurements is not None:
+            for measurement in stored_measurements:
+                pd.testing.assert_index_equal(measurement.index, epsilon.index)
         self._stored_measurements = stored_measurements or []
 
         # only for debugging purposes
@@ -194,11 +204,19 @@ class KalmanGradientEstimator(GradientEstimator):
 
         if not isinstance(maximum_covariance, pd.Series):
             maximum_covariance = pd.Series(maximum_covariance, index=self._current_position.index)
+        else:
+            assert set(maximum_covariance.index) == set(current_position.index)
         self._maximum_covariance = maximum_covariance[current_position.index]
 
         if not isinstance(epsilon, pd.Series):
             epsilon = pd.Series(epsilon, index=current_position.index)
+        else:
+            assert set(epsilon.index) == set(self._current_position.index)
         self._epsilon = epsilon[current_position.index]
+
+    @property
+    def epsilon(self) -> pd.Series:
+        return self._epsilon
 
     def change_position(self, new_position: pd.Series):
         self._current_position = new_position[self._current_position.index]
