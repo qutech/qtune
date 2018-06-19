@@ -13,7 +13,6 @@ from qtune import mat2py
 
 
 # TODO Add Tests
-# TODO QQB or general QDArray?
 class SMTuneQQD(Experiment):
     """
     QQD implementation using the MATLAB backend and the tune.m script on the Trition 200 Setup
@@ -54,43 +53,13 @@ class SMTuneQQD(Experiment):
     def read_gate_voltages(self) -> pd.Series:
         return pd.Series(self._matlab.engine.qtune.read_qqd_gate_voltages()).sort_index()
 
-# the following function has been depreciated. Newer versions of this class contain only the functions defined in the
-# parent class "qtune.experiment.Experiment". The Gates an instance of qtune.gradient.GradientEstimator uses are defined
-# by the instance. Julian
-    def _read_sensing_dot_voltages(self) -> pd.Series:
-        # TODO: Maybe allow for getting only one sensor at a time?
-        # TODO change MATLAB gate names or put them in the python part
-        return pd.Series(self._matlab.engine.qtune.read_qqd_sensing_dot_voltages()).sort_index()
 
     def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
-        """
-        untested proposition by Julian:
-        current_gate_voltages = self.read_gate_voltages()
-        current_gate_voltages[new_gate_voltages.index] = new_gate_voltages[new_gate_voltages.index]
-        current_gate_voltages.applymap(self._matlab.to_matlab, convert_dtype=False)
-        return pd.Series(self._matlab.engine.qtune.set_qqd_gate_voltages(current_gate_voltages)) # set_qqd_gate_voltages
-        # needs to be adapted
-        """
-        current_gate_voltages = self.read_gate_voltages()
-        for key in current_gate_voltages.index.tolist():
-            if key not in new_gate_voltages.index.tolist():
-                new_gate_voltages[key] = current_gate_voltages[key]
-        new_gate_voltages = dict(new_gate_voltages)
-        for key in new_gate_voltages:
-            new_gate_voltages[key] = new_gate_voltages[key].item()
-        return pd.Series(self._matlab.engine.qtune.set_qqd_gate_voltages(new_gate_voltages))
 
-# depreciated! Done by set_gate_voltages. Julian
-    def _set_sensing_dot_voltages(self, new_sensing_dot_voltage: pd.Series):
-        # currently handled in MATLAB
-        current_sensing_dot_voltages = self._read_sensing_dot_voltages()
-        for key in current_sensing_dot_voltages.index.tolist():
-            if key not in new_sensing_dot_voltage.index.tolist():
-                new_sensing_dot_voltage[key] = current_sensing_dot_voltages[key]
-        new_sensing_dot_voltage = dict(new_sensing_dot_voltage)
-        for key in new_sensing_dot_voltage:
-            new_sensing_dot_voltage[key] = new_sensing_dot_voltage[key].item()
-        self._matlab.engine.qtune.set_sensing_dot_gate_voltages()
+        current_gate_voltages = self.read_gate_voltages()
+        #current_gate_voltages[new_gate_voltages.index] = new_gate_voltages[new_gate_voltages.index]
+        return pd.Series(self._matlab.engine.qtune.set_qqd_gate_voltages(new_gate_voltages.to_dict())) # set_qqd_gate_voltages
+
 
     def tune(self, measurement_name, index: np.int, **kwargs) -> pd.Series:
         # Tune wrapper using the MATLAB syntax
