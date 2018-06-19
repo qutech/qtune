@@ -58,7 +58,12 @@ class SMTuneQQD(Experiment):
 
         current_gate_voltages = self.read_gate_voltages()
         #current_gate_voltages[new_gate_voltages.index] = new_gate_voltages[new_gate_voltages.index]
-        return pd.Series(self._matlab.engine.qtune.set_qqd_gate_voltages(new_gate_voltages.to_dict())) # set_qqd_gate_voltages
+        gate_voltages_to_matlab= new_gate_voltages.to_dict()
+        for key, value in gate_voltages_to_matlab.items():
+            gate_voltages_to_matlab[key] = float(value)
+        self._matlab.engine.qtune.set_qqd_gate_voltages(gate_voltages_to_matlab)
+        
+        return self.read_gate_voltages() # set_qqd_gate_voltages
 
 
     def tune(self, measurement_name, index: np.int, **kwargs) -> pd.Series:
@@ -166,7 +171,7 @@ class SMQQDPassThru(Evaluator):
         # one value for each parameter since they have already been evaluated
         for parameter, value in zip(self.parameters, return_values):
             result[parameter] = value
-            error[parameter] = value/10   # Estimate the error as 10% of the value
+            error[parameter] = np.abs((value/100)**2)   # Estimate the error as 10% of the value
 
         return result, error
 
