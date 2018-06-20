@@ -6,7 +6,7 @@ from qtune.experiment import Experiment
 from typing import List, Optional
 from qtune.parameter_tuner import ParameterTuner, SubsetTuner
 from qtune.solver import NewtonSolver
-from qtune.storage import to_hdf5, HDF5Serializable
+from qtune.storage import to_hdf5, HDF5Serializable, from_hdf5
 
 
 class Autotuner(metaclass=HDF5Serializable):
@@ -82,7 +82,7 @@ class Autotuner(metaclass=HDF5Serializable):
             self._experiment.set_gate_voltages(self._voltage_to_set)
             self._current_tuner_index = 0
             self._voltage_to_set = None
-        elif self._current_tuner_status is False:
+        elif not self._current_tuner_status:
             if self.get_current_tuner().is_tuned(self._experiment.read_gate_voltages()):
                 self._current_tuner_index += 1
             else:
@@ -115,3 +115,10 @@ class Autotuner(metaclass=HDF5Serializable):
             voltage_to_set=self._voltage_to_set,
             hdf5_storage_path=self._hdf5_storage_path
         )
+
+
+def load_auto_tuner(file, reserved) -> Autotuner:
+    assert "experiment" in reserved
+    hdf5_handle = h5py.File(file, mode="r")
+    loaded_data = from_hdf5(hdf5_handle, reserved=reserved)
+    return loaded_data["autotuner"]
