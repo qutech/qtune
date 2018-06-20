@@ -29,6 +29,7 @@ class SubsetTunerTest(unittest.TestCase):
 
         solver = mocked_solver()
         solver.target = target
+        solver.current_position.index = pd.Index(["a", "b", "c"])
         subset_tuner_args = dict(evaluators=evaluators,
                                  gates=["a", "b", "c"],
                                  solver=solver)
@@ -113,7 +114,7 @@ class SensingDotTunerTest(unittest.TestCase):
         self.assertEqual(solver.update_after_step.call_count, 1)
         self.assertEqual(cheap_evaluator.evaluate.call_count, 1)
         self.assertEqual(expensive_evaluator.evaluate.call_count, 1)
-        pd.testing.assert_series_equal(solver_voltages, solver.update_after_step.call_args[0][0])
+        pd.testing.assert_series_equal(full_voltages, solver.update_after_step.call_args[0][0])
 
         parameter = pd.Series(data=[.3, .3], index=["position_a", "position_b"])
         variances = pd.Series(data=[.01, .01], index=["position_a", "position_b"])
@@ -141,7 +142,7 @@ class SensingDotTunerTest(unittest.TestCase):
         self.assertEqual(solver.update_after_step.call_count, 2)
         self.assertEqual(cheap_evaluator.evaluate.call_count, 2)
         self.assertEqual(expensive_evaluator.evaluate.call_count, 1)
-        pd.testing.assert_series_equal(new_voltages[pd.Index(["a", "b"])], solver.update_after_step.call_args[0][0])
+        pd.testing.assert_series_equal(new_voltages[pd.Index(["a", "b", "d"])], solver.update_after_step.call_args[0][0])
 
         pd.testing.assert_series_equal(solver.update_after_step.call_args[0][1], second_return_cheap[0].sort_index())
         pd.testing.assert_series_equal(solver.update_after_step.call_args[0][2], second_return_cheap[1].sort_index())

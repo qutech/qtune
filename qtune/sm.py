@@ -4,10 +4,9 @@ import warnings
 import io
 import functools
 import sys
-from typing import Tuple, Sequence, Union
+from typing import Tuple, Union, List, Dict, Set
 import os.path
 import weakref
-import h5py
 
 import matlab.engine
 import pandas as pd
@@ -21,8 +20,6 @@ import qtune.util
 from qtune.basic_dqd import BasicDQD
 from qtune.basic_dqd import BasicQQD
 from qtune.basic_dqd import BasicDQDRefactored
-#from qtune.chrg_diag import ChargeDiagram
-from qtune.evaluator import Evaluator
 
 
 def redirect_output(func):
@@ -137,6 +134,14 @@ class SpecialMeasureMatlab:
             return float(obj)
         elif isinstance(obj, np.int64):
             return int(obj)
+        elif isinstance(obj, List):
+            return [self.to_matlab(x) for x in obj]
+        elif isinstance(obj, Tuple):
+            return (self.to_matlab(x) for x in obj)
+        elif isinstance(obj, Dict):
+            return {x: self.to_matlab(obj[x]) for x in obj}
+        elif isinstance(obj, Set):
+            return {self.to_matlab(x) for x in obj}
         else:
             raise NotImplementedError('To MATLAB conversion', obj)
 

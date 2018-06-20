@@ -40,6 +40,13 @@ class Solver(metaclass=HDF5Serializable):
     """
     The solver class implements an algorithm to minimise the difference of the values to the target values.
     """
+    _current_position = None
+    _current_values = None
+
+    @property
+    def current_position(self) -> pd.Series:
+        return self._current_position
+
     def suggest_next_position(self) -> pd.Series:
         raise NotImplementedError()
 
@@ -63,17 +70,25 @@ class NewtonSolver(Solver):
     """
     def __init__(self, target: pd.DataFrame,
                  gradient_estimators: Sequence[GradientEstimator],
-                 current_position: pd.Series=None,
+                 current_position: pd.Series,
                  current_values: pd.Series=None):
         self._target = target
         self._gradient_estimators = list(gradient_estimators)
         assert (len(self._target.index) == len(self._gradient_estimators))
 
         self._current_position = current_position
+        for gradient_estimator in gradient_estimators:
+            assert set(self._current_position.index).issubset(set(gradient_estimator.current_position.index))
         if current_values is not None:
+            assert set(self.target.index).issubset(set(current_values.index))
             self._current_values = current_values[self._target.index]
         else:
             self._current_values = pd.Series(np.nan, index=self._target.index)
+        assert len(self._current_position) >= len(self._current_values)
+
+    @property
+    def gradient_estimators(self):
+        return self._gradient_estimators
 
     @property
     def target(self) -> pd.DataFrame:
