@@ -16,13 +16,15 @@ class Autotuner(metaclass=HDF5Serializable):
 
     def __init__(self, experiment: Experiment, tuning_hierarchy: List[ParameterTuner] = None,
                  current_tuner_index: int = 0, current_tuner_status: bool = False,
-                 voltage_to_set: Optional[pd.Series] = None, hdf5_storage_path: str = None):
+                 voltage_to_set: Optional[pd.Series] = None, hdf5_storage_path: str = None,
+                 write_console_log: bool=False):
         self._experiment = experiment
         self._tuning_hierarchy = tuning_hierarchy
         self._current_tuner_index = current_tuner_index
         self._current_tuner_status = current_tuner_status
         self._voltage_to_set = voltage_to_set
         self._hdf5_storage_path = hdf5_storage_path
+        self._write_console_log = write_console_log
 
     def tuning_complete(self) -> bool:
         if self._current_tuner_index == len(self._tuning_hierarchy):
@@ -79,17 +81,35 @@ class Autotuner(metaclass=HDF5Serializable):
 
     def iterate(self):
         if self._voltage_to_set is not None:
+            if self._write_console_log:
+                print("The voltages will be changed by:")
+                print(self._voltage_to_set - self._tuning_hierarchy[0].last_voltages[self._voltage_to_set.index])
             self._experiment.set_gate_voltages(self._voltage_to_set)
             self._current_tuner_index = 0
             self._voltage_to_set = None
         elif not self._current_tuner_status:
+            if self._write_console_log:
+                print("The parameters of ParameterTuner number " + str(self._current_tuner_index) +
+                      " are being evaluated.")
             if self.get_current_tuner().is_tuned(self._experiment.read_gate_voltages()):
                 self._current_tuner_index += 1
+                if self._write_console_log:
+                    print("The parameters are tuned. Move on to ParameterTuner number " +
+                          str(self._current_tuner_index))
             else:
                 self._current_tuner_status = True
+                if self._write_console_log:
+                    print("The parameters are not tuned yet.")
+                    if self.get_current_tuner().target["desired"].notna().all():
+                        print("The distance to their target is: ")
+                        print(self.get_current_tuner().target["desired"] -
+                              self.get_current_tuner().last_parameter_covariance[0]
+                              [self.get_current_tuner().target.index])
         else:
             self._voltage_to_set = self.get_current_tuner().get_next_voltages()
             self._current_tuner_status = False
+            if self._write_console_log:
+                print("Next voltages are being calculated.")
 
     def autotune(self):
         if not self.ready_to_tune():
