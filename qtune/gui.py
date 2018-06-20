@@ -1,9 +1,13 @@
 from threading import Thread
 import time
 import logging
+import IPython
 
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
+
+
+IPython.get_ipython().magic('gui qt')
 
 
 class FunctionHandler(logging.Handler):
@@ -27,18 +31,15 @@ class LogLevelSelecter(QtCore.QObject):
         self.logger = logger
 
 
-class GUI(QtCore.QObject):
+class GUI(QtWidgets.QMainWindow):
     _log_signal = QtCore.pyqtSignal(str)
 
     def __init__(self, autotuner, app=None):
         super().__init__()
         self.autotuner = autotuner
 
-        self._app = app if app else QtGui.QApplication([])
-        self._win = QtGui.QMainWindow()
-
-        self._win.setWindowTitle('qtune GUI')
-        self._win.resize(1000, 500)
+        self.setWindowTitle('qtune GUI')
+        self.resize(1000, 500)
 
         start_btn = QtGui.QPushButton('Start')
         start_btn.clicked.connect(self.start)
@@ -66,7 +67,7 @@ class GUI(QtCore.QObject):
         main.addWidget(top, 0, 0)
         main.addWidget(log, 1, 0)
 
-        self._win.setCentralWidget(main)
+        self.setCentralWidget(main)
 
         self._log = log
         self._log_signal.connect(self._log.append)
@@ -80,10 +81,24 @@ class GUI(QtCore.QObject):
         self._stop = False
         self._thread.start()
 
+    def _join_worker(self):
+        if self._thread.is_alive():
+            logging.getLogger('').info('Joining thread')
+        self._stop = True
+        self._thread.join()
+
+    def restart_thread(self):
+        self._join_worker()
+        logging.getLogger('').info('Restarting thread')
+        self._thread = Thread(target=self._work)
+        self._pause = True
+        self._stop = False
+        self._thread.start()
+
     def _work(self):
         logger = logging.getLogger('')
         while not self._stop:
-            while self._pause:
+            while self._pause and not self._stop:
                 time.sleep(0.1)
 
             while not (self._pause or self._stop):
@@ -102,7 +117,11 @@ class GUI(QtCore.QObject):
 
     def start(self):
         logger = logging.getLogger('')
-        if self._pause:
+        if not self._thread.is_alive():
+            logger.warning('Worker thread is dead. Restarting...')
+            self.restart_thread()
+
+        elif self._pause:
             logger.info('Starting worker thread')
 
         else:
@@ -114,7 +133,9 @@ class GUI(QtCore.QObject):
 
     def pause(self):
         logger = logging.getLogger('')
-        if self._pause:
+        if not self._thread.is_alive():
+            logger.warning('Worker thread already dead')
+        elif self._pause:
             logger.info('Already paused')
         else:
             logger.info('Pausing worker thread')
@@ -126,17 +147,7 @@ class GUI(QtCore.QObject):
     def close(self):
         self._stop = True
         self._thread.join()
-
-        self._win.close()
-
-    def show(self):
-        self._win.show()
-
-        import sys
-        if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
-            QtGui.QApplication.instance().exec_()
-
-        self.close()
+        super().close()
 
     def __del__(self):
         self.close()
@@ -156,3 +167,5 @@ class GUI(QtCore.QObject):
         handler.setFormatter(formatter)
 
         logger.addHandler(handler)
+
+
