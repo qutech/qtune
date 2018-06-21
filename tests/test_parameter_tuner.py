@@ -54,8 +54,8 @@ class SubsetTunerTest(unittest.TestCase):
 
         # assert that the subset tuner updates his attributes
         pd.testing.assert_series_equal(subset_tuner._last_voltage, full_voltages)
-        pd.testing.assert_series_equal(subset_tuner.last_parameter_covariance[0], parameter)
-        pd.testing.assert_series_equal(subset_tuner.last_parameter_covariance[1], variances)
+        pd.testing.assert_series_equal(subset_tuner.last_parameters_and_variances[0], parameter)
+        pd.testing.assert_series_equal(subset_tuner.last_parameters_and_variances[1], variances)
 
         # assert that is tuned returns the correct state
         self.assertEqual(failing_is_tuned, False)
@@ -127,8 +127,8 @@ class SensingDotTunerTest(unittest.TestCase):
                                       index=["position_a", "position_b", "current_signal", "optimal_signal"])
         updated_variances = pd.Series(data=[.01, .01, .1, .1],
                                       index=["position_a", "position_b", "current_signal", "optimal_signal"])
-        pd.testing.assert_series_equal(sensing_dot_tuner.last_parameter_covariance[0], updated_parameter.sort_index())
-        pd.testing.assert_series_equal(sensing_dot_tuner.last_parameter_covariance[1], updated_variances.sort_index())
+        pd.testing.assert_series_equal(sensing_dot_tuner.last_parameters_and_variances[0], updated_parameter.sort_index())
+        pd.testing.assert_series_equal(sensing_dot_tuner.last_parameters_and_variances[1], updated_variances.sort_index())
 
         # assert that is tuned returns the correct state
         self.assertEqual(failing_is_tuned, False)

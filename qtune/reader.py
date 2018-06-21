@@ -257,18 +257,18 @@ def extract_voltages_from_hierarchy(tuning_hierarchy):
 
 def extract_parameters_from_hierarchy(tuning_hierarchy):
     parameters = pd.Series()
-    covariances = pd.Series()
+    variances = pd.Series()
     for par_tuner in tuning_hierarchy:
-        parameter, covariance = par_tuner.last_parameter_covariance
+        parameter, variance = par_tuner.last_parameters_and_variances
         if isinstance(par_tuner, qtune.parameter_tuner.SubsetTuner):
             relevant_parameters = par_tuner.solver.target.desired.index[
                 ~par_tuner.solver.target.desired.apply(np.isnan)]
             parameters = parameters.append(parameter[relevant_parameters])
-            covariances = covariances.append(covariance[relevant_parameters])
+            variances = variances.append(variance[relevant_parameters])
         else:
             parameters = parameters.append(parameter)
-            covariances = covariances.append(covariance)
-    return parameters, covariances
+            variances = variances.append(variance)
+    return parameters, variances
 
 
 def extract_gradients_from_hierarchy(tuning_hierarchy):
