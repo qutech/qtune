@@ -2,8 +2,9 @@ from threading import Thread
 import time
 import logging
 import IPython
-
+import itertools
 import pyqtgraph as pg
+import pyqtgraph.parametertree
 from pyqtgraph.Qt import QtCore, QtWidgets
 
 
@@ -32,12 +33,83 @@ class LogLevelSelecter(QtCore.QObject):
         self.logger = logger
 
 
+class PlotOrganizer(pg.LayoutWidget):
+    @QtCore.pyqtSlot()
+    def refresh(self):
+        (_, gates), (_, params) = self.parameter.getValues().values()
+        plot_item = self.plot.getPlotItem()
+
+        for idx, (gate, (plot_gate, _)) in enumerate(gates.items()):
+            if plot_gate:
+                data = self.history.get_vals(gate)
+
+                if gate in self._plots:
+                    self._plots[gate].setData(data)
+                else:
+                    self._plots[gate] = plot_item.plot(data, name=gate, pen=pg.intColor(idx,
+                                                                                        len(gates) + len(params)))
+            elif gate in self._plots:
+                plot_item.legend.removeItem(gate)
+                plot_item.removeItem(self._plots.pop(gate))
+
+    def plot_selection_change(self, _, changes):
+        for param, change, data in changes:
+            name = param.name()
+            if data:
+                if name in self._plots:
+                    pass
+                else:
+                    self.refresh()
+            else:
+                if name in self._plots:
+                    self.plot.getPlotItem().legend.removeItem(name)
+                    self.plot.getPlotItem().removeItem(self._plots.pop(name))
+
+    def __init__(self, history, **kwargs):
+        super().__init__(**kwargs)
+
+        gates = {'name': 'Gate Voltages', 'type': 'group', 'children': [
+            {'name': name, 'type': 'bool', 'value': False} for name in history.gate_names()
+        ]}
+
+        params = {'name': 'Parameters', 'type': 'group', 'children': [
+            {'name': name, 'type': 'bool', 'value': False} for name in history.parameter_names()
+        ]}
+
+        p = pg.parametertree.Parameter(name='entries', type='group', children=[gates, params])
+
+        p.sigTreeStateChanged.connect(self.plot_selection_change)
+
+        refresh_btn = QtWidgets.QPushButton('Refresh')
+        refresh_btn.setFixedWidth(100)
+        refresh_btn.clicked.connect(self.refresh)
+
+        self._color_counter = iter(itertools.cycle(range(100)))
+
+        self.addWidget(refresh_btn, 0, 0)
+
+        self.tree = pg.parametertree.ParameterTree()
+        self.tree.setParameters(p, showTop=False)
+        self.addWidget(self.tree, 1, 0)
+
+        self.plot = pg.PlotWidget()
+        self._plots = dict()
+
+        self.addWidget(self.plot, 1, 1)
+
+        self.parameter = p
+
+        self.history = history
+
+        self.plot.getPlotItem().addLegend()
+
+
 class GUI(QtWidgets.QMainWindow):
     _log_signal = QtCore.pyqtSignal(str)
 
-    def __init__(self, autotuner, app=None, logger='qtune'):
+    def __init__(self, auto_tuner, logger='qtune'):
         super().__init__()
-        self.autotuner = autotuner
+        self._auto_tuner = auto_tuner
 
         self.setWindowTitle('qtune GUI')
         self.resize(1000, 500)
@@ -59,22 +131,44 @@ class GUI(QtWidgets.QMainWindow):
         for level in (logging.CRITICAL, logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG, logging.NOTSET):
             log_level.addItem(logging._levelToName[level], level)
         log_level.setCurrentIndex(log_level.count() - 1)
+        log_level.setFixedWidth(100)
+
+        log_label = QtWidgets.QLabel('Log level')
+        log_label.setFixedWidth(100)
 
         log = QtWidgets.QTextEdit()
         log.setReadOnly(True)
         log.setTextInteractionFlags(QtCore.Qt.TextSelectableByKeyboard | QtCore.Qt.TextSelectableByMouse)
+
+        class Test:
+            def gate_names(self):
+                return ['U', 'V']
+
+            def parameter_names(self):
+                return ['P', 'Q']
+
+            def get_vals(self, bla):
+                return {'U': [1, 2, 3, 4],
+                        'V': [2, 3, 1.5, 3],
+                        'P': [0.1, 0.2, 0.3, 0], 'Q': [1, 1, 1, 1]}[bla]
+
+        plot_organizer = PlotOrganizer(Test())
 
         # this is the top row
         top = pg.LayoutWidget()
         top.addWidget(start_btn, 0, 0)
         top.addWidget(step_btn, 1, 0)
         top.addWidget(stop_btn, 2, 0)
-        top.addWidget(QtWidgets.QLabel('Log level'), 0, 1)
+        top.addWidget(log_label, 0, 1)
         top.addWidget(log_level, 1, 1)
 
+        left = pg.LayoutWidget()
+        left.addWidget(top, 0, 0)
+        left.addWidget(log, 1, 0)
+
         main = pg.LayoutWidget()
-        main.addWidget(top, 0, 0)
-        main.addWidget(log, 1, 0)
+        main.addWidget(left, 0, 0)
+        main.addWidget(plot_organizer, 0, 1)
 
         self.setCentralWidget(main)
 
@@ -93,6 +187,12 @@ class GUI(QtWidgets.QMainWindow):
         self._thread.start()
 
         self._logger = logging.getLogger(logger)
+
+        self._plot_organizer = plot_organizer
+
+    @property
+    def auto_tuner(self):
+        return self._auto_tuner
 
     def _join_worker(self):
         if self._thread.is_alive():
