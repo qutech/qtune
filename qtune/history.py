@@ -77,7 +77,7 @@ def read_files(file_or_files, reserved=None):
     return data.sort(key=operator.itemgetter(0))
 
 
-class Reader:
+class History:
     def __init__(self, path_or_initial_hierarchy: Union[str, List[qtune.parameter_tuner.ParameterTuner]]):
         if isinstance(path_or_initial_hierarchy, str):
             self._file_path = path_or_initial_hierarchy
