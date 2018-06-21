@@ -43,11 +43,17 @@ class GUI(QtWidgets.QMainWindow):
         self.resize(1000, 500)
 
         start_btn = QtWidgets.QPushButton('Start')
+        start_btn.setFixedWidth(100)
         start_btn.clicked.connect(self.start)
 
         stop_btn = QtWidgets.QPushButton('Pause')
+        stop_btn.setFixedWidth(100)
         stop_btn.clicked.connect(self.pause)
         stop_btn.setEnabled(False)
+
+        step_btn = QtWidgets.QPushButton('Step')
+        step_btn.setFixedWidth(100)
+        step_btn.clicked.connect(self.step)
 
         log_level = QtWidgets.QComboBox()
         for level in (logging.CRITICAL, logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG, logging.NOTSET):
@@ -61,8 +67,10 @@ class GUI(QtWidgets.QMainWindow):
         # this is the top row
         top = pg.LayoutWidget()
         top.addWidget(start_btn, 0, 0)
-        top.addWidget(stop_btn, 0, 1)
-        top.addWidget(log_level, 0, 2)
+        top.addWidget(step_btn, 1, 0)
+        top.addWidget(stop_btn, 2, 0)
+        top.addWidget(QtWidgets.QLabel('Log level'), 0, 1)
+        top.addWidget(log_level, 1, 1)
 
         main = pg.LayoutWidget()
         main.addWidget(top, 0, 0)
@@ -76,9 +84,11 @@ class GUI(QtWidgets.QMainWindow):
 
         self._start_btn = start_btn
         self._stop_btn = stop_btn
+        self._step_btn = step_btn
 
         self._thread = Thread(target=self._work)
-        self._pause = True
+        self._continuous = False
+        self._stepped = False
         self._stop = False
         self._thread.start()
 
@@ -94,25 +104,28 @@ class GUI(QtWidgets.QMainWindow):
         self._join_worker()
         self._logger.info('Restarting thread')
         self._thread = Thread(target=self._work)
-        self._pause = True
+        self._continuous = False
+        self._stepped = False
         self._stop = False
         self._thread.start()
 
     def _work(self):
         while not self._stop:
-            while self._pause and not self._stop:
-                time.sleep(0.1)
+            while not (self._stop or self._continuous or self._stepped):
+                time.sleep(0.05)
 
-            while not (self._pause or self._stop):
+            while self._continuous or self._stepped and not self._stop:
                 if self.autotuner:
                     try:
                         self.autotuner.iterate()
-                    except Exception as err:
+                    except Exception:
                         self._logger.exception('Error during autotuner iteration: Pausing...')
                         self.pause()
                 else:
                     self._logger.error('No Autotuner: Pausing...')
                     self.pause()
+
+                self._stepped = False
 
     def log(self, msg: str):
         self._log_signal.emit(msg)
@@ -122,26 +135,37 @@ class GUI(QtWidgets.QMainWindow):
             self._logger.warning('Worker thread is dead. Restarting...')
             self.restart_thread()
 
-        elif self._pause:
-            self._logger.info('Starting worker thread')
-
-        else:
+        elif self._continuous:
             self._logger.info('Already started')
 
-        self._pause = False
+        else:
+            self._logger.info('Starting worker thread')
+
+        self._continuous = True
         self._start_btn.setEnabled(False)
+        self._step_btn.setEnabled(False)
         self._stop_btn.setEnabled(True)
+
+    def step(self):
+        if not self._thread.is_alive():
+            self._logger.warning('Worker thread is dead. Restarting...')
+            self.restart_thread()
+
+        self._logger.info('Order worker to do one step')
+        self._stepped = True
 
     def pause(self):
         if not self._thread.is_alive():
             self._logger.warning('Worker thread already dead')
-        elif self._pause:
-            self._logger.info('Already paused')
-        else:
+        elif self._continuous:
             self._logger.info('Pausing worker thread')
+        elif not self._stepped:
+            self._logger.info('Already paused')
 
-        self._pause = True
+        self._continuous = False
+        self._stepped = False
         self._start_btn.setEnabled(True)
+        self._step_btn.setEnabled(True)
         self._stop_btn.setEnabled(False)
 
     def close(self):
@@ -167,5 +191,3 @@ class GUI(QtWidgets.QMainWindow):
         handler.setFormatter(formatter)
 
         logger.addHandler(handler)
-
-
