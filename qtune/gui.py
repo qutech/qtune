@@ -4,10 +4,11 @@ import logging
 import IPython
 
 import pyqtgraph as pg
-from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
+from pyqtgraph.Qt import QtCore, QtWidgets
 
 
 IPython.get_ipython().magic('gui qt')
+IPython.get_ipython().magic('matplotlib qt')
 
 
 class FunctionHandler(logging.Handler):
@@ -34,21 +35,21 @@ class LogLevelSelecter(QtCore.QObject):
 class GUI(QtWidgets.QMainWindow):
     _log_signal = QtCore.pyqtSignal(str)
 
-    def __init__(self, autotuner, app=None):
+    def __init__(self, autotuner, app=None, logger='qtune'):
         super().__init__()
         self.autotuner = autotuner
 
         self.setWindowTitle('qtune GUI')
         self.resize(1000, 500)
 
-        start_btn = QtGui.QPushButton('Start')
+        start_btn = QtWidgets.QPushButton('Start')
         start_btn.clicked.connect(self.start)
 
-        stop_btn = QtGui.QPushButton('Pause')
+        stop_btn = QtWidgets.QPushButton('Pause')
         stop_btn.clicked.connect(self.pause)
         stop_btn.setEnabled(False)
 
-        log_level = QtGui.QComboBox()
+        log_level = QtWidgets.QComboBox()
         for level in (logging.CRITICAL, logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG, logging.NOTSET):
             log_level.addItem(logging._levelToName[level], level)
         log_level.setCurrentIndex(log_level.count() - 1)
@@ -81,22 +82,23 @@ class GUI(QtWidgets.QMainWindow):
         self._stop = False
         self._thread.start()
 
+        self._logger = logging.getLogger(logger)
+
     def _join_worker(self):
         if self._thread.is_alive():
-            logging.getLogger('').info('Joining thread')
+            self._logger.info('Joining thread')
         self._stop = True
         self._thread.join()
 
     def restart_thread(self):
         self._join_worker()
-        logging.getLogger('').info('Restarting thread')
+        self._logger.info('Restarting thread')
         self._thread = Thread(target=self._work)
         self._pause = True
         self._stop = False
         self._thread.start()
 
     def _work(self):
-        logger = logging.getLogger('')
         while not self._stop:
             while self._pause and not self._stop:
                 time.sleep(0.1)
@@ -106,39 +108,37 @@ class GUI(QtWidgets.QMainWindow):
                     try:
                         self.autotuner.iterate()
                     except Exception as err:
-                        logger.exception('Error during autotuner iteration: Pausing...')
+                        self._logger.exception('Error during autotuner iteration: Pausing...')
                         self.pause()
                 else:
-                    logging.error('No Autotuner: Pausing...')
+                    self._logger.error('No Autotuner: Pausing...')
                     self.pause()
 
     def log(self, msg: str):
         self._log_signal.emit(msg)
 
     def start(self):
-        logger = logging.getLogger('')
         if not self._thread.is_alive():
-            logger.warning('Worker thread is dead. Restarting...')
+            self._logger.warning('Worker thread is dead. Restarting...')
             self.restart_thread()
 
         elif self._pause:
-            logger.info('Starting worker thread')
+            self._logger.info('Starting worker thread')
 
         else:
-            logger.info('Already started')
+            self._logger.info('Already started')
 
         self._pause = False
         self._start_btn.setEnabled(False)
         self._stop_btn.setEnabled(True)
 
     def pause(self):
-        logger = logging.getLogger('')
         if not self._thread.is_alive():
-            logger.warning('Worker thread already dead')
+            self._logger.warning('Worker thread already dead')
         elif self._pause:
-            logger.info('Already paused')
+            self._logger.info('Already paused')
         else:
-            logger.info('Pausing worker thread')
+            self._logger.info('Pausing worker thread')
 
         self._pause = True
         self._start_btn.setEnabled(True)
@@ -152,7 +152,7 @@ class GUI(QtWidgets.QMainWindow):
     def __del__(self):
         self.close()
 
-    def configure_logging(self, logger=''):
+    def configure_logging(self, logger='qtune'):
         if isinstance(logger, str):
             logger = logging.getLogger(logger)
 
