@@ -60,6 +60,10 @@ class Solver(metaclass=HDF5Serializable):
     def target(self) -> pd.DataFrame:
         raise NotImplementedError()
 
+    @property
+    def state(self) -> pd.Series:
+        raise NotImplementedError()
+
 
 class NewtonSolver(Solver):
     """This solver uses (an estimate of) the jacobian and solves by inverting it.(Newton's method)
@@ -98,6 +102,15 @@ class NewtonSolver(Solver):
     def jacobian(self) -> pd.DataFrame:
         gradients = [gradient.estimate() for gradient in self._gradient_estimators]
         return pd.concat(gradients, axis=1, keys=self._target.index).T
+
+    @property
+    def state(self):
+        jacobian = self.jacobian[self._current_position.index]
+        index = []
+        for param in jacobian.index:
+            for gate in jacobian.columns:
+                index.append('d{}/d{}'.format(param, gate))
+        return pd.Series(jacobian.values.ravel(), index=index)
 
     def suggest_next_position(self) -> pd.Series:
         for estimator in self._gradient_estimators:
@@ -407,6 +420,9 @@ class ForwardingSolver(Solver):
 
         new_position_names = self._values_to_position[values.index]
         self._next_position[new_position_names] = values
+
+    def state(self):
+        return pd.Series()
 
     def to_hdf5(self):
         return dict(target=self._target,

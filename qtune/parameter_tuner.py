@@ -52,6 +52,10 @@ class ParameterTuner(metaclass=HDF5Serializable):
         return self._solver
 
     @property
+    def state(self) -> pd.Series:
+        return self.solver.state
+
+    @property
     def target(self) -> pd.DataFrame:
         return self.solver.target
 
