@@ -9,8 +9,9 @@ import qtune.autotuner
 import qtune.solver
 import qtune.gradient
 import qtune.parameter_tuner
+import os.path
 
-from typing import Tuple
+from typing import Tuple, Union, List
 
 parameter_information = {
     "position_RFA": {
@@ -43,12 +44,18 @@ parameter_information = {
         "name": "Voltage on SDB2",
         "gradient_unit": "Gradient Voltage on SDB2 (V/V)"
     },
+    "position_SDB1": {
+        "entity_unit": "Voltage (V)",
+        "name": "Voltage on SDB1",
+        "gradient_unit": "Gradient Voltage on SDB1 (V/V)"
+    },
     "parameter_time_load": {
         "entity_unit": "Time (ns)",
         "name": "Singlet Reload Time",
         "gradient_unit": "Gradient Singlet Reload Time(ns/V)"
     }
 }
+
 
 def read_files(file_or_files, reserved=None):
     if isinstance(file_or_files, str):
@@ -71,27 +78,24 @@ def read_files(file_or_files, reserved=None):
 
 
 class Reader:
-    def __init__(self, path):
-        self._file_path = path
-        self.tuner_list, self.index_list = self.load_data()
-
+    def __init__(self, path_or_initial_hierarchy: Union[str, List[qtune.parameter_tuner.ParameterTuner]]):
+        if isinstance(path_or_initial_hierarchy, str):
+            self._file_path = path_or_initial_hierarchy
+            tuner_list, self.index_list = load_data(self._file_path)
+        else:
+            tuner_list = [path_or_initial_hierarchy]
+        self.tuner_list = []
         self.voltage_list = []
         self.parameter_list = []
         self.par_covariance_list = []
         self.gradient_list = []
         self.covariance_list = []
-        for tuning_hierarchy in self.tuner_list:
-            self.voltage_list.append(extract_voltages_from_hierarchy(tuning_hierarchy))
-            parameters, par_covariances = extract_parameters_from_hierarchy(tuning_hierarchy)
-            self.parameter_list.append(parameters)
-            self.par_covariance_list.append(par_covariances)
-            grad, cov = extract_gradients_from_hierarchy(tuning_hierarchy)
-            self.gradient_list.append(grad)
-            self.covariance_list.append(cov)
+        for tuning_hierarchy in tuner_list:
+            self.append_tuning_hierarchy(tuning_hierarchy=tuning_hierarchy)
 
     @property
     def gate_names(self):
-        return self.voltage_list[1].index
+        return self.voltage_list[0].index
 
     @property
     def parameter_names(self):
@@ -106,24 +110,15 @@ class Reader:
         return ["all_voltages", "all_parameters", "all_gradients", "with_duplicates", "with_grad_covariances",
                 "with_par_covariances"]
 
-    def load_data(self):
-        """
-        writes lists with all relavant Data.
-        :return: Voltages, Parameters, Gradients, Covariances
-        """
-        directory_content = os.listdir(self._file_path)
-
-        tuner_list = []
-        index_list = []
-        for file in directory_content:
-            hdf5_handle = h5py.File(self._file_path + r"\\" + file, mode="r")
-            loaded_data = qtune.storage.from_hdf5(hdf5_handle, reserved={"experiment": None})
-            autotuner = loaded_data["autotuner"]
-            assert(isinstance(autotuner, qtune.autotuner.Autotuner))
-
-            tuner_list.append(autotuner._tuning_hierarchy)
-            index_list.append(autotuner._current_tuner_index)
-        return tuner_list, index_list
+    def append_tuning_hierarchy(self, tuning_hierarchy):
+        self.tuner_list.append(tuning_hierarchy)
+        self.voltage_list.append(extract_voltages_from_hierarchy(tuning_hierarchy))
+        parameters, par_covariances = extract_parameters_from_hierarchy(tuning_hierarchy)
+        self.parameter_list.append(parameters)
+        self.par_covariance_list.append(par_covariances)
+        grad, cov = extract_gradients_from_hierarchy(tuning_hierarchy)
+        self.gradient_list.append(grad)
+        self.covariance_list.append(cov)
 
     def plot_tuning(self, voltage_indices=None, parameter_names=None, gradient_names=None, mode=""):
         if "all_voltages" in mode:
@@ -173,8 +168,27 @@ class Reader:
                                                        eliminate_duplicates=eliminate_duplicates,
                                                        with_covariances=with_grad_covariances)
 
-        plt.show()
-        return voltage_fig, voltage_ax, parameter_fig, parameter_ax, gradient_fig, gradient_ax
+        return [voltage_fig, parameter_fig, gradient_fig], [voltage_ax, parameter_ax, gradient_ax]
+
+
+def load_data(file_path):
+    """
+    writes lists with all relavant Data.
+    :return: Voltages, Parameters, Gradients, Covariances
+    """
+    directory_content = os.listdir(file_path)
+
+    tuner_list = []
+    index_list = []
+    for file in directory_content:
+        hdf5_handle = h5py.File(os.path.join(file_path, file), mode="r")
+        loaded_data = qtune.storage.from_hdf5(hdf5_handle, reserved={"experiment": None})
+        autotuner = loaded_data["autotuner"]
+        assert(isinstance(autotuner, qtune.autotuner.Autotuner))
+
+        tuner_list.append(autotuner._tuning_hierarchy)
+        index_list.append(autotuner._current_tuner_index)
+    return tuner_list, index_list
 
 
 def plot_voltages(voltage_list, voltage_indices: Tuple[str], eliminate_duplicates: bool=True):
@@ -257,18 +271,18 @@ def extract_voltages_from_hierarchy(tuning_hierarchy):
 
 def extract_parameters_from_hierarchy(tuning_hierarchy):
     parameters = pd.Series()
-    covariances = pd.Series()
+    variances = pd.Series()
     for par_tuner in tuning_hierarchy:
-        parameter, covariance = par_tuner.last_parameter_covariance
+        parameter, variance = par_tuner.last_parameters_and_variances
         if isinstance(par_tuner, qtune.parameter_tuner.SubsetTuner):
             relevant_parameters = par_tuner.solver.target.desired.index[
                 ~par_tuner.solver.target.desired.apply(np.isnan)]
             parameters = parameters.append(parameter[relevant_parameters])
-            covariances = covariances.append(covariance[relevant_parameters])
+            variances = variances.append(variance[relevant_parameters])
         else:
             parameters = parameters.append(parameter)
-            covariances = covariances.append(covariance)
-    return parameters, covariances
+            variances = variances.append(variance)
+    return parameters, variances
 
 
 def extract_gradients_from_hierarchy(tuning_hierarchy):
