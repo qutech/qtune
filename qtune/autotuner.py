@@ -136,6 +136,9 @@ class Autotuner(metaclass=HDF5Serializable):
             hdf5_storage_path=self._hdf5_storage_path
         )
 
+    def __repr__(self):
+        return "{type}({data})".format(type=type(self), data=self.to_hdf5())
+
 
 def load_auto_tuner(file, reserved) -> Autotuner:
     assert "experiment" in reserved

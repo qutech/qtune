@@ -43,6 +43,9 @@ class Evaluator(metaclass=HDF5Serializable):
                     measurements=self.measurements,
                     parameters=self.parameters)
 
+    def __repr__(self):
+        return "{type}({data})".format(type=type(self), data=self.to_hdf5())
+
 
 class LeadTunnelTimeByLeadScan(Evaluator):
     """

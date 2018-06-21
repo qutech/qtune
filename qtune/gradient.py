@@ -36,6 +36,9 @@ class GradientEstimator(metaclass=HDF5Serializable):
     def to_hdf5(self):
         raise NotImplementedError()
 
+    def __repr__(self):
+        return "{type}({data})".format(type=type(self), data=self.to_hdf5())
+
 
 class FiniteDifferencesGradientEstimator(GradientEstimator):
     def __init__(self, *,

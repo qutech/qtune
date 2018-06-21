@@ -134,6 +134,9 @@ class NewtonSolver(Solver):
                     current_position=self._current_position,
                     current_values=self._current_values)
 
+    def __repr__(self):
+        return "{type}({data})".format(type=type(self), data=self.to_hdf5())
+
 
 class NelderMeadSolver(Solver):
     class State(enum.Enum):
