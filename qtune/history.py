@@ -11,7 +11,7 @@ import qtune.gradient
 import qtune.parameter_tuner
 import os.path
 
-from typing import Tuple, Union, List
+from typing import Tuple, Optional
 
 parameter_information = {
     "position_RFA": {
@@ -78,47 +78,89 @@ def read_files(file_or_files, reserved=None):
 
 
 class History:
-    def __init__(self, path_or_initial_hierarchy: Union[str, List[qtune.parameter_tuner.ParameterTuner]]):
-        if isinstance(path_or_initial_hierarchy, str):
-            self._file_path = path_or_initial_hierarchy
-            tuner_list, self.index_list = load_data(self._file_path)
+    def __init__(self, directory_or_file: Optional[str]):
+        self._data_frame = pd.DataFrame()
+        self._gate_names = None
+        self._parameter_names = None
+        self._gradient_controlled_parameters = None
+        if os.path.isdir(directory_or_file):
+            self.load_directory(directory_or_file)
+        elif os.path.isfile(directory_or_file):
+            self.load_file(directory_or_file)
+        elif directory_or_file is None:
+            pass
         else:
-            tuner_list = [path_or_initial_hierarchy]
-        self.tuner_list = []
-        self.voltage_list = []
-        self.parameter_list = []
-        self.par_covariance_list = []
-        self.gradient_list = []
-        self.covariance_list = []
-        for tuning_hierarchy in tuner_list:
-            self.append_tuning_hierarchy(tuning_hierarchy=tuning_hierarchy)
+            raise RuntimeWarning("The directory of file used to instantiate the qtune.history.History object could not"
+                                 "be identified as such. An empty History object is instantiated.")
 
     @property
     def gate_names(self):
-        return self.voltage_list[0].index
+        return self._gate_names
 
     @property
     def parameter_names(self):
-        return self.parameter_list[0].index
+        return self._parameter_names
 
     @property
     def gradient_controlled_parameter_names(self):
-        return tuple(self.gradient_list[0].keys())
+        return self._gradient_controlled_parameters
 
     @property
     def mode_options(self):
         return ["all_voltages", "all_parameters", "all_gradients", "with_duplicates", "with_grad_covariances",
                 "with_par_covariances"]
 
-    def append_tuning_hierarchy(self, tuning_hierarchy):
-        self.tuner_list.append(tuning_hierarchy)
-        self.voltage_list.append(extract_voltages_from_hierarchy(tuning_hierarchy))
-        parameters, par_covariances = extract_parameters_from_hierarchy(tuning_hierarchy)
-        self.parameter_list.append(parameters)
-        self.par_covariance_list.append(par_covariances)
-        grad, cov = extract_gradients_from_hierarchy(tuning_hierarchy)
-        self.gradient_list.append(grad)
-        self.covariance_list.append(cov)
+    def read_autotuner_to_data_frame(self, autotuner: qtune.autotuner.Autotuner, start: int = 0,
+                                     end: Optional[int] = None) -> pd.DataFrame:
+        if end is None:
+            end = len(autotuner.tuning_hierarchy) - 1
+        relevant_hierarchy = autotuner.tuning_hierarchy[start:end]
+        voltages = extract_voltages_from_hierarchy(relevant_hierarchy)
+        parameters, variances = extract_parameters_from_hierarchy(relevant_hierarchy)
+        gradients, grad_covariances = extract_gradients_from_hierarchy(relevant_hierarchy)
+
+        if self._data_frame.empty:
+            self._gate_names = list(voltages.index)
+            self._parameter_names = list(parameters.index)
+            self._gradient_controlled_parameters = list(gradients.keys())
+
+        voltages = {"voltages": pd.Series(data=[voltages, ])}
+        parameters = {par_name: pd.Series(data=parameters[par_name]) for par_name in parameters.index}
+        variances = {par_name + "#var": pd.Series(data=variances[par_name]) for par_name in variances.index}
+        gradients = {par_name + "#grad": pd.Series(data=gradients[par_name]) for par_name in gradients.keys()}
+        grad_covariances = {par_name + "#grad#cov": pd.Series(data=extract_diagonal_from_data_frame(
+            grad_covariances[par_name])) for par_name in grad_covariances.keys()}
+        tuner_index = {"tuner_index": pd.Series(data=autotuner.current_tuner_index)}
+
+        return pd.DataFrame({**voltages, **parameters, **variances, **gradients, **grad_covariances,
+                             **tuner_index})
+
+    def append_autotuner(self, autotuner: qtune.autotuner.Autotuner):
+        if self._data_frame.empty:
+            self._data_frame = self.read_autotuner_to_data_frame(autotuner)
+            return
+
+        voltages = extract_voltages_from_hierarchy(autotuner.tuning_hierarchy)
+        evaluated_tuner_index = autotuner.current_tuner_index - 1
+        if autotuner.voltages_to_set is not None or autotuner.current_tuner_status:
+            evaluated_tuner_index += 1
+        new_information = self.read_autotuner_to_data_frame(autotuner, end=evaluated_tuner_index)
+        if pd.testing.assert_series_equal(voltages, self._data_frame.iloc[-1]):
+            # stay in the row
+            self._data_frame.iloc[-1][new_information.columns] = new_information.iloc[0]
+        else:
+            self._data_frame.append(new_information)
+
+    def load_directory(self, path):
+        directory_content = os.listdir(path)
+        for file in directory_content:
+            self.load_file(path=os.path.join(path, file))
+
+    def load_file(self, path):
+        hdf5_handle = h5py.File(path, mode="r")
+        loaded_data = qtune.storage.from_hdf5(hdf5_handle, reserved={"experiment": None})
+        autotuner = loaded_data["autotuner"]
+        self.append_autotuner(autotuner=autotuner)
 
     def plot_tuning(self, voltage_indices=None, parameter_names=None, gradient_names=None, mode=""):
         if "all_voltages" in mode:
@@ -184,14 +226,14 @@ def load_data(file_path):
         hdf5_handle = h5py.File(os.path.join(file_path, file), mode="r")
         loaded_data = qtune.storage.from_hdf5(hdf5_handle, reserved={"experiment": None})
         autotuner = loaded_data["autotuner"]
-        assert(isinstance(autotuner, qtune.autotuner.Autotuner))
+        assert (isinstance(autotuner, qtune.autotuner.Autotuner))
 
         tuner_list.append(autotuner._tuning_hierarchy)
         index_list.append(autotuner._current_tuner_index)
     return tuner_list, index_list
 
 
-def plot_voltages(voltage_list, voltage_indices: Tuple[str], eliminate_duplicates: bool=True):
+def plot_voltages(voltage_list, voltage_indices: Tuple[str], eliminate_duplicates: bool = True):
     if eliminate_duplicates:
         voltage_list = [v for i, v in enumerate(voltage_list) if i == 0 or not v.equals(voltage_list[i - 1])]
 
@@ -290,19 +332,13 @@ def extract_gradients_from_hierarchy(tuning_hierarchy):
     covariances = dict()
     for tuner in tuning_hierarchy:
         if isinstance(tuner.solver, qtune.solver.NewtonSolver):
-            for i, grad_est in enumerate(tuner.solver._gradient_estimators):
-                if isinstance(grad_est, qtune.gradient.KalmanGradientEstimator):
-                    gradients[tuner.solver.target.index[i]] = grad_est.estimate()
-                    covariances[tuner.solver.target.index[i]] = grad_est.covariance()
-                elif isinstance(grad_est, qtune.gradient.FiniteDifferencesGradientEstimator):
-                    gradients[tuner.solver.target.index[i]] = grad_est.estimate()
-                    covariances[tuner.solver.target.index[i]] = grad_est.covariance()
-    return pd.DataFrame(gradients), covariances
+            for i, grad_est in enumerate(tuner.solver.gradient_estimators):
+                gradients[tuner.solver.target.index[i]] = grad_est.estimate()
+                covariances[tuner.solver.target.index[i]] = grad_est.covariance()
+    return gradients, covariances
 
 
 def extract_diagonal_from_data_frame(df: pd.DataFrame) -> pd.Series:
-    if df is None:
-        return None
     if not set(df.index) == set(df.columns):
         raise ValueError("The index must match the columns to extract diagonal elements!")
     return pd.Series(data=[df[i][i] for i in df.index], index=df.index)

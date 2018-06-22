@@ -109,7 +109,7 @@ class ParameterTuner(metaclass=HDF5Serializable):
                     tuned_voltages=self._tuned_voltages,
                     last_voltage=self._last_voltage,
                     last_parameter_values=self._last_parameter_values,
-                    last_parameter_covariances=self._last_parameters_variances)
+                    last_parameters_covariances=self._last_parameters_variances)
 
 
 class SubsetTuner(ParameterTuner):

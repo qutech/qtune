@@ -2,7 +2,6 @@ import h5py
 import os
 import os.path
 import pandas as pd
-from qtune.reader import Reader
 from qtune.util import time_string
 from qtune.experiment import Experiment
 from typing import List, Optional, Sequence
@@ -36,6 +35,22 @@ class Autotuner(metaclass=HDF5Serializable):
         self.logger = logging.getLogger(name="autotuner_logger")
         self.console_handler = logging.Handler(level=logging.DEBUG)
         self.logger.addHandler(self.console_handler)
+
+    @property
+    def tuning_hierarchy(self):
+        return self._tuning_hierarchy
+
+    @property
+    def current_tuner_index(self):
+        return self._current_tuner_index
+
+    @property
+    def voltages_to_set(self):
+        return self._voltage_to_set
+
+    @property
+    def current_tuner_status(self):
+        return self._current_tuner_status
 
     def tuning_complete(self) -> bool:
         if self._current_tuner_index == len(self._tuning_hierarchy):
