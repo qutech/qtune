@@ -215,11 +215,11 @@ class GUI(QtWidgets.QMainWindow):
                 time.sleep(0.05)
 
             while self._continuous or self._stepped and not self._stop:
-                if self.autotuner:
+                if self.auto_tuner:
                     try:
-                        self.autotuner.iterate()
+                        self.auto_tuner.iterate()
                     except Exception:
-                        self._logger.exception('Error during autotuner iteration: Pausing...')
+                        self._logger.exception('Error during auto tuner iteration: Pausing...')
                         self.pause()
                 else:
                     self._logger.error('No Autotuner: Pausing...')
