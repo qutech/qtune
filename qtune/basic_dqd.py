@@ -40,14 +40,6 @@ class BasicDQDRefactored(Experiment):
     The BasicDQD class implements the characteristics of a double quantum dot experiment. It saves the default scans
     which are useful for fine tuning any double quantum dot.
     """
-    default_line_scan = Measurement('line_scan',
-                                    center=0., range=3e-3, gate='RFA', N_points=1280, ramptime=.0005,
-                                    N_average=3, AWGorDecaDAC='DecaDAC')
-    default_detune_scan = Measurement('detune_scan',
-                                      center=0., range=2e-3, N_points=100, ramptime=.02,
-                                      N_average=10, AWGorDecaDAC='AWG')
-    default_lead_scan = Measurement('lead_scan', gate='B', AWGorDecaDAC='DecaDAC')
-    default_load_scan = Measurement("load_scan")
 
     @property
     def measurements(self) -> Tuple[Measurement, ...]:
