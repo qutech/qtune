@@ -4,12 +4,10 @@ import os.path
 import pandas as pd
 from qtune.util import time_string
 from qtune.experiment import Experiment
-from typing import List, Optional, Sequence
+from typing import List, Optional
 from qtune.parameter_tuner import ParameterTuner, SubsetTuner
 from qtune.solver import NewtonSolver
 from qtune.storage import to_hdf5, HDF5Serializable, from_hdf5
-import matplotlib.pyplot as plt
-import matplotlib
 import logging
 
 
@@ -20,7 +18,8 @@ class Autotuner(metaclass=HDF5Serializable):
 
     def __init__(self, experiment: Experiment, tuning_hierarchy: List[ParameterTuner] = None,
                  current_tuner_index: int = 0, current_tuner_status: bool = False,
-                 voltage_to_set: Optional[pd.Series] = None, hdf5_storage_path: str = None):
+                 voltage_to_set: Optional[pd.Series] = None, hdf5_storage_path: Optional[str] = None,
+                 append_time_to_path: bool=True):
         self._experiment = experiment
         self._tuning_hierarchy = tuning_hierarchy
         for par_tuner in tuning_hierarchy:
@@ -29,8 +28,14 @@ class Autotuner(metaclass=HDF5Serializable):
         self._current_tuner_index = current_tuner_index
         self._current_tuner_status = current_tuner_status
         self._voltage_to_set = voltage_to_set
-        self._hdf5_storage_path = os.path.join(hdf5_storage_path, time_string())
-        os.makedirs(name=self._hdf5_storage_path)
+
+        if hdf5_storage_path:
+            if append_time_to_path:
+                self._hdf5_storage_path = os.path.join(hdf5_storage_path, time_string())
+            else:
+                self._hdf5_storage_path = hdf5_storage_path
+        else:
+            self._hdf5_storage_path = None
 
         self.logger = logging.getLogger(name="autotuner_logger")
         self.console_handler = logging.Handler(level=logging.DEBUG)
@@ -52,7 +57,7 @@ class Autotuner(metaclass=HDF5Serializable):
     def current_tuner_status(self):
         return self._current_tuner_status
 
-    def tuning_complete(self) -> bool:
+    def is_tuning_complete(self) -> bool:
         if self._current_tuner_index == len(self._tuning_hierarchy):
             return True
         else:
@@ -101,6 +106,14 @@ class Autotuner(metaclass=HDF5Serializable):
                             naming_coherent = False
         return naming_coherent
 
+    def save_current_status(self):
+        if self._hdf5_storage_path:
+            if not os.path.isdir(self._hdf5_storage_path):
+                os.makedirs(self._hdf5_storage_path)
+            filename = os.path.join(self._hdf5_storage_path, time_string() + ".hdf5")
+            hdf5_file = h5py.File(filename, 'w-')
+            to_hdf5(hdf5_file, name="autotuner", obj=self, reserved={"experiment": self._experiment})
+
     def get_current_tuner(self):
         return self._tuning_hierarchy[self._current_tuner_index]
 
@@ -108,7 +121,7 @@ class Autotuner(metaclass=HDF5Serializable):
         if not self.ready_to_tune():
             raise RuntimeError('The setup of the Autotuner class is incomplete!')
 
-        if self.tuning_complete():
+        if self.is_tuning_complete():
             raise RuntimeError('The tuning is already complete!')
 
         if self._voltage_to_set is not None:
@@ -137,9 +150,7 @@ class Autotuner(metaclass=HDF5Serializable):
             self._current_tuner_status = False
             self.logger.info("Next voltages are being calculated.")
 
-        filename = os.path.join(self._hdf5_storage_path, time_string() + ".hdf5")
-        hdf5_file = h5py.File(filename, 'w-')
-        to_hdf5(hdf5_file, name="autotuner", obj=self, reserved={"experiment": self._experiment})
+        self.save_current_status()
 
     def autotune(self):
 
