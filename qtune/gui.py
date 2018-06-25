@@ -7,6 +7,7 @@ import pyqtgraph as pg
 import pyqtgraph.parametertree
 from pyqtgraph.Qt import QtCore, QtWidgets
 
+from qtune.history import History
 
 IPython.get_ipython().magic('gui qt')
 IPython.get_ipython().magic('matplotlib qt')
@@ -37,35 +38,51 @@ class PlotOrganizer(pg.LayoutWidget):
     @QtCore.pyqtSlot()
     def refresh(self):
         (_, gates), (_, params) = self.parameter.getValues().values()
+        pens = (pg.intColor(idx, len(gates) + len(params)) for idx in itertools.count(0))
         plot_item = self.plot.getPlotItem()
 
-        for idx, (gate, (plot_gate, _)) in enumerate(gates.items()):
+        for pen, (gate, (plot_gate, _)) in zip(pens, gates.items()):
             if plot_gate:
-                data = self.history.get_vals(gate)
+                data = self.history.get_gate_values()[gate]
 
                 if gate in self._plots:
                     self._plots[gate].setData(data)
                 else:
-                    self._plots[gate] = plot_item.plot(data, name=gate, pen=pg.intColor(idx,
-                                                                                        len(gates) + len(params)))
-            elif gate in self._plots:
-                plot_item.legend.removeItem(gate)
-                plot_item.removeItem(self._plots.pop(gate))
+                    self._plots[gate] = plot_item.plot(data, name=gate, pen=pen)
+
+            else:
+                self._remove_plot(gate)
+
+        for pen, (param, (plot_param, _)) in zip(pens, params.items()):
+            if plot_param:
+                data = self.history.get_parameter_values(param)
+
+                if param in self._plots:
+                    self._plots[param].setData(data)
+                else:
+                    self._plots[param] = plot_item.plot(data, name=param, pen=pen)
+
+            else:
+                self._remove_plot(params)
+
+    def _remove_plot(self, name):
+        if name in self._plots:
+            plot_item = self.plot.getPlotItem()
+            plot_item.legend.removeItem(name)
+            plot_item.removeItem(self._plots.pop(name))
 
     def plot_selection_change(self, _, changes):
-        for param, change, data in changes:
+        for param, change, plot_activated in changes:
             name = param.name()
-            if data:
+            if plot_activated:
                 if name in self._plots:
                     pass
                 else:
                     self.refresh()
             else:
-                if name in self._plots:
-                    self.plot.getPlotItem().legend.removeItem(name)
-                    self.plot.getPlotItem().removeItem(self._plots.pop(name))
+                self._remove_plot(name)
 
-    def __init__(self, history, **kwargs):
+    def __init__(self, history: History, **kwargs):
         super().__init__(**kwargs)
 
         gates = {'name': 'Gate Voltages', 'type': 'group', 'children': [
@@ -107,9 +124,10 @@ class PlotOrganizer(pg.LayoutWidget):
 class GUI(QtWidgets.QMainWindow):
     _log_signal = QtCore.pyqtSignal(str)
 
-    def __init__(self, auto_tuner, logger='qtune'):
+    def __init__(self, auto_tuner, history, logger='qtune'):
         super().__init__()
         self._auto_tuner = auto_tuner
+        self._history = history
 
         self.setWindowTitle('qtune GUI')
         self.resize(1000, 500)
@@ -140,19 +158,7 @@ class GUI(QtWidgets.QMainWindow):
         log.setReadOnly(True)
         log.setTextInteractionFlags(QtCore.Qt.TextSelectableByKeyboard | QtCore.Qt.TextSelectableByMouse)
 
-        class Test:
-            def gate_names(self):
-                return ['U', 'V']
-
-            def parameter_names(self):
-                return ['P', 'Q']
-
-            def get_vals(self, bla):
-                return {'U': [1, 2, 3, 4],
-                        'V': [2, 3, 1.5, 3],
-                        'P': [0.1, 0.2, 0.3, 0], 'Q': [1, 1, 1, 1]}[bla]
-
-        plot_organizer = PlotOrganizer(Test())
+        plot_organizer = PlotOrganizer(history=history)
 
         # this is the top row
         top = pg.LayoutWidget()
@@ -193,6 +199,10 @@ class GUI(QtWidgets.QMainWindow):
     @property
     def auto_tuner(self):
         return self._auto_tuner
+
+    @property
+    def history(self):
+        return self._history
 
     def _join_worker(self):
         if self._thread.is_alive():
