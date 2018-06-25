@@ -43,7 +43,7 @@ class PlotOrganizer(pg.LayoutWidget):
 
         for pen, (gate, (plot_gate, _)) in zip(pens, gates.items()):
             if plot_gate:
-                data = self.history.get_gate_values()[gate]
+                data = self.history.get_gate_values(gate)
 
                 if gate in self._plots:
                     self._plots[gate].setData(data)
@@ -63,7 +63,7 @@ class PlotOrganizer(pg.LayoutWidget):
                     self._plots[param] = plot_item.plot(data, name=param, pen=pen)
 
             else:
-                self._remove_plot(params)
+                self._remove_plot(param)
 
     def _remove_plot(self, name):
         if name in self._plots:
@@ -86,11 +86,11 @@ class PlotOrganizer(pg.LayoutWidget):
         super().__init__(**kwargs)
 
         gates = {'name': 'Gate Voltages', 'type': 'group', 'children': [
-            {'name': name, 'type': 'bool', 'value': False} for name in history.gate_names()
+            {'name': name, 'type': 'bool', 'value': False} for name in history.gate_names
         ]}
 
         params = {'name': 'Parameters', 'type': 'group', 'children': [
-            {'name': name, 'type': 'bool', 'value': False} for name in history.parameter_names()
+            {'name': name, 'type': 'bool', 'value': False} for name in history.parameter_names
         ]}
 
         p = pg.parametertree.Parameter(name='entries', type='group', children=[gates, params])
@@ -123,6 +123,7 @@ class PlotOrganizer(pg.LayoutWidget):
 
 class GUI(QtWidgets.QMainWindow):
     _log_signal = QtCore.pyqtSignal(str)
+    _update_plots = QtCore.pyqtSignal()
 
     def __init__(self, auto_tuner, history, logger='qtune'):
         super().__init__()
@@ -158,7 +159,9 @@ class GUI(QtWidgets.QMainWindow):
         log.setReadOnly(True)
         log.setTextInteractionFlags(QtCore.Qt.TextSelectableByKeyboard | QtCore.Qt.TextSelectableByMouse)
 
-        plot_organizer = PlotOrganizer(history=history)
+        plot_organizer_btn = QtWidgets.QPushButton("New Plot Window")
+        plot_organizer_btn.setFixedWidth(100)
+        plot_organizer_btn.clicked.connect(self.spawn_plot_window)
 
         # this is the top row
         top = pg.LayoutWidget()
@@ -167,16 +170,17 @@ class GUI(QtWidgets.QMainWindow):
         top.addWidget(stop_btn, 2, 0)
         top.addWidget(log_label, 0, 1)
         top.addWidget(log_level, 1, 1)
+        top.addWidget(plot_organizer_btn, 2, 1)
 
         left = pg.LayoutWidget()
         left.addWidget(top, 0, 0)
         left.addWidget(log, 1, 0)
 
-        main = pg.LayoutWidget()
-        main.addWidget(left, 0, 0)
-        main.addWidget(plot_organizer, 0, 1)
+        #main = pg.LayoutWidget()
+        #main.addWidget(left, 0, 0)
+        #main.addWidget(plot_organizer, 0, 1)
 
-        self.setCentralWidget(main)
+        self.setCentralWidget(left)
 
         self._log = log
         self._log_signal.connect(self._log.append)
@@ -194,7 +198,15 @@ class GUI(QtWidgets.QMainWindow):
 
         self._logger = logging.getLogger(logger)
 
-        self._plot_organizer = plot_organizer
+        self._plot_organizer = []
+
+    def spawn_plot_window(self):
+        new_window = QtWidgets.QMainWindow(parent=self)
+        plot_organizer = PlotOrganizer(history=self._history, parent=new_window)
+        new_window.setCentralWidget(plot_organizer)
+        self._plot_organizer.append(plot_organizer)
+        new_window.show()
+        self._update_plots.connect(plot_organizer.refresh)
 
     @property
     def auto_tuner(self):
@@ -227,7 +239,15 @@ class GUI(QtWidgets.QMainWindow):
             while self._continuous or self._stepped and not self._stop:
                 if self.auto_tuner:
                     try:
-                        self.auto_tuner.iterate()
+
+                        if self.auto_tuner.is_tuning_complete():
+                            self._logger.info('Tuning completed')
+                            self.pause()
+                        else:
+                            self.auto_tuner.iterate()
+                            self._history.append_autotuner(self._auto_tuner)
+                            self._update_plots.emit()
+
                     except Exception:
                         self._logger.exception('Error during auto tuner iteration: Pausing...')
                         self.pause()
