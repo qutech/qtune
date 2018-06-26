@@ -1,17 +1,19 @@
 import os
-import h5py
 import operator
+import re
+from typing import Optional, Set, Dict
+
+import h5py
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+
 import qtune.storage
 import qtune.autotuner
 import qtune.solver
 import qtune.gradient
 import qtune.parameter_tuner
-import os.path
 
-from typing import Optional, Set, Dict
 
 parameter_information = {
     "position_RFA": {
@@ -78,6 +80,11 @@ def read_files(file_or_files, reserved=None):
 
 
 class History:
+    _parameter_variance_name = '{parameter_name}#var'
+    _gradient_name = '{parameter_name}#{gate_name}'
+    _gradient_covariance_name = '{parameter_name}#{gate_name_1}#{gate_name_2}#cov'
+    _gradient_variance_name = '{parameter_name}#{gate_name}#{gate_name}#cov'
+
     def __init__(self, directory_or_file: Optional[str]):
         self._data_frame = pd.DataFrame()
         self._gate_names = set()
@@ -113,15 +120,15 @@ class History:
         return self._data_frame[parameter_name]
 
     def get_parameter_std(self, parameter_name) -> pd.Series:
-        return self._data_frame[parameter_name + '#var'].apply(np.sqrt)
+        return self._data_frame[self._parameter_variance_name.format(parameter_name=parameter_name)].apply(np.sqrt)
 
     def get_gate_values(self, gate_name) -> pd.Series:
         return self._data_frame[gate_name]
 
     def get_gradients(self, parameter_name: str) -> pd.DataFrame:
-        elems = [name for name in self._data_frame.columns
-                 if name.startswith(parameter_name + '#') and name.endswith('#grad')]
-        return self._data_frame[elems].rename(lambda name: name.split('#')[1], axis='columns')
+        regex = re.compile(self._gradient_name.format(parameter_name=parameter_name,
+                                                      gate_name='([\w\s\d]+)'))
+        return self._data_frame.filter(regex=regex).rename(lambda name: regex.findall(name)[0], axis='columns')
 
     def get_gradient_covariances(self, parameter_name) -> pd.DataFrame:
         regex = re.compile('%s#([\w\s\d]+)#([\w\s\d]+)#cov' % parameter_name)
@@ -151,15 +158,15 @@ class History:
 
         voltages = dict(voltages)
         parameters = dict(parameters)
-        variances = {create_name_parameter_variance(par_name): variances[par_name] for par_name in variances.index}
-        gradients = {create_gradient_name(par_name, gate_name): gradients[par_name][gate_name]
-                     for par_name in gradients.keys()
-                     for gate_name in gradients[par_name].index}
-        grad_covariances = {parameter_name: extract_diagonal_from_data_frame(grad_covariances[parameter_name])
-                            for parameter_name in grad_covariances.keys()}
-        grad_covariances = {create_gradient_covariance_name(par_name, gate_name): grad_covariances[par_name][gate_name]
-                            for par_name in grad_covariances.keys()
-                            for gate_name in grad_covariances[par_name].index}
+        variances = {self._parameter_variance_name.format(parameter_name=par_name): variance
+                     for par_name, variance in variances.items()}
+        gradients = {self._gradient_name.format(parameter_name=par_name, gate_name=gate_name): grad_entry
+                     for par_name, gradient in gradients.items()
+                     for gate_name, grad_entry in gradient.items()}
+        grad_covariances = {k: v
+                            for parameter_name, gradient_covariance_matrix in grad_covariances
+                            for k, v in self._unravel_gradient_covariance_matrix(parameter_name,
+                                                                                 gradient_covariance_matrix).items()}
         tuner_index = {"tuner_index": autotuner.current_tuner_index}
 
         return pd.DataFrame({**voltages, **parameters, **variances, **gradients, **grad_covariances,
@@ -242,6 +249,16 @@ class History:
                                                        self._data_frame[covariance_indices])
 
         return [voltage_fig, parameter_fig, gradient_fig], [voltage_ax, parameter_ax, gradient_ax]
+
+    @classmethod
+    def _unravel_gradient_covariance_matrix(cls, parameter_name, covariance_matrix: pd.DataFrame):
+        return {
+            cls._gradient_covariance_name.format(parameter_name=parameter_name,
+                                                 gate_name_1=gate_1,
+                                                 gate_name_2=gate_2): cov_entry
+            for gate_1, cov_column in covariance_matrix.items()
+            for gate_2, cov_entry in cov_column.items()
+        }
 
 
 def create_name_parameter_variance(parameter_name: str) -> str:
