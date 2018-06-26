@@ -37,33 +37,63 @@ class LogLevelSelecter(QtCore.QObject):
 class PlotOrganizer(pg.LayoutWidget):
     @QtCore.pyqtSlot()
     def refresh(self):
-        (_, gates), (_, params) = self.parameter.getValues().values()
-        pens = (pg.intColor(idx, len(gates) + len(params)) for idx in itertools.count(0))
-        plot_item = self.plot.getPlotItem()
+        try:
+            (_, gates), (_, params), (_, grads) = self.parameter.getValues().values()
+            pens = (pg.intColor(idx, len(gates) + len(params)) for idx in itertools.count(0))
+            plot_item = self.plot.getPlotItem()
 
-        for pen, (gate, (plot_gate, _)) in zip(pens, gates.items()):
-            if plot_gate:
-                data = self.history.get_gate_values(gate)
+            for pen, (gate, (plot_gate, _)) in zip(pens, gates.items()):
+                if plot_gate:
+                    data = self.history.get_gate_values(gate)
 
-                if gate in self._plots:
-                    self._plots[gate].setData(data)
+                    if gate in self._plots:
+                        self._plots[gate].setData(data)
+                    else:
+                        self._plots[gate] = plot_item.plot(data, name=gate, pen=pen)
+
                 else:
-                    self._plots[gate] = plot_item.plot(data, name=gate, pen=pen)
+                    self._remove_plot(gate)
 
-            else:
-                self._remove_plot(gate)
-
-        for pen, (param, (plot_param, _)) in zip(pens, params.items()):
-            if plot_param:
-                data = self.history.get_parameter_values(param)
-
-                if param in self._plots:
-                    self._plots[param].setData(data)
+            for pen, (param, (plot_param, _)) in zip(pens, params.items()):
+                if plot_param:
+                    data = self.history.get_parameter_values(param)
+                    data_std = self.history.get_parameter_std(param)
+                    error_bar_plot = pg.ErrorBarItem(x=list(data.index), y=data, height=data_std)
+                    if param in self._plots:
+                        self._plots[param].setData(data)
+                    else:
+                        self._plots[param] = plot_item.plot(data, name=param, pen=pen)
+                    self._plots[param + "#err_bar"] = error_bar_plot
+                    plot_item.addItem(error_bar_plot)
                 else:
-                    self._plots[param] = plot_item.plot(data, name=param, pen=pen)
+                    self._remove_plot(param)
+                    self._remove_plot(param + "#err_bar")
 
-            else:
-                self._remove_plot(param)
+            invalid = set()
+            for param, (_, gates) in grads.items():
+                data = self.history.get_gradients(param)
+
+                for pen, (gate, (plot_grad, _)) in zip(pens, gates.items()):
+                    grad_name = param + '#' + gate
+
+                    if plot_grad:
+                        if gate in data:
+                            gate_data = data[gate]
+
+                            if grad_name in self._plots:
+                                self._plots[grad_name].setData(gate_data)
+
+                            else:
+                                self._plots[grad_name] = plot_item.plot(gate_data, name=grad_name, pen=pen)
+                        else:
+                            invalid.add((param, gate))
+
+                    else:
+                        self._remove_plot(grad_name)
+
+            return invalid
+        except Exception:
+            logging.getLogger('qtune').exception('Error refreshing plot')
 
     def _remove_plot(self, name):
         if name in self._plots:
@@ -73,14 +103,14 @@ class PlotOrganizer(pg.LayoutWidget):
 
     def plot_selection_change(self, _, changes):
         for param, change, plot_activated in changes:
-            name = param.name()
-            if plot_activated:
-                if name in self._plots:
-                    pass
-                else:
-                    self.refresh()
-            else:
-                self._remove_plot(name)
+            for child in param.children():
+                child.setValue(plot_activated)
+
+        invalid = self.refresh()
+
+        for param, gate in invalid:
+            p = self.parameter.child('Gradients').child(param).child(gate)
+            p.setValue(False)
 
     def __init__(self, history: History, **kwargs):
         super().__init__(**kwargs)
@@ -93,12 +123,18 @@ class PlotOrganizer(pg.LayoutWidget):
             {'name': name, 'type': 'bool', 'value': False} for name in history.parameter_names
         ]}
 
-        p = pg.parametertree.Parameter(name='entries', type='group', children=[gates, params])
+        grads = {'name': 'Gradients', 'type': 'group', 'children': [
+            {'name': parameter_name, 'type': 'bool', 'value': False, 'expanded': False, 'children': [
+                {'name': gate_name, 'type': 'bool', 'value': False} for gate_name in gates
+            ]} for parameter_name, gates in history.gradient_controlled_parameter_names.items()
+        ]}
+
+        p = pg.parametertree.Parameter(name='entries', type='group', children=[gates, params, grads])
 
         p.sigTreeStateChanged.connect(self.plot_selection_change)
 
         refresh_btn = QtWidgets.QPushButton('Refresh')
-        refresh_btn.setFixedWidth(100)
+        refresh_btn.setFixedWidth(400)
         refresh_btn.clicked.connect(self.refresh)
 
         self._color_counter = iter(itertools.cycle(range(100)))
