@@ -1,17 +1,19 @@
 import os
-import h5py
 import operator
+import re
+from typing import Optional, Set, Dict
+
+import h5py
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+
 import qtune.storage
 import qtune.autotuner
 import qtune.solver
 import qtune.gradient
 import qtune.parameter_tuner
-import os.path
 
-from typing import Optional, Set, Dict
 
 parameter_information = {
     "position_RFA": {
