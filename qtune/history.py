@@ -83,7 +83,6 @@ class History:
     _parameter_variance_name = '{parameter_name}#var'
     _gradient_name = '{parameter_name}#{gate_name}'
     _gradient_covariance_name = '{parameter_name}#{gate_name_1}#{gate_name_2}#cov'
-    _gradient_variance_name = '{parameter_name}#{gate_name}#{gate_name}#cov'
 
     def __init__(self, directory_or_file: Optional[str]):
         self._data_frame = pd.DataFrame()
@@ -131,12 +130,19 @@ class History:
         return self._data_frame.filter(regex=regex).rename(lambda name: regex.findall(name)[0], axis='columns')
 
     def get_gradient_covariances(self, parameter_name) -> pd.DataFrame:
-        regex = re.compile('%s#([\w\s\d]+)#([\w\s\d]+)#cov' % parameter_name)
+        regex = re.compile(self._gradient_covariance_name.format(parameter_name=parameter_name,
+                                                                 gate_name_1='([\w\s\d]+)',
+                                                                 gate_name_2='([\w\s\d]+)'))
         df = self._data_frame.filter(regex=regex)
+        df = df[sorted(df.columns, key=regex.findall)]
 
-        columns = sorted(df.columns, key=regex.findall)
+        return pd.DataFrame(df, columns=pd.MultiIndex.from_tuples(map(regex.findall, df.columns)))
 
-        return pd.DataFrame(df[columns], columns=pd.MultiIndex.from_tuples(map(regex.findall, df.columns)))
+    def get_gradient_variances(self, parameter_name) -> pd.DataFrame:
+        regex = re.compile(self._gradient_covariance_name.format(parameter_name=parameter_name,
+                                                                 gate_name_1='(?P=<gate_name>[\w\s\d]+)',
+                                                                 gate_name_2='(?P=gate_name)'))
+        return self._data_frame.filter(regex=regex).rename(columns=lambda name: regex.search(name).group('gate_name'))
 
     def read_autotuner_to_data_frame(self, autotuner: qtune.autotuner.Autotuner, start: int = 0,
                                      end: Optional[int] = None) -> pd.DataFrame:
@@ -260,17 +266,13 @@ class History:
             for gate_2, cov_entry in cov_column.items()
         }
 
+    @classmethod
+    def create_name_parameter_variance(cls, parameter_name: str) -> str:
+        return cls._parameter_variance_name.format(parameter_name=parameter_name)
 
-def create_name_parameter_variance(parameter_name: str) -> str:
-    return parameter_name + "#var"
-
-
-def create_gradient_name(parameter_name: str, gate_name: str) -> str:
-    return parameter_name + "#" + gate_name + "#grad"
-
-
-def create_gradient_covariance_name(parameter_name: str, gate_name: str) -> str:
-    return parameter_name + "#" + gate_name + "#cov"
+    @classmethod
+    def create_gradient_name(cls, parameter_name: str, gate_name: str) -> str:
+        return cls._gradient_name.format(parameter_name=parameter_name, gate_name=gate_name)
 
 
 def plot_voltages(voltage_data_frame: pd.DataFrame):
@@ -288,10 +290,10 @@ def plot_parameters(parameter_data_frame: pd.DataFrame, parameter_variance_data_
         parameter_variance_data_frame = pd.DataFrame()
     parameter_fig, parameter_ax = plt.subplots(nrows=len(parameter_data_frame.columns))
     for i, parameter in enumerate(parameter_data_frame.columns):
-        if create_name_parameter_variance(parameter) in parameter_variance_data_frame.columns:
+        if History.create_name_parameter_variance(parameter) in parameter_variance_data_frame.columns:
             parameter_ax[i].errorbar(x=parameter_data_frame.index, y=parameter_data_frame[parameter],
                                      yerr=parameter_variance_data_frame[
-                                         create_name_parameter_variance(parameter)].map(np.sqrt))
+                                         History.create_name_parameter_variance(parameter)].map(np.sqrt))
         else:
             parameter_ax[i].plot(parameter_data_frame[parameter])
         parameter_ax[i].set_ylabel(parameter_information[parameter]["entity_unit"])
