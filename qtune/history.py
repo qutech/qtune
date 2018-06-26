@@ -124,6 +124,14 @@ class History:
                  if name.startswith(parameter_name + '#') and name.endswith('#grad')]
         return self._data_frame[elems].rename(lambda name: name.split('#')[1], axis='columns')
 
+    def get_gradient_covariances(self, parameter_name) -> pd.DataFrame:
+        regex = re.compile('%s#([\w\s\d]+)#([\w\s\d]+)#cov' % parameter_name)
+        df = self._data_frame.filter(regex=regex)
+
+        columns = sorted(df.columns, key=regex.findall)
+
+        return pd.DataFrame(df[columns], columns=pd.MultiIndex.from_tuples(map(regex.findall, df.columns)))
+
     def read_autotuner_to_data_frame(self, autotuner: qtune.autotuner.Autotuner, start: int = 0,
                                      end: Optional[int] = None) -> pd.DataFrame:
         if end is None:
