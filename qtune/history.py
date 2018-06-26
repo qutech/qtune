@@ -11,7 +11,7 @@ import qtune.gradient
 import qtune.parameter_tuner
 import os.path
 
-from typing import Tuple, Optional, Set, Dict, Sequence
+from typing import Optional, Set, Dict
 
 parameter_information = {
     "position_RFA": {
@@ -107,8 +107,7 @@ class History:
 
     @property
     def mode_options(self):
-        return ["all_voltages", "all_parameters", "all_gradients", "with_duplicates", "with_grad_covariances",
-                "with_par_variances"]
+        return ["all_voltages", "all_parameters", "all_gradients", "with_grad_covariances", "with_par_variances"]
 
     def get_parameter_values(self, parameter_name) -> pd.Series:
         return self._data_frame[parameter_name]
@@ -116,10 +115,10 @@ class History:
     def get_parameter_std(self, parameter_name) -> pd.Series:
         return self._data_frame[parameter_name + '#var'].apply(np.sqrt)
 
-    def get_gate_values(self, gate_name):
+    def get_gate_values(self, gate_name) -> pd.Series:
         return self._data_frame[gate_name]
 
-    def get_gradients(self, parameter_name: str):
+    def get_gradients(self, parameter_name: str) -> pd.DataFrame:
         elems = [name for name in self._data_frame.columns
                  if name.startswith(parameter_name + '#') and name.endswith('#grad')]
         return self._data_frame[elems].rename(lambda name: name.split('#')[1], axis='columns')
@@ -185,17 +184,13 @@ class History:
         autotuner = loaded_data["autotuner"]
         self.append_autotuner(autotuner=autotuner)
 
-    def plot_tuning(self, voltage_indices=None, parameter_names=None, gradient_names=None, mode=""):
+    def plot_tuning(self, voltage_indices=None, parameter_names=None, gradient_parameter_names=None, mode=""):
         if "all_voltages" in mode:
-            voltage_indices = self.gate_names
+            voltage_indices = sorted(self.gate_names)
         if "all_parameters" in mode:
-            parameter_names = self.parameter_names
+            parameter_names = sorted(self.parameter_names)
         if "all_gradients" in mode:
-            gradient_names = self.gradient_controlled_parameter_names
-        if "with_duplicates" in mode:
-            eliminate_duplicates = False
-        else:
-            eliminate_duplicates = True
+            gradient_parameter_names = sorted(self.gradient_controlled_parameter_names)
         if "with_grad_covariances" in mode:
             with_grad_covariances = True
         else:
@@ -209,7 +204,7 @@ class History:
             voltage_fig = None
             voltage_ax = None
         else:
-            voltage_fig, voltage_ax = plot_voltages(self._data_frame[self.gate_names])
+            voltage_fig, voltage_ax = plot_voltages(self._data_frame[voltage_indices])
 
         if parameter_names is None:
             parameter_fig = None
@@ -222,37 +217,19 @@ class History:
             parameter_fig, parameter_ax = plot_parameters(self._data_frame[parameter_names],
                                                           self._data_frame[var_names])
 
-        if gradient_names is None:
+        if gradient_parameter_names is None:
             gradient_fig = None
             gradient_ax = None
         else:
-            gradient_fig, gradient_ax = plot_gradients(gradient_list=self.gradient_list,
-                                                       covariance_list=self.covariance_list,
-                                                       parameter_names=gradient_names,
-                                                       eliminate_duplicates=eliminate_duplicates,
-                                                       with_covariances=with_grad_covariances)
+            gradient_indices = [name for name in self._data_frame.columns
+                                if name.split('#')[0] in gradient_parameter_names]
+            covariance_indices = [create_gradient_covariance_name(name.split('#')[0], name.split('#')[1])
+                                  for name in gradient_indices
+                                  if with_grad_covariances]
+            gradient_fig, gradient_ax = plot_gradients(self._data_frame[gradient_indices],
+                                                       self._data_frame[covariance_indices])
 
         return [voltage_fig, parameter_fig, gradient_fig], [voltage_ax, parameter_ax, gradient_ax]
-
-
-def load_data(file_path):
-    """
-    writes lists with all relavant Data.
-    :return: Voltages, Parameters, Gradients, Covariances
-    """
-    directory_content = os.listdir(file_path)
-
-    tuner_list = []
-    index_list = []
-    for file in directory_content:
-        hdf5_handle = h5py.File(os.path.join(file_path, file), mode="r")
-        loaded_data = qtune.storage.from_hdf5(hdf5_handle, reserved={"experiment": None})
-        autotuner = loaded_data["autotuner"]
-        assert (isinstance(autotuner, qtune.autotuner.Autotuner))
-
-        tuner_list.append(autotuner._tuning_hierarchy)
-        index_list.append(autotuner._current_tuner_index)
-    return tuner_list, index_list
 
 
 def create_name_parameter_variance(parameter_name: str) -> str:
@@ -269,7 +246,7 @@ def create_gradient_covariance_name(parameter_name: str, gate_name: str) -> str:
 
 def plot_voltages(voltage_data_frame: pd.DataFrame):
     voltage_fig, voltage_ax = plt.subplots()
-    voltage_ax.plot(voltage_data_frame.T)
+    voltage_ax.plot(voltage_data_frame)
     voltage_ax.legend(voltage_data_frame.columns)
     voltage_ax.set_title("Gate Voltages")
     voltage_ax.set_xlabel("Measurement Number")
@@ -282,7 +259,7 @@ def plot_parameters(parameter_data_frame: pd.DataFrame, parameter_variance_data_
         parameter_variance_data_frame = pd.DataFrame()
     parameter_fig, parameter_ax = plt.subplots(nrows=len(parameter_data_frame.columns))
     for i, parameter in enumerate(parameter_data_frame.columns):
-        if parameter_data_frame in parameter_variance_data_frame.columns:
+        if parameter in parameter_variance_data_frame.columns:
             parameter_ax[i].errorbar(x=parameter_data_frame.index, y=parameter_data_frame[parameter],
                                      yerr=parameter_variance_data_frame.applymap(np.sqrt).T[parameter])
         else:
@@ -304,12 +281,14 @@ def plot_gradients(gradient_data_frame: pd.DataFrame, diagonal_covariance_data_f
     for i, parameter in enumerate(parameter_names):
         for gate_name in parameter_gate_names[parameter]:
             if create_gradient_covariance_name(parameter, gate_name) in diagonal_covariance_data_frame.columns:
-                grad_ax[i].errorbar(x=np.arange(gradient_data_frame.shape[1]), y=grad_dataframe.T[gate],
-                                    yerr=cov_data_frame.applymap(np.sqrt).T[gate])
+                grad_ax[i].errorbar(x=gradient_data_frame.index,
+                                    y=gradient_data_frame[create_gradient_name(parameter, gate_name)],
+                                    yerr=diagonal_covariance_data_frame[
+                                        create_gradient_covariance_name(parameter, gate_name)].applymap(np.sqrt))
             else:
-                grad_ax[i].plot(grad_dataframe.T)
-            grad_ax[i].set_ylabel(parameter_information[parameter]["gradient_unit"])
-            grad_ax[i].legend(gradient_list[0].index)
+                grad_ax[i].plot(gradient_data_frame[create_gradient_name(parameter, gate_name)])
+        grad_ax[i].set_ylabel(parameter_information[parameter]["gradient_unit"])
+        grad_ax[i].legend(parameter_gate_names[parameter])
     grad_ax[0].set_title("Response Matrix")
     grad_ax[len(parameter_names) - 1].set_xlabel("Measurement Number")
     return grad_fig, grad_ax
