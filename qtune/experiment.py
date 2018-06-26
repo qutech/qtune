@@ -29,7 +29,10 @@ class Measurement(metaclass=HDF5Serializable):
 
     def to_hdf5(self):
         return dict(self.options,
-                    name=str(self))
+                    name=self.name)
+
+    def __repr__(self):
+        return "{type}({data})".format(type=type(self), data=self.to_hdf5())
 
 
 class Experiment:

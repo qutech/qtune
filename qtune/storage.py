@@ -96,7 +96,7 @@ def _to_hdf5(hdf5_parent_group: h5py.Group, name, obj, serialized):
         serialized[id(obj)] = dset
         return
 
-    if isinstance(obj, (float, int, complex)):
+    if isinstance(obj, (float, int, complex, bool, np.generic)):
         hdf5_parent_group.create_dataset(name, data=obj, shape=())
         return
 
