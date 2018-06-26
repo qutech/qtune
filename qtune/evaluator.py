@@ -251,9 +251,9 @@ class SensingDot1D(Evaluator):
         values["position_" + gate] = sensing_dot_measurement.options["center"] + optimal_position
         error["position_" + gate] = 0.1e-3
         values["current_signal"] = current_signal
-        error["current_signal"] = np.nan
+        error["current_signal"] = current_signal / 5
         values["optimal_signal"] = optimal_signal
-        error["optimal_signal"] = np.nan
+        error["optimal_signal"] = optimal_signal / 5
         return values, error
 
     def to_hdf5(self):
