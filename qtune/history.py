@@ -234,11 +234,15 @@ class History:
             gradient_fig = None
             gradient_ax = None
         else:
-            gradient_indices = [name for name in self._data_frame.columns
-                                if name.split('#')[0] in gradient_parameter_names]
-            covariance_indices = [create_gradient_covariance_name(name.split('#')[0], name.split('#')[1])
-                                  for name in gradient_indices
-                                  if with_grad_covariances]
+            gradient_indices = [create_gradient_name(par_name, gate_name)
+                                for par_name in gradient_parameter_names
+                                for gate_name in self.gradient_controlled_parameter_names[par_name]]
+            if with_grad_covariances:
+                covariance_indices = [create_gradient_covariance_name(name.split('#')[0], name.split('#')[1])
+                                      for name in gradient_indices
+                                      if with_grad_covariances]
+            else:
+                covariance_indices = []
             gradient_fig, gradient_ax = plot_gradients(self._data_frame[gradient_indices],
                                                        self._data_frame[covariance_indices])
 
@@ -282,9 +286,10 @@ def plot_parameters(parameter_data_frame: pd.DataFrame, parameter_variance_data_
         parameter_variance_data_frame = pd.DataFrame()
     parameter_fig, parameter_ax = plt.subplots(nrows=len(parameter_data_frame.columns))
     for i, parameter in enumerate(parameter_data_frame.columns):
-        if parameter in parameter_variance_data_frame.columns:
+        if create_name_parameter_variance(parameter) in parameter_variance_data_frame.columns:
             parameter_ax[i].errorbar(x=parameter_data_frame.index, y=parameter_data_frame[parameter],
-                                     yerr=parameter_variance_data_frame.applymap(np.sqrt).T[parameter])
+                                     yerr=parameter_variance_data_frame[
+                                         create_name_parameter_variance(parameter)].map(np.sqrt))
         else:
             parameter_ax[i].plot(parameter_data_frame[parameter])
         parameter_ax[i].set_ylabel(parameter_information[parameter]["entity_unit"])
@@ -307,7 +312,7 @@ def plot_gradients(gradient_data_frame: pd.DataFrame, diagonal_covariance_data_f
                 grad_ax[i].errorbar(x=gradient_data_frame.index,
                                     y=gradient_data_frame[create_gradient_name(parameter, gate_name)],
                                     yerr=diagonal_covariance_data_frame[
-                                        create_gradient_covariance_name(parameter, gate_name)].applymap(np.sqrt))
+                                        create_gradient_covariance_name(parameter, gate_name)].map(np.sqrt))
             else:
                 grad_ax[i].plot(gradient_data_frame[create_gradient_name(parameter, gate_name)])
         grad_ax[i].set_ylabel(parameter_information[parameter]["gradient_unit"])
