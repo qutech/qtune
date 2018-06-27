@@ -9,8 +9,9 @@ import qtune.autotuner
 import qtune.solver
 import qtune.gradient
 import qtune.parameter_tuner
+import os.path
 
-from typing import Tuple
+from typing import Tuple, Optional, Set, Dict
 
 parameter_information = {
     "origin x": {
@@ -63,12 +64,18 @@ parameter_information = {
         "name": "Voltage on SDB2",
         "gradient_unit": "Gradient Voltage on SDB2 (V/V)"
     },
+    "position_SDB1": {
+        "entity_unit": "Voltage (V)",
+        "name": "Voltage on SDB1",
+        "gradient_unit": "Gradient Voltage on SDB1 (V/V)"
+    },
     "parameter_time_load": {
         "entity_unit": "Time (ns)",
         "name": "Singlet Reload Time",
         "gradient_unit": "Gradient Singlet Reload Time(ns/V)"
     }
 }
+
 
 def read_files(file_or_files, reserved=None):
     if isinstance(file_or_files, str):
@@ -90,60 +97,112 @@ def read_files(file_or_files, reserved=None):
     return data.sort(key=operator.itemgetter(0))
 
 
-class Reader:
-    def __init__(self, path):
-        self._file_path = path
-        self.tuner_list, self.index_list = self.load_data()
-
-        self.voltage_list = []
-        self.parameter_list = []
-        self.par_covariance_list = []
-        self.gradient_list = []
-        self.covariance_list = []
-        for tuning_hierarchy in self.tuner_list:
-            self.voltage_list.append(extract_voltages_from_hierarchy(tuning_hierarchy))
-            parameters, par_covariances = extract_parameters_from_hierarchy(tuning_hierarchy)
-            self.parameter_list.append(parameters)
-            self.par_covariance_list.append(par_covariances)
-            grad, cov = extract_gradients_from_hierarchy(tuning_hierarchy)
-            self.gradient_list.append(grad)
-            self.covariance_list.append(cov)
+class History:
+    def __init__(self, directory_or_file: Optional[str]):
+        self._data_frame = pd.DataFrame()
+        self._gate_names = None
+        self._parameter_names = None
+        self._gradient_controlled_parameters = None
+        if directory_or_file is None:
+            pass
+        elif os.path.isdir(directory_or_file):
+            self.load_directory(directory_or_file)
+        elif os.path.isfile(directory_or_file):
+            self.load_file(directory_or_file)
+        else:
+            raise RuntimeWarning("The directory of file used to instantiate the qtune.history.History object could not"
+                                 "be identified as such. An empty History object is instantiated.")
 
     @property
-    def gate_names(self):
-        return self.voltage_list[1].index
+    def gate_names(self) -> Set[str]:
+        return self._gate_names
 
     @property
-    def parameter_names(self):
-        return self.parameter_list[0].index
+    def parameter_names(self) -> Set[str]:
+        return self._parameter_names
 
     @property
-    def gradient_controlled_parameter_names(self):
-        return tuple(self.gradient_list[0].keys())
+    def gradient_controlled_parameter_names(self) -> Set[str]:
+        return self._gradient_controlled_parameters
 
     @property
     def mode_options(self):
         return ["all_voltages", "all_parameters", "all_gradients", "with_duplicates", "with_grad_covariances",
                 "with_par_covariances"]
 
-    def load_data(self):
-        """
-        writes lists with all relavant Data.
-        :return: Voltages, Parameters, Gradients, Covariances
-        """
-        directory_content = os.listdir(self._file_path)
+    def get_parameter_values(self, parameter_name):
+        return self._data_frame[parameter_name]
 
-        tuner_list = []
-        index_list = []
+    def get_parameter_std(self, parameter_name):
+        return self._data_frame[parameter_name + '#var'].apply(np.sqrt)
+
+    def get_gate_values(self, gate_name):
+        return self._data_frame[gate_name]
+
+    def get_gradients(self, parameter_name: str):
+        elems = [name for name in self._data_frame.columns
+                 if name.startswith(parameter_name + '#') and name.endswith('#grad')]
+        return self._data_frame[elems].rename(lambda name: name.split('#')[1])
+
+    def read_autotuner_to_data_frame(self, autotuner: qtune.autotuner.Autotuner, start: int = 0,
+                                     end: Optional[int] = None) -> pd.DataFrame:
+        if end is None:
+            end = len(autotuner.tuning_hierarchy)
+        elif end == 0:
+            voltages = extract_voltages_from_hierarchy(autotuner.tuning_hierarchy)
+            return pd.DataFrame(dict(voltages), index=[0, ])
+        relevant_hierarchy = autotuner.tuning_hierarchy[start:end]
+        voltages = extract_voltages_from_hierarchy(relevant_hierarchy)
+        parameters, variances = extract_parameters_from_hierarchy(relevant_hierarchy)
+        gradients, grad_covariances = extract_gradients_from_hierarchy(relevant_hierarchy)
+
+        if self._data_frame.empty:
+            self._gate_names = set(voltages.index)
+            self._parameter_names = set(parameters.index)
+            self._gradient_controlled_parameters = list(gradients.keys())
+
+        voltages = dict(voltages)
+        parameters = dict(parameters)
+        variances = {create_name_parameter_variance(par_name): variances[par_name] for par_name in variances.index}
+        gradients = {create_gradient_name(par_name, gate_name): gradients[par_name][gate_name]
+                     for par_name in gradients.keys()
+                     for gate_name in gradients[par_name].index}
+        grad_covariances = {parameter_name: extract_diagonal_from_data_frame(grad_covariances[parameter_name])
+                            for parameter_name in grad_covariances.keys()}
+        grad_covariances = {create_gradient_covariance_name(par_name, gate_name): grad_covariances[par_name][gate_name]
+                            for par_name in grad_covariances.keys()
+                            for gate_name in grad_covariances[par_name].index}
+        tuner_index = {"tuner_index": autotuner.current_tuner_index}
+
+        return pd.DataFrame({**voltages, **parameters, **variances, **gradients, **grad_covariances,
+                             **tuner_index}, index=[0, ], dtype=float)
+
+    def append_autotuner(self, autotuner: qtune.autotuner.Autotuner):
+        if self._data_frame.empty:
+            self._data_frame = self.read_autotuner_to_data_frame(autotuner)
+            return
+
+        voltages = extract_voltages_from_hierarchy(autotuner.tuning_hierarchy).sort_index()
+        evaluated_tuner_index = autotuner.current_tuner_index
+        if autotuner.voltages_to_set is not None or autotuner.current_tuner_status:
+            evaluated_tuner_index += 1
+        new_information = self.read_autotuner_to_data_frame(autotuner, end=evaluated_tuner_index)
+        if voltages.equals(self._data_frame[sorted(self.gate_names)].iloc[-1]):
+            # stay in the row
+            self._data_frame.loc[self._data_frame.index[-1], new_information.columns] = new_information.iloc[0]
+        else:
+            self._data_frame = self._data_frame.append(new_information, ignore_index=True)
+
+    def load_directory(self, path):
+        directory_content = sorted(os.listdir(path))
         for file in directory_content:
-            hdf5_handle = h5py.File(self._file_path + r"\\" + file, mode="r")
-            loaded_data = qtune.storage.from_hdf5(hdf5_handle, reserved={"experiment": None})
-            autotuner = loaded_data["autotuner"]
-            assert(isinstance(autotuner, qtune.autotuner.Autotuner))
+            self.load_file(path=os.path.join(path, file))
 
-            tuner_list.append(autotuner._tuning_hierarchy)
-            index_list.append(autotuner._current_tuner_index)
-        return tuner_list, index_list
+    def load_file(self, path):
+        hdf5_handle = h5py.File(path, mode="r")
+        loaded_data = qtune.storage.from_hdf5(hdf5_handle, reserved={"experiment": None})
+        autotuner = loaded_data["autotuner"]
+        self.append_autotuner(autotuner=autotuner)
 
     def plot_tuning(self, voltage_indices=None, parameter_names=None, gradient_names=None, mode=""):
         if "all_voltages" in mode:
@@ -193,11 +252,42 @@ class Reader:
                                                        eliminate_duplicates=eliminate_duplicates,
                                                        with_covariances=with_grad_covariances)
 
-        plt.show()
-        return voltage_fig, voltage_ax, parameter_fig, parameter_ax, gradient_fig, gradient_ax
+        return [voltage_fig, parameter_fig, gradient_fig], [voltage_ax, parameter_ax, gradient_ax]
 
 
-def plot_voltages(voltage_list, voltage_indices: Tuple[str], eliminate_duplicates: bool=True):
+def load_data(file_path):
+    """
+    writes lists with all relavant Data.
+    :return: Voltages, Parameters, Gradients, Covariances
+    """
+    directory_content = os.listdir(file_path)
+
+    tuner_list = []
+    index_list = []
+    for file in directory_content:
+        hdf5_handle = h5py.File(os.path.join(file_path, file), mode="r")
+        loaded_data = qtune.storage.from_hdf5(hdf5_handle, reserved={"experiment": None})
+        autotuner = loaded_data["autotuner"]
+        assert (isinstance(autotuner, qtune.autotuner.Autotuner))
+
+        tuner_list.append(autotuner._tuning_hierarchy)
+        index_list.append(autotuner._current_tuner_index)
+    return tuner_list, index_list
+
+
+def create_name_parameter_variance(parameter_name: str) -> str:
+    return parameter_name + "#var"
+
+
+def create_gradient_name(parameter_name: str, gate_name: str) -> str:
+    return parameter_name + "#" + gate_name + "#grad"
+
+
+def create_gradient_covariance_name(parameter_name: str, gate_name: str) -> str:
+    return parameter_name + "#" + gate_name + "#cov"
+
+
+def plot_voltages(voltage_list, voltage_indices: Tuple[str], eliminate_duplicates: bool = True):
     if eliminate_duplicates:
         voltage_list = [v for i, v in enumerate(voltage_list) if i == 0 or not v.equals(voltage_list[i - 1])]
 
@@ -266,49 +356,38 @@ def plot_gradients(gradient_list, covariance_list, parameter_names: Tuple[str], 
     return grad_fig, grad_ax
 
 
-def extract_voltages_from_hierarchy(tuning_hierarchy):
-    voltages = pd.Series()
-    for par_tuner in tuning_hierarchy:
-        for gate in pd.Series(par_tuner._last_voltage).index:
-            if gate not in voltages.index:
-                voltages[gate] = par_tuner._last_voltage[gate]
-    return voltages
+def extract_voltages_from_hierarchy(tuning_hierarchy) -> pd.Series:
+    return tuning_hierarchy[0].last_voltages
 
 
-def extract_parameters_from_hierarchy(tuning_hierarchy):
+def extract_parameters_from_hierarchy(tuning_hierarchy) -> (pd.Series, pd.Series):
     parameters = pd.Series()
-    covariances = pd.Series()
+    variances = pd.Series()
     for par_tuner in tuning_hierarchy:
-        parameter, covariance = par_tuner.last_parameter_covariance
+        parameter, variance = par_tuner.last_parameters_and_variances
         if isinstance(par_tuner, qtune.parameter_tuner.SubsetTuner):
             relevant_parameters = par_tuner.solver.target.desired.index[
                 ~par_tuner.solver.target.desired.apply(np.isnan)]
             parameters = parameters.append(parameter[relevant_parameters])
-            covariances = covariances.append(covariance[relevant_parameters])
+            variances = variances.append(variance[relevant_parameters])
         else:
             parameters = parameters.append(parameter)
-            covariances = covariances.append(covariance)
-    return parameters, covariances
+            variances = variances.append(variance)
+    return parameters, variances
 
 
-def extract_gradients_from_hierarchy(tuning_hierarchy):
+def extract_gradients_from_hierarchy(tuning_hierarchy) -> (Dict[str, pd.Series], Dict[str, pd.DataFrame]):
     gradients = dict()
     covariances = dict()
     for tuner in tuning_hierarchy:
         if isinstance(tuner.solver, qtune.solver.NewtonSolver):
-            for i, grad_est in enumerate(tuner.solver._gradient_estimators):
-                if isinstance(grad_est, qtune.gradient.KalmanGradientEstimator):
-                    gradients[tuner.solver.target.index[i]] = grad_est.estimate()
-                    covariances[tuner.solver.target.index[i]] = grad_est.covariance()
-                elif isinstance(grad_est, qtune.gradient.FiniteDifferencesGradientEstimator):
-                    gradients[tuner.solver.target.index[i]] = grad_est.estimate()
-                    covariances[tuner.solver.target.index[i]] = grad_est.covariance()
-    return pd.DataFrame(gradients), covariances
+            for i, grad_est in enumerate(tuner.solver.gradient_estimators):
+                gradients[tuner.solver.target.index[i]] = grad_est.estimate()
+                covariances[tuner.solver.target.index[i]] = grad_est.covariance()
+    return gradients, covariances
 
 
 def extract_diagonal_from_data_frame(df: pd.DataFrame) -> pd.Series:
-    if df is None:
-        return None
     if not set(df.index) == set(df.columns):
         raise ValueError("The index must match the columns to extract diagonal elements!")
     return pd.Series(data=[df[i][i] for i in df.index], index=df.index)
