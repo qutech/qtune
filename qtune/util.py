@@ -30,6 +30,13 @@ def time_string() -> str:
     return datetime.datetime.now().strftime('%Y_%m_%d_%H_%M_%S_%f')
 
 
+def new_find_lead_transition_index(data: np.ndarray, width_in_index_points: int) -> int:
+    data = data.squeeze()
+    for i in range(0, len(data)-width_in_index_points-1):
+        data[i] -= data[i+width_in_index_points]
+    return int(np.argmax(data) + round(width_in_index_points / 2))
+
+
 def find_lead_transition(data: np.ndarray, center: float, scan_range: float, npoints: int, width: float = .2e-3) -> float:
     if len(data.shape) == 2:
         y = np.mean(data, 0)
