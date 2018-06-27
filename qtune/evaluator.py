@@ -19,11 +19,13 @@ class Evaluator(metaclass=HDF5Serializable):
                  experiment: Experiment,
                  measurements: Sequence[Measurement],
                  parameters: Sequence[str],
-                 last_data: Optional[np.ndarray]):
+                 last_data: Optional[np.ndarray],
+                 last_fit_results: Optional[pd.Series]):
         self._experiment = experiment
         self._measurements = tuple(measurements)  # Is this the behaviour that was intended?
         self._parameters = tuple(parameters)
         self._last_data = last_data
+        self._last_fit_results = last_fit_results
 
     @property
     def experiment(self) -> Experiment:
@@ -38,8 +40,12 @@ class Evaluator(metaclass=HDF5Serializable):
         return self._parameters
 
     @property
-    def last_data(self) -> np.ndarray:
+    def last_data(self) -> Optional[np.ndarray]:
         return self._last_data
+
+    @property
+    def last_fit_results(self) -> Optional[pd.Series]:
+        return self._last_fit_results
 
     def evaluate(self) -> (pd.Series, pd.Series):
         raise NotImplementedError()
@@ -48,7 +54,8 @@ class Evaluator(metaclass=HDF5Serializable):
         return dict(experiment=self.experiment,
                     measurements=self.measurements,
                     parameters=self.parameters,
-                    last_data=self.last_data)
+                    last_data=self.last_data,
+                    last_fit_results=self.last_fit_results)
 
     def __repr__(self):
         return "{type}({data})".format(type=type(self), data=self.to_hdf5())
@@ -61,17 +68,20 @@ class LeadTunnelTimeByLeadScan(Evaluator):
     """
     def __init__(self, dqd: BasicDQD,
                  parameters: Sequence[str]=('parameter_time_rise', 'parameter_time_fall'),
-                 lead_scan: Measurement = None, last_data: Optional[np.ndarray]=None):
+                 lead_scan: Measurement = None, last_data: Optional[np.ndarray]=None,
+                 last_fit_results: Optional[pd.Series]=None):
         if lead_scan is None:
             lead_scan = Measurement('lead_scan', gate='B', AWGorDecaDAC='DecaDAC')
         super().__init__(experiment=dqd,
                          measurements=(lead_scan, ),
                          parameters=parameters,
-                         last_data=last_data)
+                         last_data=last_data,
+                         last_fit_results=last_fit_results)
 
     def evaluate(self) -> (pd.Series, pd.Series):
         data = self.experiment.measure(self.measurements[0])
         fitresult = fit_lead_times(data)
+        self._last_fit_results = fitresult
         t_rise = fitresult['t_rise']
         t_fall = fitresult['t_fall']
         error_t_rise = t_rise / 5.
@@ -92,11 +102,13 @@ class InterDotTCByLineScan(Evaluator):
     the width calculated as parameter for the inter dot coupling.
     """
     def __init__(self, dqd: BasicDQD, parameters: Sequence[str]=('parameter_tunnel_coupling', ),
-                 line_scan: Measurement = None, last_data: Optional[np.ndarray]=None):
+                 line_scan: Measurement = None, last_data: Optional[np.ndarray]=None,
+                 last_fit_results: Optional[pd.Series]=None):
         if line_scan is None:
             line_scan = Measurement('detune_scan', center=0., range=2e-3, N_points=100, ramptime=.02, N_average=10,
                                     AWGorDecaDAC='AWG')
-        super().__init__(experiment=dqd, measurements=(line_scan, ), parameters=parameters, last_data=last_data)
+        super().__init__(experiment=dqd, measurements=(line_scan, ), parameters=parameters, last_data=last_data,
+                         last_fit_results=last_fit_results)
 
     def evaluate(self) -> (pd.Series, pd.Series):
         ydata = self.experiment.measure(self.measurements[0])
@@ -110,6 +122,7 @@ class InterDotTCByLineScan(Evaluator):
             fitresult = fit_inter_dot_coupling(data=ydata.copy(), center=center, scan_range=scan_range, npoints=npoints)
         except RuntimeError:
             fitresult = pd.Series(data=[np.nan, np.nan], index=['parameter_tunnel_coupling', "residual"])
+        self._last_fit_results = fitresult
         tc = fitresult['tc']
         residual = fitresult["residual"]
         return pd.Series([tc], ["parameter_tunnel_coupling"]), pd.Series([residual], ["parameter_tunnel_coupling"])
@@ -118,7 +131,8 @@ class InterDotTCByLineScan(Evaluator):
         return dict(dqd=self.experiment,
                     parameters=self.parameters,
                     line_scan=self.measurements[0],
-                    last_data=self.last_data)
+                    last_data=self.last_data,
+                    last_fit_results=self.last_fit_results)
 
 
 class LoadTime(Evaluator):
@@ -126,10 +140,12 @@ class LoadTime(Evaluator):
     Measures the time required to reload a (2,0) singlet state. Fits an exponential function.
     """
     def __init__(self, dqd: BasicDQD, parameters: Sequence[str]=('parameter_time_load',),
-                 load_scan: Measurement = None, last_data: Optional[np.ndarray]=None):
+                 load_scan: Measurement = None, last_data: Optional[np.ndarray]=None,
+                 last_fit_results: Optional[pd.Series]=None):
         if load_scan is None:
             load_scan = Measurement("load_scan")
-        super().__init__(dqd, (load_scan, ), parameters, last_data=last_data)
+        super().__init__(dqd, (load_scan, ), parameters, last_data=last_data,
+                         last_fit_results=last_fit_results)
 
     def evaluate(self) -> (pd.Series, pd.Series):
         data = self.experiment.measure(self.measurements[0])
@@ -141,7 +157,7 @@ class LoadTime(Evaluator):
             fitresult = fit_load_time(data=data, n_points=n_points, )
         except RuntimeError:
             fitresult = pd.Series(data=[np.nan, np.nan], index=['parameter_time_load', "residual"])
-
+        self._last_fit_results = fitresult
         parameter_time_load = fitresult['parameter_time_load']
         residual = fitresult["residual"]
         return pd.Series([parameter_time_load], ['parameter_time_load']), pd.Series([residual], ["parameter_time_load"])
@@ -150,7 +166,8 @@ class LoadTime(Evaluator):
         return dict(dqd=self.experiment,
                     parameters=self.parameters,
                     load_scan=self.measurements[0],
-                    last_data=self.last_data)
+                    last_data=self.last_data,
+                    last_fit_results=self.last_fit_results)
 
 
 class LeadTransition(Evaluator):
@@ -175,7 +192,8 @@ class LeadTransition(Evaluator):
             default_line_scan_a = line_scan
         self._shifting_gates = shifting_gates
         self._charge_diagram_width = charge_diagram_width
-        super().__init__(experiment, (default_line_scan_a, ), parameters, last_data=last_data)
+        super().__init__(experiment, (default_line_scan_a, ), parameters, last_data=last_data,
+                         last_fit_results=None)
 
     def evaluate(self):
         transition_position = pd.Series()
@@ -222,7 +240,7 @@ class SensingDot1D(Evaluator):
                                                   N_points=1280, ramptime=.0005,
                                                   N_average=1, AWGorDecaDAC='DecaDAC')
         super().__init__(experiment, measurements=(sensing_dot_measurement,), parameters=parameters,
-                         last_data=last_data)
+                         last_data=last_data, last_fit_results=None)
 
     def evaluate(self):
         sensing_dot_measurement = self.measurements[0]
@@ -251,9 +269,9 @@ class SensingDot1D(Evaluator):
         values["position_" + gate] = sensing_dot_measurement.options["center"] + optimal_position
         error["position_" + gate] = 0.1e-3
         values["current_signal"] = current_signal
-        error["current_signal"] = np.nan
+        error["current_signal"] = current_signal / 5
         values["optimal_signal"] = optimal_signal
-        error["optimal_signal"] = np.nan
+        error["optimal_signal"] = optimal_signal / 5
         return values, error
 
     def to_hdf5(self):
@@ -284,7 +302,8 @@ class SensingDot2D(Evaluator):
                                                   gate2=sweeping_gates[1],
                                                   N_points=1280, ramptime=.0005, n_lines=20,
                                                   n_points=104, N_average=1, AWGorDecaDAC='DecaDAC')
-        super().__init__(experiment, (sensing_dot_measurement,), parameters=parameters, last_data=last_data)
+        super().__init__(experiment, (sensing_dot_measurement,), parameters=parameters, last_data=last_data,
+                         last_fit_results=None)
 
     def evaluate(self):
         self.measurements[0].options["center"] = [

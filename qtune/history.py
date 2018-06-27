@@ -1,17 +1,19 @@
 import os
-import h5py
 import operator
+import re
+from typing import Optional, Set, Dict
+
+import h5py
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+
 import qtune.storage
 import qtune.autotuner
 import qtune.solver
 import qtune.gradient
 import qtune.parameter_tuner
-import os.path
 
-from typing import Tuple, Optional, Set, Dict
 
 parameter_information = {
     "origin x": {
@@ -98,11 +100,15 @@ def read_files(file_or_files, reserved=None):
 
 
 class History:
+    _parameter_variance_name = '{parameter_name}#var'
+    _gradient_name = '{parameter_name}#{gate_name}#grad'
+    _gradient_covariance_name = '{parameter_name}#{gate_name_1}#{gate_name_2}#cov'
+
     def __init__(self, directory_or_file: Optional[str]):
         self._data_frame = pd.DataFrame()
-        self._gate_names = None
-        self._parameter_names = None
-        self._gradient_controlled_parameters = None
+        self._gate_names = set()
+        self._parameter_names = set()
+        self._gradient_controlled_parameters = dict()
         if directory_or_file is None:
             pass
         elif os.path.isdir(directory_or_file):
@@ -122,27 +128,41 @@ class History:
         return self._parameter_names
 
     @property
-    def gradient_controlled_parameter_names(self) -> Set[str]:
+    def gradient_controlled_parameter_names(self) -> Dict[str, Set[str]]:
         return self._gradient_controlled_parameters
 
     @property
     def mode_options(self):
-        return ["all_voltages", "all_parameters", "all_gradients", "with_duplicates", "with_grad_covariances",
-                "with_par_covariances"]
+        return ["all_voltages", "all_parameters", "all_gradients", "with_grad_covariances", "with_par_variances"]
 
-    def get_parameter_values(self, parameter_name):
+    def get_parameter_values(self, parameter_name) -> pd.Series:
         return self._data_frame[parameter_name]
 
-    def get_parameter_std(self, parameter_name):
-        return self._data_frame[parameter_name + '#var'].apply(np.sqrt)
+    def get_parameter_std(self, parameter_name) -> pd.Series:
+        return self._data_frame[self._parameter_variance_name.format(parameter_name=parameter_name)].apply(np.sqrt)
 
-    def get_gate_values(self, gate_name):
+    def get_gate_values(self, gate_name) -> pd.Series:
         return self._data_frame[gate_name]
 
-    def get_gradients(self, parameter_name: str):
-        elems = [name for name in self._data_frame.columns
-                 if name.startswith(parameter_name + '#') and name.endswith('#grad')]
-        return self._data_frame[elems].rename(lambda name: name.split('#')[1])
+    def get_gradients(self, parameter_name: str) -> pd.DataFrame:
+        regex = re.compile(self._gradient_name.format(parameter_name=parameter_name,
+                                                      gate_name=r'([\w\s\d]+)'))
+        return self._data_frame.filter(regex=regex).rename(lambda name: regex.findall(name)[0], axis='columns')
+
+    def get_gradient_covariances(self, parameter_name) -> pd.DataFrame:
+        regex = re.compile(self._gradient_covariance_name.format(parameter_name=parameter_name,
+                                                                 gate_name_1=r'([\w\s\d]+)',
+                                                                 gate_name_2=r'([\w\s\d]+)'))
+        df = self._data_frame.filter(regex=regex)
+        df = df[sorted(df.columns, key=regex.findall)]
+
+        return pd.DataFrame(df, columns=pd.MultiIndex.from_tuples(map(regex.findall, df.columns)))
+
+    def get_gradient_variances(self, parameter_name) -> pd.DataFrame:
+        regex = re.compile(self._gradient_covariance_name.format(parameter_name=parameter_name,
+                                                                 gate_name_1=r'(?P<gatename>[\w\s\d]+)',
+                                                                 gate_name_2=r'(?P=gatename)'))
+        return self._data_frame.filter(regex=regex).rename(columns=lambda name: regex.search(name).group('gatename'))
 
     def read_autotuner_to_data_frame(self, autotuner: qtune.autotuner.Autotuner, start: int = 0,
                                      end: Optional[int] = None) -> pd.DataFrame:
@@ -159,19 +179,20 @@ class History:
         if self._data_frame.empty:
             self._gate_names = set(voltages.index)
             self._parameter_names = set(parameters.index)
-            self._gradient_controlled_parameters = list(gradients.keys())
+            self._gradient_controlled_parameters = {parameter_name: set(gradient.index)
+                                                    for parameter_name, gradient in gradients.items()}
 
         voltages = dict(voltages)
         parameters = dict(parameters)
-        variances = {create_name_parameter_variance(par_name): variances[par_name] for par_name in variances.index}
-        gradients = {create_gradient_name(par_name, gate_name): gradients[par_name][gate_name]
-                     for par_name in gradients.keys()
-                     for gate_name in gradients[par_name].index}
-        grad_covariances = {parameter_name: extract_diagonal_from_data_frame(grad_covariances[parameter_name])
-                            for parameter_name in grad_covariances.keys()}
-        grad_covariances = {create_gradient_covariance_name(par_name, gate_name): grad_covariances[par_name][gate_name]
-                            for par_name in grad_covariances.keys()
-                            for gate_name in grad_covariances[par_name].index}
+        variances = {self._parameter_variance_name.format(parameter_name=par_name): variance
+                     for par_name, variance in variances.items()}
+        gradients = {self._gradient_name.format(parameter_name=par_name, gate_name=gate_name): grad_entry
+                     for par_name, gradient in gradients.items()
+                     for gate_name, grad_entry in gradient.items()}
+        grad_covariances = {k: v
+                            for parameter_name, gradient_covariance_matrix in grad_covariances.items()
+                            for k, v in self._unravel_gradient_covariance_matrix(parameter_name,
+                                                                                 gradient_covariance_matrix).items()}
         tuner_index = {"tuner_index": autotuner.current_tuner_index}
 
         return pd.DataFrame({**voltages, **parameters, **variances, **gradients, **grad_covariances,
@@ -204,155 +225,112 @@ class History:
         autotuner = loaded_data["autotuner"]
         self.append_autotuner(autotuner=autotuner)
 
-    def plot_tuning(self, voltage_indices=None, parameter_names=None, gradient_names=None, mode=""):
+    def plot_tuning(self, voltage_indices=None, parameter_names=None, gradient_parameter_names=None, mode=""):
         if "all_voltages" in mode:
-            voltage_indices = self.gate_names
+            voltage_indices = sorted(self.gate_names)
         if "all_parameters" in mode:
-            parameter_names = self.parameter_names
+            parameter_names = sorted(self.parameter_names)
         if "all_gradients" in mode:
-            gradient_names = self.gradient_controlled_parameter_names
-        if "with_duplicates" in mode:
-            eliminate_duplicates = False
-        else:
-            eliminate_duplicates = True
+            gradient_parameter_names = sorted(self.gradient_controlled_parameter_names)
         if "with_grad_covariances" in mode:
             with_grad_covariances = True
         else:
             with_grad_covariances = False
-        if "with_par_covariances" in mode:
-            with_par_covariances = True
+        if "with_par_variances" in mode:
+            with_par_variances = True
         else:
-            with_par_covariances = False
+            with_par_variances = False
 
         if voltage_indices is None:
             voltage_fig = None
             voltage_ax = None
         else:
-            voltage_fig, voltage_ax = plot_voltages(self.voltage_list,
-                                                    voltage_indices=voltage_indices,
-                                                    eliminate_duplicates=eliminate_duplicates)
+            voltage_fig, voltage_ax = plot_voltages(self._data_frame[voltage_indices])
 
         if parameter_names is None:
             parameter_fig = None
             parameter_ax = None
         else:
-            parameter_fig, parameter_ax = plot_parameters(self.parameter_list,
-                                                          par_covariance_list=self.par_covariance_list,
-                                                          parameter_names=parameter_names,
-                                                          eliminate_duplicates=eliminate_duplicates,
-                                                          with_covariances=with_par_covariances)
+            if with_par_variances:
+                parameter_std = pd.DataFrame({par_name: self.get_parameter_std(parameter_name=par_name)
+                                              for par_name in parameter_names})
+            else:
+                parameter_std = None
+            parameter_fig, parameter_ax = plot_parameters(self._data_frame[parameter_names], parameter_std)
 
-        if gradient_names is None:
+        if gradient_parameter_names is None:
             gradient_fig = None
             gradient_ax = None
         else:
-            gradient_fig, gradient_ax = plot_gradients(gradient_list=self.gradient_list,
-                                                       covariance_list=self.covariance_list,
-                                                       parameter_names=gradient_names,
-                                                       eliminate_duplicates=eliminate_duplicates,
-                                                       with_covariances=with_grad_covariances)
+            gradients = {par_name: self.get_gradients(parameter_name=par_name)
+                         for par_name in gradient_parameter_names}
+            if with_grad_covariances:
+                gradient_variances = {par_name: self.get_gradient_variances(parameter_name=par_name)
+                                      for par_name in gradient_parameter_names}
+            else:
+                gradient_variances = None
+            gradient_fig, gradient_ax = plot_gradients(gradients, gradient_variances)
 
         return [voltage_fig, parameter_fig, gradient_fig], [voltage_ax, parameter_ax, gradient_ax]
 
+    @classmethod
+    def _unravel_gradient_covariance_matrix(cls, parameter_name, covariance_matrix: pd.DataFrame):
+        return {
+            cls._gradient_covariance_name.format(parameter_name=parameter_name,
+                                                 gate_name_1=gate_1,
+                                                 gate_name_2=gate_2): cov_entry
+            for gate_1, cov_column in covariance_matrix.items()
+            for gate_2, cov_entry in cov_column.items()
+        }
 
-def load_data(file_path):
-    """
-    writes lists with all relavant Data.
-    :return: Voltages, Parameters, Gradients, Covariances
-    """
-    directory_content = os.listdir(file_path)
+    @classmethod
+    def create_name_parameter_variance(cls, parameter_name: str) -> str:
+        return cls._parameter_variance_name.format(parameter_name=parameter_name)
 
-    tuner_list = []
-    index_list = []
-    for file in directory_content:
-        hdf5_handle = h5py.File(os.path.join(file_path, file), mode="r")
-        loaded_data = qtune.storage.from_hdf5(hdf5_handle, reserved={"experiment": None})
-        autotuner = loaded_data["autotuner"]
-        assert (isinstance(autotuner, qtune.autotuner.Autotuner))
-
-        tuner_list.append(autotuner._tuning_hierarchy)
-        index_list.append(autotuner._current_tuner_index)
-    return tuner_list, index_list
+    @classmethod
+    def create_gradient_name(cls, parameter_name: str, gate_name: str) -> str:
+        return cls._gradient_name.format(parameter_name=parameter_name, gate_name=gate_name)
 
 
-def create_name_parameter_variance(parameter_name: str) -> str:
-    return parameter_name + "#var"
-
-
-def create_gradient_name(parameter_name: str, gate_name: str) -> str:
-    return parameter_name + "#" + gate_name + "#grad"
-
-
-def create_gradient_covariance_name(parameter_name: str, gate_name: str) -> str:
-    return parameter_name + "#" + gate_name + "#cov"
-
-
-def plot_voltages(voltage_list, voltage_indices: Tuple[str], eliminate_duplicates: bool = True):
-    if eliminate_duplicates:
-        voltage_list = [v for i, v in enumerate(voltage_list) if i == 0 or not v.equals(voltage_list[i - 1])]
-
-    voltage_dataframe = pd.concat(voltage_list, axis=1)
+def plot_voltages(voltage_data_frame: pd.DataFrame):
     voltage_fig, voltage_ax = plt.subplots()
-    if voltage_indices is None:
-        voltage_indices = voltage_dataframe.index
-    voltage_ax.plot(voltage_dataframe.T[voltage_indices])
-    voltage_ax.legend(voltage_indices)
+    voltage_ax.plot(voltage_data_frame)
+    voltage_ax.legend(voltage_data_frame.columns)
     voltage_ax.set_title("Gate Voltages")
     voltage_ax.set_xlabel("Measurement Number")
     voltage_ax.set_ylabel("Voltage (V)")
     return voltage_fig, voltage_ax
 
 
-def plot_parameters(parameter_list, par_covariance_list, parameter_names: Tuple[str], eliminate_duplicates: bool,
-                    with_covariances: bool):
-    if eliminate_duplicates:
-        par_covariance_list = [par_covariance_list[i] for i, v in enumerate(parameter_list) if
-                               i == 0 or not v.equals(parameter_list[i - 1])]
-        parameter_list = [v for i, v in enumerate(parameter_list) if i == 0 or not v.equals(parameter_list[i - 1])]
-    parameter_dataframe = pd.concat(parameter_list, axis=1).T
-
-    parameter_fig, parameter_ax = plt.subplots(nrows=len(parameter_names))
-    if len(parameter_names) == 1:
-        parameter_ax = [parameter_ax, ]
-    for i, parameter in enumerate(parameter_names):
-        if with_covariances:
-            cov_data_frame = pd.concat(par_covariance_list, axis=1).fillna(0.)
-            parameter_ax[i].errorbar(x=np.arange(parameter_dataframe.shape[0]), y=parameter_dataframe[parameter],
-                                     yerr=cov_data_frame.applymap(np.sqrt).T[parameter])
-        else:
-            parameter_ax[i].plot(parameter_dataframe[parameter])
-        parameter_ax[i].set_ylabel(parameter_information[parameter]["entity_unit"])
-        parameter_ax[i].set_title(parameter_information[parameter]["name"])
-    parameter_ax[len(parameter_names) - 1].set_xlabel("Measurement Number")
+def plot_parameters(parameter_data_frame: pd.DataFrame, parameter_std: Optional[pd.DataFrame]):
+    if parameter_std is None:
+        parameter_std = pd.DataFrame()
+    parameter_fig, parameter_ax = plt.subplots(nrows=len(parameter_data_frame.columns))
+    parameter_ax = parameter_data_frame.plot(subplots=True, yerr=parameter_std,
+                                             ax=parameter_ax, sharex=True, legend=False)
+    for ax, par_name in zip(parameter_ax, parameter_data_frame.columns):
+        ax.set_ylabel(parameter_information[par_name]["entity_unit"])
+        ax.set_title(parameter_information[par_name]["name"])
+    parameter_ax[-1].set_xlabel("Measurement Number")
     return parameter_fig, parameter_ax
 
 
-def plot_gradients(gradient_list, covariance_list, parameter_names: Tuple[str], eliminate_duplicates: bool,
-                   with_covariances: bool):
-    if eliminate_duplicates:
-        covariance_list = [covariance_list[i] for i, v in enumerate(gradient_list) if
-                           i == 0 or not v.equals(gradient_list[i - 1])]
-        gradient_list = [v for i, v in enumerate(gradient_list) if i == 0 or not v.equals(gradient_list[i - 1])]
+def plot_gradients(gradients: Dict[str, pd.DataFrame],
+                   gradient_std: Optional[Dict[str, pd.DataFrame]]):
+    if gradient_std is None:
+        gradient_std = dict()
+    grad_fig, grad_ax = plt.subplots(nrows=len(gradients))
 
-    grad_fig, grad_ax = plt.subplots(nrows=len(parameter_names))
-    for i, parameter in enumerate(parameter_names):
-        grad_dataframe = pd.concat([pd.Series(gradients[parameter]) for gradients in gradient_list], axis=1,
-                                   ignore_index=True)
-        # drop not existing columns
-        grad_dataframe = grad_dataframe.T.dropna().T
-        if with_covariances:
-            cov_series_list = [extract_diagonal_from_data_frame(covariances[parameter]) for covariances in
-                               covariance_list]
-            cov_data_frame = pd.concat(cov_series_list, axis=1).T.dropna().T
-            for gate in grad_dataframe.index:
-                grad_ax[i].errorbar(x=np.arange(grad_dataframe.shape[1]), y=grad_dataframe.T[gate],
-                                    yerr=cov_data_frame.applymap(np.sqrt).T[gate])
+    for ax, (parameter_name, gradient) in zip(grad_ax, gradients.items()):
+        if parameter_name in gradient_std:
+            gradient.plot(ax=ax, yerr=gradient_std[parameter_name].applymap(np.sqrt))
+
         else:
-            grad_ax[i].plot(grad_dataframe.T)
-        grad_ax[i].set_ylabel(parameter_information[parameter]["gradient_unit"])
-        grad_ax[i].legend(gradient_list[0].index)
+            gradient.plot(ax=ax)
+
+        ax.set_ylabel(parameter_information[parameter_name]["gradient_unit"])
     grad_ax[0].set_title("Response Matrix")
-    grad_ax[len(parameter_names) - 1].set_xlabel("Measurement Number")
+    grad_ax[-1].set_xlabel("Measurement Number")
     return grad_fig, grad_ax
 
 
