@@ -116,35 +116,41 @@ class SMTuneQQD(Experiment):
 
     def measure(self, measurement: Measurement) -> np.ndarray:
         """This function basically wraps the tune.m script on the Trition 200 setup"""
+        # TODO allow this to create the measurement on the fly when arguments cntrl, index, options are passed
         if measurement.name not in self._measurements.keys():
             raise ValueError('Unknown measurement: {}'.format(measurement))
 
         result = self.pytune(measurement)
 
         if measurement.name == 'line':
-            result = np.array(result['data'].ana.width)
+            ret = np.array(result['data'].ana.width)
         elif measurement.name == 'lead':
-            result = np.array(result['data'].ana.fitParams[1][3])
+            ret = np.array(result['data'].ana.fitParams[1][3])
         elif measurement.name == 'load':
-            pass
+            ret = result
         elif measurement.name == 'load pos':
-            pass
+            ret = result
         elif measurement.name == 'chrg rnd':
-            pass
+            ret = result
         elif measurement.name == 'chrg s':
-            pass
+            ret = result
         elif measurement.name == 'sensor':
-            result = np.array([result['data'].ana.xVal, np.abs(result['data'].ana.minGradData)])
+            ret = np.array([result['data'].ana.xVal, np.abs(result['data'].ana.minGradData)])
         elif measurement.name == 'sensor 2d':
-            result = np.array([result['data'].ana.xVal, result['data'].ana.yVal, np.abs(result['data'].ana.minGradData)])
+            ret = np.array([result['data'].ana.xVal, result['data'].ana.yVal, np.abs(result['data'].ana.minGradData)])
         elif measurement.name == 'chrg':
-            result = np.squeeze(result['data'].ana.O)
+            ret = np.squeeze(result['data'].ana.O)
         elif measurement.name == 'stp':
-            result = np.array([result['data'].ana.STp_x, result['data'].ana.STp_y])
+            ret = np.array([result['data'].ana.STp_x, result['data'].ana.STp_y])
         elif measurement.name == 'tl':
-            result = np.array([result['data'].ana.Tp_x, result['data'].ana.Tp_y])
+            ret = np.array([result['data'].ana.Tp_x, result['data'].ana.Tp_y])
+        elif measurement.name == 'resp':
+            n = len(result['data'].ana)
+            ret = np.full(n, np.nan)
+            for i in range(n):
+                ret[i] = result['data'].ana[i].position
 
-        return result
+        return ret
 
 
 class SMQQDPassThru(Evaluator):
