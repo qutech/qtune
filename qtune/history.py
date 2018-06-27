@@ -1,12 +1,15 @@
 import os
 import operator
 import re
-from typing import Optional, Set, Dict
+from typing import Optional, Set, Dict, Sequence, List
 
 import h5py
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.axes
+import numbers
+
 
 import qtune.storage
 import qtune.autotuner
@@ -89,6 +92,7 @@ class History:
         self._gate_names = set()
         self._parameter_names = set()
         self._gradient_controlled_parameters = dict()
+        self._evaluator_data = dict()
         if directory_or_file is None:
             pass
         elif os.path.isdir(directory_or_file):
@@ -110,6 +114,10 @@ class History:
     @property
     def gradient_controlled_parameter_names(self) -> Dict[str, Set[str]]:
         return self._gradient_controlled_parameters
+
+    @property
+    def evaluator_data(self) -> Dict[str, List[np.ndarray]]:
+        return self._evaluator_data
 
     @property
     def mode_options(self):
@@ -151,7 +159,7 @@ class History:
         elif end == 0:
             voltages = extract_voltages_from_hierarchy(autotuner.tuning_hierarchy)
             return pd.DataFrame(dict(voltages), index=[0, ])
-        relevant_hierarchy = autotuner.tuning_hierarchy[start:end]
+        relevant_hierarchy = autotuner.tuning_hierarchy[int(start):end]
         voltages = extract_voltages_from_hierarchy(relevant_hierarchy)
         parameters, variances = extract_parameters_from_hierarchy(relevant_hierarchy)
         gradients, grad_covariances = extract_gradients_from_hierarchy(relevant_hierarchy)
@@ -178,7 +186,19 @@ class History:
         return pd.DataFrame({**voltages, **parameters, **variances, **gradients, **grad_covariances,
                              **tuner_index}, index=[0, ], dtype=float)
 
-    def append_autotuner(self, autotuner: qtune.autotuner.Autotuner):
+    def read_evaluator_data_from_autotuner(self, autotuner: qtune.autotuner.Autotuner, start: int = 0,
+                                           end: Optional[int] = None):
+        if end is None:
+            end = len(autotuner.tuning_hierarchy)
+
+        for i in range(start=start, stop=end):
+            for evaluator in autotuner.tuning_hierarchy[i].evaluators:
+                evaluator_data = dict()
+                evaluator_data['raw_data'] = evaluator.last_data
+                evaluator_data['fit_results'] = evaluator.last_fit_results
+                self._evaluator_data[evaluator.parameters[0]] = evaluator_data
+
+    def append_autotuner(self, autotuner: qtune.autotuner.Autotuner, read_evaluator_data: bool=False):
         if self._data_frame.empty:
             self._data_frame = self.read_autotuner_to_data_frame(autotuner)
             return
@@ -190,9 +210,18 @@ class History:
         new_information = self.read_autotuner_to_data_frame(autotuner, end=evaluated_tuner_index)
         if voltages.equals(self._data_frame[sorted(self.gate_names)].iloc[-1]):
             # stay in the row
+            # new_information = self.read_autotuner_to_data_frame(autotuner,
+            #                                                   start=self._data_frame['tuner_index'].iloc[-1],
+            #                                                   end=evaluated_tuner_index)
             self._data_frame.loc[self._data_frame.index[-1], new_information.columns] = new_information.iloc[0]
+            if read_evaluator_data:
+                self.read_evaluator_data_from_autotuner(autotuner, start=self._data_frame['tuner_index'][-1],
+                                                        end=evaluated_tuner_index)
         else:
+            #new_information = self.read_autotuner_to_data_frame(autotuner, end=evaluated_tuner_index)
             self._data_frame = self._data_frame.append(new_information, ignore_index=True)
+            if read_evaluator_data:
+                self.read_evaluator_data_from_autotuner(autotuner, end=evaluated_tuner_index)
 
     def load_directory(self, path):
         directory_content = sorted(os.listdir(path))
@@ -349,3 +378,28 @@ def extract_diagonal_from_data_frame(df: pd.DataFrame) -> pd.Series:
     if not set(df.index) == set(df.columns):
         raise ValueError("The index must match the columns to extract diagonal elements!")
     return pd.Series(data=[df[i][i] for i in df.index], index=df.index)
+
+
+def plot_raw_data(y_data: np.ndarray, ax: matplotlib.axes.Axes, x_data: Optional[np.ndarray],
+                  fit_function=None,
+                  function_args: Optional[Dict[str, numbers.Number]]=None,
+                  initial_arguments: Optional[Dict[str, numbers.Number]]=None):
+    if y_data is None:
+        return ax
+    y_data = y_data.squeeze()
+    if len(y_data) == 2:
+        y_data = np.nanmean(y_data)
+    if x_data is None:
+        x_data = np.arange(0, y_data.shape[0])
+
+    for data in [x_data, y_data]:
+        if len(data.shape) > 1:
+            raise RuntimeError('Data has too many dimensions and therefore can not be plotted')
+
+    ax.plot(x_data, y_data, 'b.', label='Raw Data')
+    if fit_function:
+        if function_args:
+            ax.plot(x_data, fit_function(x_data, **function_args), 'r', label='Fit')
+        if initial_arguments:
+            ax.plot(x_data, fit_function(x_data, **function_args), 'k--', label='Initial Guess')
+    return ax
