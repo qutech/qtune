@@ -11,7 +11,7 @@ import h5py
 import numpy as np
 import pandas as pd
 
-from qtune.util import time_string
+from qtune.util import time_string, get_version
 
 
 __all__ = ["serializables", "HDF5Serializable"]
@@ -122,6 +122,9 @@ def to_hdf5(filename_or_handle: Union[str, h5py.Group], name: str, obj,
         root = filename_or_handle
     else:
         root = h5py.File(filename_or_handle, mode='r+')
+
+    if '#version' not in root:
+        root.attrs['#version'] = get_version()
 
     if not reserved:
         reserved = dict()
