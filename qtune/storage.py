@@ -233,9 +233,7 @@ def from_hdf5(filename_or_handle, reserved):
 
 
 class AsynchronousHDF5Writer:
-    def __init__(self, filename, reserved, multiprocess=True):
-        self.filename = filename
-
+    def __init__(self, reserved, multiprocess=True):
         reserved = reserved.copy()
 
         for key, value in reserved.items():
@@ -256,18 +254,18 @@ class AsynchronousHDF5Writer:
         self._worker.start()
 
     def _async_write(self):
-        with h5py.File(self.filename, 'w') as root:
-            while True:
-                task = self._queue.get()
-                if task is None:
-                    self._queue.task_done()
-                    break
-                else:
-                    name, obj, reserved = task
+        while True:
+            task = self._queue.get()
+            if task is None:
+                self._queue.task_done()
+                break
+            else:
+                name, file_name, obj, reserved = task
 
+            with h5py.File(file_name, 'r+') as root:
                 _to_hdf5(root, name, obj, serialized=reserved)
 
-                self._queue.task_done()
+            self._queue.task_done()
 
     def join(self):
         """Stop writing and join thread."""
@@ -278,7 +276,7 @@ class AsynchronousHDF5Writer:
     def __del__(self):
         self.join()
 
-    def write(self, obj, name=None):
+    def write(self, obj, file_name, name=None):
         if not self._worker.is_alive():
             raise RuntimeError('Writer already stopped')
 
@@ -290,4 +288,4 @@ class AsynchronousHDF5Writer:
         else:
             reserved = self.reserved
 
-        self._queue.put((name, obj, reserved))
+        self._queue.put((name, file_name, obj, reserved))
