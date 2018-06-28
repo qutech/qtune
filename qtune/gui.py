@@ -1,6 +1,7 @@
 from threading import Thread
 import time
 import logging
+import functools
 import IPython
 import itertools
 import pyqtgraph as pg
@@ -11,6 +12,20 @@ from qtune.history import History
 
 IPython.get_ipython().magic('gui qt')
 IPython.get_ipython().magic('matplotlib qt')
+
+
+def log_exceptions(channel='qtune', catch_exceptions=True):
+    def logging_decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception:
+                logging.getLogger(channel).exception("Error in %s" % func.__name__)
+                if not catch_exceptions:
+                    raise
+        return wrapper
+    return logging_decorator
 
 
 class FunctionHandler(logging.Handler):
