@@ -270,6 +270,10 @@ class AsynchronousHDF5Writer:
     def __del__(self):
         self.join()
 
+    def __getstate__(self):
+        import pickle
+        raise pickle.PickleError(self.__class__.__name__ + ' may not be pickled')
+
     def write(self, obj, file_name, name=None):
         if not self._worker.is_alive():
             raise RuntimeError('Writer already stopped')
