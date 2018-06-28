@@ -30,7 +30,10 @@ class Evaluator(metaclass=HDF5Serializable):
         self._last_y_data = last_y_data
         self._last_fit_results = last_fit_results
         self._fit_function = fit_function
-        self.logger = logging.getLogger(name="qtune")
+
+    @property
+    def logger(self):
+        return logging.getLogger(name="qtune")
 
     @property
     def experiment(self) -> Experiment:

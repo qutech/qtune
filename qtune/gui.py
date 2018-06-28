@@ -59,7 +59,7 @@ class PlotOrganizer(pg.LayoutWidget):
     @log_exceptions('plotting')
     def refresh(self):
         (_, gates), (_, params), (_, grads) = self.parameter.getValues().values()
-        pens = (pg.intColor(idx, len(gates) + len(params)) for idx in itertools.count(0))
+        pens = (pg.intColor(idx, max(1, len(gates) + len(params))) for idx in itertools.count(0))
         plot_item = self.plot.getPlotItem()
 
         for pen, (gate, (plot_gate, _)) in zip(pens, gates.items()):

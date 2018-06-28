@@ -7,7 +7,7 @@ from qtune.experiment import Experiment
 from typing import List, Optional
 from qtune.parameter_tuner import ParameterTuner, SubsetTuner
 from qtune.solver import NewtonSolver
-from qtune.storage import to_hdf5, HDF5Serializable, from_hdf5
+from qtune.storage import to_hdf5, HDF5Serializable, from_hdf5, AsynchronousHDF5Writer
 import logging
 
 
@@ -36,10 +36,17 @@ class Autotuner(metaclass=HDF5Serializable):
                 self._hdf5_storage_path = hdf5_storage_path
         else:
             self._hdf5_storage_path = None
+        self.asynchrone_writer = AsynchronousHDF5Writer(reserved={"experiment": self._experiment})
+        self._logger = 'qtune'
 
-        self.logger = logging.getLogger(name="qtune")
-        self.console_handler = logging.Handler(level=logging.DEBUG)
-        self.logger.addHandler(self.console_handler)
+    @property
+    def logger(self):
+        return logging.getLogger(self._logger)
+
+    @logger.setter
+    def logger(self, val: str):
+        assert isinstance(val, str)
+        self._logger = val
 
     @property
     def tuning_hierarchy(self):
@@ -106,13 +113,20 @@ class Autotuner(metaclass=HDF5Serializable):
                             naming_coherent = False
         return naming_coherent
 
+    def __getstate__(self):
+        """Do not pickle the async writer object"""
+        state = self.__dict__.copy()
+        del state['asynchrone_writer']
+        return state
+
     def save_current_status(self):
         if self._hdf5_storage_path:
             if not os.path.isdir(self._hdf5_storage_path):
                 os.makedirs(self._hdf5_storage_path)
             filename = os.path.join(self._hdf5_storage_path, time_string() + ".hdf5")
-            hdf5_file = h5py.File(filename, 'w-')
-            to_hdf5(hdf5_file, name="autotuner", obj=self, reserved={"experiment": self._experiment})
+            self.asynchrone_writer.write(self, file_name=filename, name='autotuner')
+            # hdf5_file = h5py.File(filename, 'w-')
+            # to_hdf5(hdf5_file, name="autotuner", obj=self, reserved={"experiment": self._experiment})
 
     def get_current_tuner(self):
         return self._tuning_hierarchy[self._current_tuner_index]

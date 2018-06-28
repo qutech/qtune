@@ -43,7 +43,7 @@ high_res_datetime.start = (time.perf_counter(), datetime.datetime.now())
 
 
 def time_string() -> str:
-    return datetime.datetime.now().strftime('%Y_%m_%d_%H_%M_%S_%f')
+    return high_res_datetime().strftime('%Y_%m_%d_%H_%M_%S_%f')
 
 
 def new_find_lead_transition_index(data: np.ndarray, width_in_index_points: int) -> int:

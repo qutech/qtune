@@ -7,6 +7,7 @@ import h5py
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.axes
 from collections import namedtuple
 
 import qtune.storage
@@ -17,7 +18,7 @@ import qtune.parameter_tuner
 import qtune.util
 
 
-evaluator_data_container = namedtuple(typename='evluator_data_container',
+evaluator_data_container = namedtuple(typename='evaluator_data_container',
                                       field_names=['x_data', 'y_data', 'function_args', 'fit_function'])
 
 parameter_information = {
@@ -218,6 +219,7 @@ class History:
             self.load_file(path=os.path.join(path, file))
 
     def load_file(self, path):
+        print('load', path)
         hdf5_handle = h5py.File(path, mode="r")
         loaded_data = qtune.storage.from_hdf5(hdf5_handle, reserved={"experiment": None})
         autotuner = loaded_data["autotuner"]
