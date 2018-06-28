@@ -1,6 +1,9 @@
 import itertools
 import datetime
-from typing import Iterable, Any, Callable, Sequence
+from typing import Iterable, Any, Callable, Sequence, Optional, Dict
+import numbers
+import matplotlib.axes
+import matplotlib.pyplot as plt
 
 import numpy as np
 import sympy as sp
@@ -31,10 +34,10 @@ def time_string() -> str:
 
 
 def new_find_lead_transition_index(data: np.ndarray, width_in_index_points: int) -> int:
-    data = data.squeeze()
+    data = data.copy().squeeze()
     for i in range(0, len(data)-width_in_index_points-1):
         data[i] -= data[i+width_in_index_points]
-    return int(np.argmax(data) + round(width_in_index_points / 2))
+    return int(np.argmax(np.abs(data)[:-width_in_index_points-1]) + round(width_in_index_points / 2))
 
 
 def find_lead_transition(data: np.ndarray, center: float, scan_range: float, npoints: int, width: float = .2e-3) -> float:
@@ -161,3 +164,30 @@ def get_orthogonal_vector(vectors: Sequence[np.ndarray]):
     ov = np.array(ov).astype(float)
     ov = np.squeeze(ov)
     return ov / np.linalg.norm(ov)
+
+
+def plot_raw_data(y_data: np.ndarray, x_data: Optional[np.ndarray], fit_function=None,
+                  function_args: Optional[Dict[str, numbers.Number]]=None,
+                  initial_arguments: Optional[Dict[str, numbers.Number]]=None,
+                  ax: Optional[matplotlib.axes.Axes]=None):
+    if ax is None:
+        ax = plt.gca()
+    if y_data is None:
+        return ax
+    y_data = y_data.squeeze()
+    if len(y_data) == 2:
+        y_data = np.nanmean(y_data)
+    if x_data is None:
+        x_data = np.arange(0, y_data.shape[0])
+
+    for data in [x_data, y_data]:
+        if len(data.shape) > 1:
+            raise RuntimeError('Data has too many dimensions and therefore can not be plotted')
+
+    ax.plot(x_data, y_data, 'b.', label='Raw Data')
+    if fit_function:
+        if function_args:
+            ax.plot(x_data, fit_function(x_data, **function_args), 'r', label='Fit')
+        if initial_arguments:
+            ax.plot(x_data, fit_function(x_data, **function_args), 'k--', label='Initial Guess')
+    return ax
