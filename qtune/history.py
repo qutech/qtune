@@ -219,7 +219,6 @@ class History:
             self.load_file(path=os.path.join(path, file))
 
     def load_file(self, path):
-        print('load', path)
         hdf5_handle = h5py.File(path, mode="r")
         loaded_data = qtune.storage.from_hdf5(hdf5_handle, reserved={"experiment": None})
         autotuner = loaded_data["autotuner"]

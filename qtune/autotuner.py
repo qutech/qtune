@@ -36,8 +36,14 @@ class Autotuner(metaclass=HDF5Serializable):
                 self._hdf5_storage_path = hdf5_storage_path
         else:
             self._hdf5_storage_path = None
-        self.asynchrone_writer = AsynchronousHDF5Writer(reserved={"experiment": self._experiment})
+        self._asynchrone_writer = None
         self._logger = 'qtune'
+
+    @property
+    def asynchrone_writer(self):
+        if self._asynchrone_writer is None:
+            self._asynchrone_writer = AsynchronousHDF5Writer(reserved={"experiment": self._experiment})
+        return self._asynchrone_writer
 
     @property
     def logger(self):
@@ -116,7 +122,7 @@ class Autotuner(metaclass=HDF5Serializable):
     def __getstate__(self):
         """Do not pickle the async writer object"""
         state = self.__dict__.copy()
-        del state['asynchrone_writer']
+        state['_asynchrone_writer'] = None
         return state
 
     def save_current_status(self):
