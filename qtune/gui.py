@@ -4,14 +4,16 @@ import logging
 import functools
 import IPython
 import itertools
+import collections
 
 import pyqtgraph as pg
 import pyqtgraph.parametertree
+from pyqtgraph.widgets.MatplotlibWidget import MatplotlibWidget
 from pyqtgraph.Qt import QtCore, QtWidgets
 import numpy as np
+import pandas as pd
 
-
-from qtune.history import History
+from qtune.history import History, plot_parameters, plot_gradients
 
 IPython.get_ipython().magic('gui qt')
 IPython.get_ipython().magic('matplotlib qt')
@@ -193,6 +195,86 @@ class PlotOrganizer(pg.LayoutWidget):
         self.plot.getPlotItem().addLegend()
 
 
+class ParameterWidget(pg.LayoutWidget):
+    def __init__(self,
+                 history: History, parameter_names=None,
+                 parent=None):
+        super().__init__(parent=parent)
+
+        self.matplot = MatplotlibWidget()
+        self.history = history
+        self.parameter_names = parameter_names
+
+        self.addWidget(self.matplot, 0, 0)
+        self.refresh()
+
+    @QtCore.pyqtSlot()
+    @log_exceptions('plotting')
+    def refresh(self):
+        if self.parameter_names is None:
+            parameter_names = self.history.parameter_names
+        else:
+            parameter_names = self.parameter_names
+
+        parameter_values = pd.DataFrame(collections.OrderedDict(
+            (parameter_name, self.history.get_parameter_values(parameter_name))
+            for parameter_name in parameter_names
+        ))
+
+        parameter_std = pd.DataFrame({par_name: self.history.get_parameter_std(parameter_name=par_name)
+                                      for par_name in parameter_names})
+
+        if len(self.matplot.getFigure().axes) == len(parameter_names):
+            for ax in self.matplot.getFigure().axes:
+                ax.clear()
+            axes = self.matplot.getFigure().axes
+        else:
+            self.matplot.getFigure().clear()
+            axes = self.matplot.getFigure().subplots(nrows=len(parameter_names))
+
+        plot_parameters(parameter_values, parameter_std, axes=axes)
+        self.matplot.draw()
+
+
+class GradientWidget(pg.LayoutWidget):
+    def __init__(self,
+                 history: History, parameter_names=None,
+                 parent=None):
+        super().__init__(parent=parent)
+
+        self.matplot = MatplotlibWidget()
+        self.history = history
+        self.parameter_names = parameter_names
+
+        self.addWidget(self.matplot, 0, 0)
+        self.refresh()
+
+    @QtCore.pyqtSlot()
+    @log_exceptions('plotting')
+    def refresh(self):
+        if self.parameter_names is None:
+            parameter_names = self.history.parameter_names
+        else:
+            parameter_names = self.parameter_names
+
+        gradients = {par_name: self.history.get_gradients(parameter_name=par_name)
+                     for par_name in parameter_names}
+
+        gradient_variances = {par_name: self.history.get_gradient_variances(parameter_name=par_name)
+                              for par_name in parameter_names}
+
+        if len(self.matplot.getFigure().axes) == len(parameter_names):
+            for ax in self.matplot.getFigure().axes:
+                ax.clear()
+            axes = self.matplot.getFigure().axes
+        else:
+            self.matplot.getFigure().clear()
+            axes = self.matplot.getFigure().subplots(nrows=len(parameter_names))
+
+        plot_gradients(gradients, gradient_variances, axes=axes)
+        self.matplot.draw()
+
+
 class GUI(QtWidgets.QMainWindow):
     _log_signal = QtCore.pyqtSignal(str)
     _update_plots = QtCore.pyqtSignal()
@@ -202,7 +284,7 @@ class GUI(QtWidgets.QMainWindow):
         self._auto_tuner = auto_tuner
         self._history = history
 
-        self.setWindowTitle('qtune GUI')
+        self.setWindowTitle('QTune: Main Window')
         self.resize(1000, 500)
 
         start_btn = QtWidgets.QPushButton('Start')
@@ -231,26 +313,38 @@ class GUI(QtWidgets.QMainWindow):
         log.setReadOnly(True)
         log.setTextInteractionFlags(QtCore.Qt.TextSelectableByKeyboard | QtCore.Qt.TextSelectableByMouse)
 
-        plot_organizer_btn = QtWidgets.QPushButton("New Plot Window")
+        auto_set_btn = QtWidgets.QPushButton("Autoset")
+        auto_set_btn.setFixedWidth(100)
+        auto_set_btn.setToolTip("You just need to press Autoset")
+
+        plot_organizer_btn = QtWidgets.QPushButton("Real Time Plot")
         plot_organizer_btn.setFixedWidth(100)
         plot_organizer_btn.clicked.connect(self.spawn_plot_window)
 
-        # this is the top row
+        parameter_window_btn = QtWidgets.QPushButton("Parameter Plot")
+        parameter_window_btn.setFixedWidth(100)
+        parameter_window_btn.clicked.connect(self.spawn_parameter_window)
+
+        gradient_window_btn = QtWidgets.QPushButton("Gradient Plot")
+        gradient_window_btn.setFixedWidth(100)
+        gradient_window_btn.clicked.connect(self.spawn_gradient_window)
+
         top = pg.LayoutWidget()
         top.addWidget(start_btn, 0, 0)
         top.addWidget(step_btn, 1, 0)
         top.addWidget(stop_btn, 2, 0)
-        top.addWidget(log_label, 0, 1)
-        top.addWidget(log_level, 1, 1)
-        top.addWidget(plot_organizer_btn, 2, 1)
+
+        top.addWidget(auto_set_btn, 0, 1)
+        top.addWidget(log_label, 1, 1)
+        top.addWidget(log_level, 2, 1)
+
+        top.addWidget(plot_organizer_btn, 0, 2)
+        top.addWidget(parameter_window_btn, 1, 2)
+        top.addWidget(gradient_window_btn, 2, 2)
 
         left = pg.LayoutWidget()
         left.addWidget(top, 0, 0)
         left.addWidget(log, 1, 0)
-
-        #main = pg.LayoutWidget()
-        #main.addWidget(left, 0, 0)
-        #main.addWidget(plot_organizer, 0, 1)
 
         self.setCentralWidget(left)
 
@@ -271,14 +365,48 @@ class GUI(QtWidgets.QMainWindow):
         self._logger = logging.getLogger(logger)
 
         self._plot_organizer = []
+        self._parameter_windows = []
+        self._gradient_windows = []
 
     def spawn_plot_window(self):
         new_window = QtWidgets.QMainWindow(parent=self)
         plot_organizer = PlotOrganizer(history=self._history, parent=new_window)
         new_window.setCentralWidget(plot_organizer)
         self._plot_organizer.append(plot_organizer)
+
+        new_window.setWindowTitle("QTune: Real Time Plot")
+
         new_window.show()
+        new_window.raise_()
         self._update_plots.connect(plot_organizer.refresh)
+
+    def spawn_parameter_window(self):
+        new_window = QtWidgets.QMainWindow()
+        parameter_widget = ParameterWidget(self.history, parent=new_window)
+
+        new_window.setCentralWidget(parameter_widget)
+
+        self._update_plots.connect(parameter_widget.refresh)
+        self._parameter_windows.append(new_window)
+
+        new_window.setWindowTitle("QTune: Parameter Plot")
+
+        new_window.show()
+        new_window.raise_()
+
+    def spawn_gradient_window(self):
+        new_window = QtWidgets.QMainWindow()
+        parameter_widget = GradientWidget(self.history, parent=new_window)
+
+        new_window.setCentralWidget(parameter_widget)
+
+        self._update_plots.connect(parameter_widget.refresh)
+        self._gradient_windows.append(new_window)
+
+        new_window.setWindowTitle("QTune: Gradient Plot")
+
+        new_window.show()
+        new_window.raise_()
 
     @property
     def auto_tuner(self):
@@ -405,5 +533,7 @@ def setup_default_gui(auto_tuner, history=None):
     gui.configure_logging('qtune')
     gui.log_level.setCurrentIndex(3)
     gui.show()
+
+    gui.raise_()
 
     return gui

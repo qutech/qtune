@@ -316,10 +316,15 @@ def plot_voltages(voltage_data_frame: pd.DataFrame):
     return voltage_fig, voltage_ax
 
 
-def plot_parameters(parameter_data_frame: pd.DataFrame, parameter_std: Optional[pd.DataFrame]):
+def plot_parameters(parameter_data_frame: pd.DataFrame,
+                    parameter_std: Optional[pd.DataFrame],
+                    axes: Optional[Sequence[matplotlib.axes.Axes]]=None):
     if parameter_std is None:
         parameter_std = pd.DataFrame()
-    parameter_fig, parameter_ax = plt.subplots(nrows=len(parameter_data_frame.columns))
+    if axes is None:
+        parameter_fig, parameter_ax = plt.subplots(nrows=len(parameter_data_frame.columns))
+    else:
+        parameter_fig, parameter_ax = None, axes
     parameter_ax = parameter_data_frame.plot(subplots=True, yerr=parameter_std,
                                              ax=parameter_ax, sharex=True, legend=False)
     for ax, par_name in zip(parameter_ax, parameter_data_frame.columns):
@@ -331,14 +336,14 @@ def plot_parameters(parameter_data_frame: pd.DataFrame, parameter_std: Optional[
 
 def plot_gradients(gradients: Dict[str, pd.DataFrame],
                    gradient_std: Optional[Dict[str, pd.DataFrame]],
-                   grad_ax: Optional[Sequence[matplotlib.axes.Axes]]=None):
+                   axes: Optional[Sequence[matplotlib.axes.Axes]]=None):
     if gradient_std is None:
         gradient_std = dict()
 
-    if grad_ax is None:
+    if axes is None:
         grad_fig, grad_ax = plt.subplots(nrows=len(gradients))
     else:
-        grad_fig = None
+        grad_fig, grad_ax = None, axes
 
     for ax, (parameter_name, gradient) in zip(grad_ax, gradients.items()):
         if parameter_name in gradient_std:
