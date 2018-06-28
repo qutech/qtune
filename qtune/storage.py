@@ -121,7 +121,7 @@ def to_hdf5(filename_or_handle: Union[str, h5py.Group], name: str, obj,
     if isinstance(filename_or_handle, h5py.Group):
         root = filename_or_handle
     else:
-        root = h5py.File(filename_or_handle, mode='r+')
+        root = h5py.File(filename_or_handle, mode='a')
 
     if '#version' not in root:
         root.attrs['#version'] = get_version()
@@ -236,15 +236,10 @@ class AsynchronousHDF5Writer:
     def __init__(self, reserved, multiprocess=True):
         reserved = reserved.copy()
 
-        for key, value in reserved.items():
-            dset = self.root.create_dataset(name=key, dtype='f')
-            reserved[id(value)] = dset
-            dset.attrs["#type"] = "#reserved"
-
         self.reserved = reserved
 
         if multiprocess:
-            Queue = multiprocessing.Queue
+            Queue = multiprocessing.JoinableQueue
             Worker = multiprocessing.Process
         else:
             Queue = queue.Queue
@@ -262,8 +257,7 @@ class AsynchronousHDF5Writer:
             else:
                 name, file_name, obj, reserved = task
 
-            with h5py.File(file_name, 'r+') as root:
-                _to_hdf5(root, name, obj, serialized=reserved)
+            to_hdf5(file_name, name, obj, reserved=reserved)
 
             self._queue.task_done()
 
