@@ -372,3 +372,16 @@ class GUI(QtWidgets.QMainWindow):
         handler.setFormatter(formatter)
 
         logger.addHandler(handler)
+
+
+def setup_default_gui(auto_tuner, history=None):
+    if history is None:
+        history = History(None)
+        history.append_autotuner(auto_tuner)
+
+    gui = GUI(auto_tuner, history)
+    gui.configure_logging('plotting')
+    gui.configure_logging('qtune')
+    gui.log_level.setCurrentIndex(3)
+
+    return gui
