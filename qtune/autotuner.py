@@ -37,7 +37,7 @@ class Autotuner(metaclass=HDF5Serializable):
         else:
             self._hdf5_storage_path = None
 
-        self.logger = logging.getLogger(name="autotuner_logger")
+        self.logger = logging.getLogger(name="qtune")
         self.console_handler = logging.Handler(level=logging.DEBUG)
         self.logger.addHandler(self.console_handler)
 

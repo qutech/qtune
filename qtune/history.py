@@ -1,22 +1,24 @@
 import os
 import operator
 import re
-from typing import Optional, Set, Dict, Sequence, List
+from typing import Optional, Set, Dict, Sequence
 
 import h5py
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.axes
-import numbers
-
+from collections import namedtuple
 
 import qtune.storage
 import qtune.autotuner
 import qtune.solver
 import qtune.gradient
 import qtune.parameter_tuner
+import qtune.util
 
+
+evaluator_data_container = namedtuple(typename='evluator_data_container',
+                                      field_names=['x_data', 'y_data', 'function_args', 'fit_function'])
 
 parameter_information = {
     "position_RFA": {
@@ -92,7 +94,8 @@ class History:
         self._gate_names = set()
         self._parameter_names = set()
         self._gradient_controlled_parameters = dict()
-        self._evaluator_data = dict()
+        self._evaluator_data = pd.DataFrame()
+        self._evaluator_names = []
         if directory_or_file is None:
             pass
         elif os.path.isdir(directory_or_file):
@@ -114,10 +117,6 @@ class History:
     @property
     def gradient_controlled_parameter_names(self) -> Dict[str, Set[str]]:
         return self._gradient_controlled_parameters
-
-    @property
-    def evaluator_data(self) -> Dict[str, List[np.ndarray]]:
-        return self._evaluator_data
 
     @property
     def mode_options(self):
@@ -160,7 +159,8 @@ class History:
             voltages = extract_voltages_from_hierarchy(autotuner.tuning_hierarchy)
             return pd.DataFrame(dict(voltages), index=[0, ])
         relevant_hierarchy = autotuner.tuning_hierarchy[int(start):end]
-        voltages = extract_voltages_from_hierarchy(relevant_hierarchy)
+        voltages = extract_voltages_from_hierarchy(autotuner.tuning_hierarchy)
+        # voltages are extracted from the first and therefore most updated partuner
         parameters, variances = extract_parameters_from_hierarchy(relevant_hierarchy)
         gradients, grad_covariances = extract_gradients_from_hierarchy(relevant_hierarchy)
 
@@ -186,42 +186,31 @@ class History:
         return pd.DataFrame({**voltages, **parameters, **variances, **gradients, **grad_covariances,
                              **tuner_index}, index=[0, ], dtype=float)
 
-    def read_evaluator_data_from_autotuner(self, autotuner: qtune.autotuner.Autotuner, start: int = 0,
-                                           end: Optional[int] = None):
-        if end is None:
-            end = len(autotuner.tuning_hierarchy)
-
-        for i in range(start=start, stop=end):
-            for evaluator in autotuner.tuning_hierarchy[i].evaluators:
-                evaluator_data = dict()
-                evaluator_data['raw_data'] = evaluator.last_data
-                evaluator_data['fit_results'] = evaluator.last_fit_results
-                self._evaluator_data[evaluator.parameters[0]] = evaluator_data
-
-    def append_autotuner(self, autotuner: qtune.autotuner.Autotuner, read_evaluator_data: bool=False):
+    def append_autotuner(self, autotuner: qtune.autotuner.Autotuner):
         if self._data_frame.empty:
             self._data_frame = self.read_autotuner_to_data_frame(autotuner)
+            self._evaluator_data = read_evaluator_data_from_autotuner(autotuner=autotuner)
             return
 
         voltages = extract_voltages_from_hierarchy(autotuner.tuning_hierarchy).sort_index()
         evaluated_tuner_index = autotuner.current_tuner_index
         if autotuner.voltages_to_set is not None or autotuner.current_tuner_status:
             evaluated_tuner_index += 1
-        new_information = self.read_autotuner_to_data_frame(autotuner, end=evaluated_tuner_index)
+
         if voltages.equals(self._data_frame[sorted(self.gate_names)].iloc[-1]):
             # stay in the row
-            # new_information = self.read_autotuner_to_data_frame(autotuner,
-            #                                                   start=self._data_frame['tuner_index'].iloc[-1],
-            #                                                   end=evaluated_tuner_index)
+            start = self._data_frame['tuner_index'].iloc[-1]
+            new_information = self.read_autotuner_to_data_frame(autotuner, start=start, end=evaluated_tuner_index)
             self._data_frame.loc[self._data_frame.index[-1], new_information.columns] = new_information.iloc[0]
-            if read_evaluator_data:
-                self.read_evaluator_data_from_autotuner(autotuner, start=self._data_frame['tuner_index'][-1],
-                                                        end=evaluated_tuner_index)
+            new_evaluator_data = read_evaluator_data_from_autotuner(autotuner, start=start, end=evaluated_tuner_index)
+            if not new_evaluator_data.empty:
+                self._evaluator_data.loc[self._evaluator_data.index[-1], new_evaluator_data.columns] = \
+                    new_evaluator_data.iloc[0]
         else:
-            #new_information = self.read_autotuner_to_data_frame(autotuner, end=evaluated_tuner_index)
+            new_information = self.read_autotuner_to_data_frame(autotuner, end=evaluated_tuner_index)
             self._data_frame = self._data_frame.append(new_information, ignore_index=True)
-            if read_evaluator_data:
-                self.read_evaluator_data_from_autotuner(autotuner, end=evaluated_tuner_index)
+            new_evaluator_data = read_evaluator_data_from_autotuner(autotuner, end=evaluated_tuner_index)
+            self._evaluator_data = self._evaluator_data.append(new_evaluator_data, ignore_index=True)
 
     def load_directory(self, path):
         directory_content = sorted(os.listdir(path))
@@ -281,6 +270,22 @@ class History:
             gradient_fig, gradient_ax = plot_gradients(gradients, gradient_variances)
 
         return [voltage_fig, parameter_fig, gradient_fig], [voltage_ax, parameter_ax, gradient_ax]
+
+    def plot_evaluator_data(self, start: int=0, end: Optional[int]=None, parameters: Sequence[str]=None):
+        if end is None:
+            end = start + 1
+        eval_data_figs = []
+        eval_data_axs = []
+        for i in range(start, end):
+            if i not in self._evaluator_data.index:
+                raise RuntimeError('These indices are not in the aquired data!')
+            eval_data_fig, eval_data_ax = plt.subplots(nrows=2, ncols=len(parameters) // 2 + len(parameters) % 2)
+            eval_data_figs = eval_data_figs.append(eval_data_fig)
+            eval_data_axs = eval_data_axs.append(eval_data_ax)
+            for parameter, ax in zip(parameters, eval_data_ax):
+                qtune.util.plot_raw_data(
+                    **self._evaluator_data.loc[self._evaluator_data.index[i], parameter]._asdict(), ax=ax)
+        return eval_data_figs, eval_data_axs
 
     @classmethod
     def _unravel_gradient_covariance_matrix(cls, parameter_name, covariance_matrix: pd.DataFrame):
@@ -380,26 +385,21 @@ def extract_diagonal_from_data_frame(df: pd.DataFrame) -> pd.Series:
     return pd.Series(data=[df[i][i] for i in df.index], index=df.index)
 
 
-def plot_raw_data(y_data: np.ndarray, ax: matplotlib.axes.Axes, x_data: Optional[np.ndarray],
-                  fit_function=None,
-                  function_args: Optional[Dict[str, numbers.Number]]=None,
-                  initial_arguments: Optional[Dict[str, numbers.Number]]=None):
-    if y_data is None:
-        return ax
-    y_data = y_data.squeeze()
-    if len(y_data) == 2:
-        y_data = np.nanmean(y_data)
-    if x_data is None:
-        x_data = np.arange(0, y_data.shape[0])
+def read_evaluator_data_from_autotuner(autotuner: qtune.autotuner.Autotuner, start: int=0, end: Optional[int] = None) \
+        -> pd.DataFrame:
+    if end is None:
+        end = len(autotuner.tuning_hierarchy)
+    relevant_tuner = autotuner.tuning_hierarchy[int(start):end]
+    evaluator_data = pd.DataFrame()
+    for par_tuner in relevant_tuner:
+        for evaluator in par_tuner.evaluators:
+            if evaluator.last_data is not None:
+                eval_data = evaluator_data_container(x_data=evaluator.last_data[0],
+                                                     y_data=evaluator.last_data[1],
+                                                     function_args=evaluator.last_fit_results,
+                                                     fit_function=evaluator.fit_function)
+                evaluator_data[evaluator.parameters[0]] = [eval_data, ]
+                for parameter_name in evaluator.parameters[1:]:
+                    evaluator_data[parameter_name] = evaluator_data[evaluator.parameters[0]]
 
-    for data in [x_data, y_data]:
-        if len(data.shape) > 1:
-            raise RuntimeError('Data has too many dimensions and therefore can not be plotted')
-
-    ax.plot(x_data, y_data, 'b.', label='Raw Data')
-    if fit_function:
-        if function_args:
-            ax.plot(x_data, fit_function(x_data, **function_args), 'r', label='Fit')
-        if initial_arguments:
-            ax.plot(x_data, fit_function(x_data, **function_args), 'k--', label='Initial Guess')
-    return ax
+    return evaluator_data
