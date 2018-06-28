@@ -404,5 +404,6 @@ def setup_default_gui(auto_tuner, history=None):
     gui.configure_logging('plotting')
     gui.configure_logging('qtune')
     gui.log_level.setCurrentIndex(3)
+    gui.show()
 
     return gui
