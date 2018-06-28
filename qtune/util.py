@@ -1,5 +1,6 @@
 import itertools
 import datetime
+import time
 import os
 import subprocess
 from typing import Iterable, Any, Callable, Sequence, Optional, Dict
@@ -29,6 +30,16 @@ def static_vars(**kwargs) -> Callable[[Callable], Callable]:
             setattr(func, key, value)
         return func
     return decorate
+
+
+def high_res_datetime():
+    now_perf = time.perf_counter()
+    start_perf, start_datetime = high_res_datetime.start
+
+    return start_datetime + datetime.timedelta(seconds=now_perf - start_perf)
+
+
+high_res_datetime.start = (time.perf_counter(), datetime.datetime.now())
 
 
 def time_string() -> str:
