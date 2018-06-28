@@ -232,6 +232,20 @@ def from_hdf5(filename_or_handle, reserved):
     return _from_hdf5(root, root, deserialized)
 
 
+def _writer_target(write_queue: Union[multiprocessing.JoinableQueue, queue.Queue]):
+    while True:
+        task = write_queue.get()
+        try:
+            if task is None:
+                return
+            else:
+                name, file_name, obj, reserved = task
+
+            to_hdf5(file_name, name, obj, reserved=reserved)
+        finally:
+            write_queue.task_done()
+
+
 class AsynchronousHDF5Writer:
     def __init__(self, reserved, multiprocess=True):
         reserved = reserved.copy()
@@ -245,26 +259,18 @@ class AsynchronousHDF5Writer:
             Queue = queue.Queue
             Worker = threading.Thread
         self._queue = Queue()
-        self._worker = Worker(target=self._async_write)
+        self._worker = Worker(target=_writer_target, args=(self._queue, ))
         self._worker.start()
-
-    def _async_write(self):
-        while True:
-            task = self._queue.get()
-            if task is None:
-                self._queue.task_done()
-                break
-            else:
-                name, file_name, obj, reserved = task
-
-            to_hdf5(file_name, name, obj, reserved=reserved)
-
-            self._queue.task_done()
 
     def join(self):
         """Stop writing and join thread."""
-        self._queue.put(None)
-        self._queue.join()
+        if self._worker.is_alive():
+            self._queue.put(None)
+            self._queue.join()
+
+        elif self._queue.qsize():
+            warnings.warn("Storage queue contains data but the writer worker is already dead.")
+
         self._worker.join()
 
     def __del__(self):
