@@ -330,10 +330,15 @@ def plot_parameters(parameter_data_frame: pd.DataFrame, parameter_std: Optional[
 
 
 def plot_gradients(gradients: Dict[str, pd.DataFrame],
-                   gradient_std: Optional[Dict[str, pd.DataFrame]]):
+                   gradient_std: Optional[Dict[str, pd.DataFrame]],
+                   grad_ax: Optional[Sequence[matplotlib.axes.Axes]]=None):
     if gradient_std is None:
         gradient_std = dict()
-    grad_fig, grad_ax = plt.subplots(nrows=len(gradients))
+
+    if grad_ax is None:
+        grad_fig, grad_ax = plt.subplots(nrows=len(gradients))
+    else:
+        grad_fig = None
 
     for ax, (parameter_name, gradient) in zip(grad_ax, gradients.items()):
         if parameter_name in gradient_std:

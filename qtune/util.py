@@ -1,5 +1,7 @@
 import itertools
 import datetime
+import os
+import subprocess
 from typing import Iterable, Any, Callable, Sequence, Optional, Dict
 import numbers
 import matplotlib.axes
@@ -191,3 +193,39 @@ def plot_raw_data(y_data: np.ndarray, x_data: Optional[np.ndarray], fit_function
         if initial_arguments:
             ax.plot(x_data, fit_function(x_data, **function_args), 'k--', label='Initial Guess')
     return ax
+
+
+def get_git_info():
+    if os.path.isdir(os.path.join(os.path.dirname(__file__), '..', '.git')):
+        git_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
+        try:
+            import git
+            repo = git.Repo(git_root)
+            commit_time = repo.head.object.committed_date
+            commit_hash = git.Repo(git_root).head.object.hexsha
+            return commit_time, commit_hash
+        except (ImportError, RuntimeError):
+            pass
+
+        try:
+            commit_time = int(subprocess.check_output(['git', 'show', '-s', '--format=%ct', 'HEAD'],
+                                                      timeout=1).strip().encode('ascii'))
+            commit_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD'], timeout=1).strip().encode('ascii')
+            return commit_time, commit_hash
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            pass
+
+    return None, None
+
+
+def get_version():
+    import qtune
+    base = qtune.__version__
+
+    commit_time, commit_hash = get_git_info()
+
+    if commit_time:
+        return '%s+%d+%s' % (base, commit_time, commit_hash)
+
+    return base

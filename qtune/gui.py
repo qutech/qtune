@@ -1,16 +1,34 @@
 from threading import Thread
 import time
 import logging
+import functools
 import IPython
 import itertools
+
 import pyqtgraph as pg
 import pyqtgraph.parametertree
 from pyqtgraph.Qt import QtCore, QtWidgets
+import numpy as np
+
 
 from qtune.history import History
 
 IPython.get_ipython().magic('gui qt')
 IPython.get_ipython().magic('matplotlib qt')
+
+
+def log_exceptions(channel='qtune', catch_exceptions=True):
+    def logging_decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception:
+                logging.getLogger(channel).exception("Error in %s" % func.__name__)
+                if not catch_exceptions:
+                    raise
+        return wrapper
+    return logging_decorator
 
 
 class FunctionHandler(logging.Handler):
@@ -36,64 +54,83 @@ class LogLevelSelecter(QtCore.QObject):
 
 class PlotOrganizer(pg.LayoutWidget):
     @QtCore.pyqtSlot()
+    @log_exceptions('plotting')
     def refresh(self):
-        try:
-            (_, gates), (_, params), (_, grads) = self.parameter.getValues().values()
-            pens = (pg.intColor(idx, len(gates) + len(params)) for idx in itertools.count(0))
-            plot_item = self.plot.getPlotItem()
+        (_, gates), (_, params), (_, grads) = self.parameter.getValues().values()
+        pens = (pg.intColor(idx, len(gates) + len(params)) for idx in itertools.count(0))
+        plot_item = self.plot.getPlotItem()
 
-            for pen, (gate, (plot_gate, _)) in zip(pens, gates.items()):
-                if plot_gate:
-                    data = self.history.get_gate_values(gate)
+        for pen, (gate, (plot_gate, _)) in zip(pens, gates.items()):
+            if plot_gate:
+                data = self.history.get_gate_values(gate)
 
-                    if gate in self._plots:
-                        self._plots[gate].setData(data)
+                if gate in self._plots:
+                    self._plots[gate].setData(data)
+                else:
+                    self._plots[gate] = plot_item.plot(data, name=gate, pen=pen)
+
+            else:
+                self._remove_plot(gate)
+
+        for pen, (param, (plot_param, _)) in zip(pens, params.items()):
+            if plot_param.startswith('plot'):
+                data = self.history.get_parameter_values(param)
+                if param in self._plots:
+                    self._plots[param].setData(data)
+                else:
+                    self._plots[param] = plot_item.plot(data, name=param, pen=pen)
+
+            else:
+                self._remove_plot(param)
+
+            error_plot_name = param + "#err_bar"
+            if plot_param.endswith('error'):
+                data_std = self.history.get_parameter_std(param)
+                error_plot_args = dict(x=data.index.values, y=data,
+                                       height=data_std)
+
+                if error_plot_name in self._plots:
+                    self._plots[error_plot_name].setData(**error_plot_args)
+                else:
+                    self._plots[error_plot_name] = pg.ErrorBarItem(**error_plot_args)
+                    plot_item.addItem(self._plots[error_plot_name])
+
+            else:
+                self._remove_plot(error_plot_name)
+
+        for param, (_, gates) in grads.items():
+            data = self.history.get_gradients(param)
+            data_var = self.history.get_gradient_variances(param)
+
+            for pen, (gate, (plot_grad, _)) in zip(pens, gates.items()):
+                grad_name = param + '#' + gate
+                grad_err_name = grad_name + '#err_bar'
+
+                if plot_grad.startswith('plot'):
+                    gate_data = data[gate]
+
+                    if grad_name in self._plots:
+                        self._plots[grad_name].setData(gate_data)
+
                     else:
-                        self._plots[gate] = plot_item.plot(data, name=gate, pen=pen)
+                        self._plots[grad_name] = plot_item.plot(gate_data, name=grad_name, pen=pen)
 
                 else:
-                    self._remove_plot(gate)
+                    self._remove_plot(grad_name)
 
-            for pen, (param, (plot_param, _)) in zip(pens, params.items()):
-                if plot_param:
-                    data = self.history.get_parameter_values(param)
-                    data_std = self.history.get_parameter_std(param)
-                    error_bar_plot = pg.ErrorBarItem(x=list(data.index), y=data, height=data_std)
-                    if param in self._plots:
-                        self._plots[param].setData(data)
+                if plot_grad.endswith('error') and gate in data_var:
+                    gate_data_var = data_var[gate]
+                    error_plot_args = dict(x=gate_data.index.values, y=gate_data,
+                                           height=gate_data_var.apply(np.sqrt))
+
+                    if grad_err_name in self._plots:
+                        self._plots[grad_err_name].setData(**error_plot_args)
                     else:
-                        self._plots[param] = plot_item.plot(data, name=param, pen=pen)
-                    self._plots[param + "#err_bar"] = error_bar_plot
-                    plot_item.addItem(error_bar_plot)
+                        self._plots[grad_err_name] = pg.ErrorBarItem(**error_plot_args)
+                        plot_item.addItem(self._plots[grad_err_name])
+
                 else:
-                    self._remove_plot(param)
-                    self._remove_plot(param + "#err_bar")
-
-            invalid = set()
-            for param, (_, gates) in grads.items():
-                data = self.history.get_gradients(param)
-
-                for pen, (gate, (plot_grad, _)) in zip(pens, gates.items()):
-                    grad_name = param + '#' + gate
-
-                    if plot_grad:
-                        if gate in data:
-                            gate_data = data[gate]
-
-                            if grad_name in self._plots:
-                                self._plots[grad_name].setData(gate_data)
-
-                            else:
-                                self._plots[grad_name] = plot_item.plot(gate_data, name=grad_name, pen=pen)
-                        else:
-                            invalid.add((param, gate))
-
-                    else:
-                        self._remove_plot(grad_name)
-
-            return invalid
-        except Exception:
-            logging.getLogger('qtune').exception('Error refreshing plot')
+                    self._remove_plot(grad_err_name)
 
     def _remove_plot(self, name):
         if name in self._plots:
@@ -101,16 +138,12 @@ class PlotOrganizer(pg.LayoutWidget):
             plot_item.legend.removeItem(name)
             plot_item.removeItem(self._plots.pop(name))
 
+    @log_exceptions('plotting')
     def plot_selection_change(self, _, changes):
         for param, change, plot_activated in changes:
             for child in param.children():
                 child.setValue(plot_activated)
-
-        invalid = self.refresh()
-
-        for param, gate in invalid:
-            p = self.parameter.child('Gradients').child(param).child(gate)
-            p.setValue(False)
+        self.refresh()
 
     def __init__(self, history: History, **kwargs):
         super().__init__(**kwargs)
@@ -120,12 +153,15 @@ class PlotOrganizer(pg.LayoutWidget):
         ]}
 
         params = {'name': 'Parameters', 'type': 'group', 'children': [
-            {'name': name, 'type': 'bool', 'value': False} for name in history.parameter_names
+            {'name': name, 'type': 'list', 'values': ['', 'plot', 'plot + error'], 'value': ''}
+            for name in history.parameter_names
         ]}
 
         grads = {'name': 'Gradients', 'type': 'group', 'children': [
-            {'name': parameter_name, 'type': 'bool', 'value': False, 'expanded': False, 'children': [
-                {'name': gate_name, 'type': 'bool', 'value': False} for gate_name in gates
+            {'name': parameter_name, 'type': 'list', 'values': ['', 'plot', 'plot + error'], 'value': '',
+             'expanded': False, 'children': [
+                {'name': gate_name, 'type': 'list', 'values': ['', 'plot', 'plot + error'], 'value': ''}
+                for gate_name in gates
             ]} for parameter_name, gates in history.gradient_controlled_parameter_names.items()
         ]}
 
@@ -357,3 +393,17 @@ class GUI(QtWidgets.QMainWindow):
         handler.setFormatter(formatter)
 
         logger.addHandler(handler)
+
+
+def setup_default_gui(auto_tuner, history=None):
+    if history is None:
+        history = History(None)
+        history.append_autotuner(auto_tuner)
+
+    gui = GUI(auto_tuner, history)
+    gui.configure_logging('plotting')
+    gui.configure_logging('qtune')
+    gui.log_level.setCurrentIndex(3)
+    gui.show()
+
+    return gui
