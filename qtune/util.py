@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 
 import numpy as np
 import sympy as sp
+import pandas as pd
 
 
 __all__ = ['nth']
@@ -192,6 +193,10 @@ def plot_raw_data(y_data: np.ndarray, x_data: Optional[np.ndarray], fit_function
         y_data = np.nanmean(y_data)
     if x_data is None:
         x_data = np.arange(0, y_data.shape[0])
+    if isinstance(function_args, pd.Series):
+        function_args = dict(function_args)
+    if isinstance(initial_arguments, pd.Series):
+        initial_arguments = dict(initial_arguments)
 
     for data in [x_data, y_data]:
         if len(data.shape) > 1:

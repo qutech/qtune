@@ -281,11 +281,15 @@ class History:
             if i not in self._evaluator_data.index:
                 raise RuntimeError('These indices are not in the aquired data!')
             eval_data_fig, eval_data_ax = plt.subplots(nrows=2, ncols=len(parameters) // 2 + len(parameters) % 2)
-            eval_data_figs = eval_data_figs.append(eval_data_fig)
-            eval_data_axs = eval_data_axs.append(eval_data_ax)
+            eval_data_figs.append(eval_data_fig)
+            eval_data_axs.append(eval_data_ax)
             for parameter, ax in zip(parameters, eval_data_ax):
-                qtune.util.plot_raw_data(
-                    **self._evaluator_data.loc[self._evaluator_data.index[i], parameter]._asdict(), ax=ax)
+                plot_data = self._evaluator_data.loc[self._evaluator_data.index[i], parameter]
+                if not plot_data != plot_data:
+                    qtune.util.plot_raw_data(**plot_data._asdict(), ax=ax)
+                    ax.set_title(parameter)
+                    ax.legend(['Data', 'Fit', 'Initial_parameters'])
+            eval_data_fig.tight_layout()
         return eval_data_figs, eval_data_axs
 
     @classmethod
