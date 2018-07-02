@@ -313,5 +313,11 @@ class ParallelHDF5Reader:
     def read_iter(self, file_names: Iterable[str]) -> Generator:
         yield from self._executor.map(from_hdf5, file_names, itertools.repeat(self.reserved), chunksize=1)
 
+    def shutdown(self):
+        self._executor.shutdown()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.shutdown()
+
     def __del__(self):
-        self._executor.shutdown(True)
+        self.shutdown()

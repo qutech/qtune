@@ -215,13 +215,12 @@ class History:
             self._evaluator_data = self._evaluator_data.append(new_evaluator_data, ignore_index=True)
 
     def load_directory(self, path):
-        reader = qtune.storage.ParallelHDF5Reader(reserved={'experiment': self.experiment})
-
-        directory_content = [os.path.join(path, file)
-                             for file in sorted(os.listdir(path))]
-        for loaded_data in reader.read_iter(directory_content):
-            autotuner = loaded_data['autotuner']
-            self.append_autotuner(autotuner)
+        with qtune.storage.ParallelHDF5Reader(reserved={'experiment': self.experiment}) as reader:
+            directory_content = [os.path.join(path, file)
+                                 for file in sorted(os.listdir(path))]
+            for loaded_data in reader.read_iter(directory_content):
+                autotuner = loaded_data['autotuner']
+                self.append_autotuner(autotuner)
 
     def load_file(self, path):
         hdf5_handle = h5py.File(path, mode="r")
