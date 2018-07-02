@@ -27,6 +27,14 @@ def _get_dtype(arr):
     return arr.dtype
 
 
+def _import_all():
+    import qtune.autotuner
+    import qtune.evaluator
+    import qtune.experiment
+    import qtune.gradient
+    import qtune.solver
+
+
 class HDF5Serializable(type):
     def __new__(mcs, name, bases, attrs):
         if name in serializables:
@@ -180,7 +188,7 @@ def _from_hdf5(root: h5py.File, hdf5_obj: h5py.HLObject, deserialized=None):
             return result
 
         else:
-            warnings.warn('Unknown type: ', hdf5_obj.attrs['#type'])
+            warnings.warn('Unknown type: {}'.format(hdf5_obj.attrs['#type']))
 
     elif isinstance(hdf5_obj, h5py.Dataset):
         if '#type' in hdf5_obj.attrs:
@@ -218,6 +226,8 @@ def _from_hdf5(root: h5py.File, hdf5_obj: h5py.HLObject, deserialized=None):
 
 
 def from_hdf5(filename_or_handle, reserved):
+    _import_all()
+
     if isinstance(filename_or_handle, h5py.Group):
         root = filename_or_handle
     else:
