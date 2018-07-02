@@ -316,6 +316,9 @@ class ParallelHDF5Reader:
     def shutdown(self):
         self._executor.shutdown()
 
+    def __enter__(self):
+        return self
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.shutdown()
 
