@@ -180,10 +180,10 @@ def get_orthogonal_vector(vectors: Sequence[np.ndarray]):
     return ov / np.linalg.norm(ov)
 
 
-def plot_raw_data(y_data: np.ndarray, x_data: Optional[np.ndarray], fit_function=None,
-                  function_args: Optional[Dict[str, numbers.Number]]=None,
-                  initial_arguments: Optional[Dict[str, numbers.Number]]=None,
-                  ax: Optional[matplotlib.axes.Axes]=None):
+def plot_raw_data_fit(y_data: np.ndarray, x_data: Optional[np.ndarray], fit_function=None,
+                      function_args: Optional[Dict[str, numbers.Number]]=None,
+                      initial_arguments: Optional[Dict[str, numbers.Number]]=None,
+                      ax: Optional[matplotlib.axes.Axes]=None):
     if ax is None:
         ax = plt.gca()
     if y_data is None:
