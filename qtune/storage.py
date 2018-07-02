@@ -294,10 +294,7 @@ class AsynchronousHDF5Writer:
         if name is None:
             name = time_string()
 
-        if isinstance(self._worker, threading.Thread):
-            obj, reserved = copy.deepcopy((obj, self.reserved))
-        else:
-            reserved = self.reserved
+        obj, reserved = copy.deepcopy((obj, self.reserved))
 
         self._queue.put((name, file_name, obj, reserved))
 

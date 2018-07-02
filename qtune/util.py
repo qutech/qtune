@@ -226,10 +226,10 @@ def get_git_info():
 
         try:
             commit_time = int(subprocess.check_output(['git', 'show', '-s', '--format=%ct', 'HEAD'],
-                                                      timeout=1).strip().decode('ascii'))
-            commit_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD'], timeout=1).strip().decode('ascii')
+                                                      timeout=3).strip().decode('ascii'))
+            commit_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD'], timeout=3).strip().decode('ascii')
             return commit_time, commit_hash
-        except (FileNotFoundError, subprocess.CalledProcessError):
+        except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
             pass
 
     return None, None
