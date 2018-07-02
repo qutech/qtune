@@ -1,11 +1,12 @@
 import warnings
 import copy
+import itertools
 
 import threading
 import queue
 import multiprocessing
 
-from typing import Union
+from typing import Union, Iterable, Generator
 
 import h5py
 import numpy as np
@@ -299,3 +300,18 @@ class AsynchronousHDF5Writer:
             reserved = self.reserved
 
         self._queue.put((name, file_name, obj, reserved))
+
+
+class ParallelHDF5Reader:
+    def __init__(self, reserved, multiprocess=True, max_workers=None):
+        import concurrent.futures
+        if multiprocess:
+            Executor = concurrent.futures.ProcessPoolExecutor
+        else:
+            Executor = concurrent.futures.ThreadPoolExecutor
+
+        self._executor = Executor(max_workers=max_workers)
+        self.reserved = reserved
+
+    def read_iter(self, file_names: Iterable[str]) -> Generator:
+        yield from self._executor.map(from_hdf5, file_names, itertools.repeat(self.reserved))
