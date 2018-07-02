@@ -379,7 +379,7 @@ class GUI(QtWidgets.QMainWindow):
     @QtCore.pyqtSlot()
     @log_exceptions('plotting')
     def spawn_plot_window(self):
-        plot_organizer = PlotOrganizer(history=self._history, parent=self)
+        plot_organizer = PlotOrganizer(history=self._history, parent=None)
         plot_organizer.setWindowFlag(QtCore.Qt.Window, True)
         plot_organizer.closeEvent = functools.partial(self._close_child, plot_organizer)
 
@@ -409,7 +409,7 @@ class GUI(QtWidgets.QMainWindow):
     @QtCore.pyqtSlot()
     @log_exceptions('plotting')
     def spawn_gradient_window(self):
-        parameter_widget = GradientWidget(self.history, parent=self)
+        parameter_widget = GradientWidget(self.history, parent=None)
         parameter_widget.setWindowFlag(QtCore.Qt.Window, True)
         parameter_widget.closeEvent = functools.partial(self._close_child, parameter_widget)
 
