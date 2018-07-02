@@ -90,13 +90,14 @@ class History:
     _gradient_name = '{parameter_name}#{gate_name}#grad'
     _gradient_covariance_name = '{parameter_name}#{gate_name_1}#{gate_name_2}#cov'
 
-    def __init__(self, directory_or_file: Optional[str]):
+    def __init__(self, directory_or_file: Optional[str], experiment: Optional=None):
         self._data_frame = pd.DataFrame()
         self._gate_names = set()
         self._parameter_names = set()
         self._gradient_controlled_parameters = dict()
         self._evaluator_data = pd.DataFrame()
         self._evaluator_names = []
+        self.experiment = experiment
         if directory_or_file is None:
             pass
         elif os.path.isdir(directory_or_file):
@@ -214,13 +215,17 @@ class History:
             self._evaluator_data = self._evaluator_data.append(new_evaluator_data, ignore_index=True)
 
     def load_directory(self, path):
-        directory_content = sorted(os.listdir(path))
-        for file in directory_content:
-            self.load_file(path=os.path.join(path, file))
+        reader = qtune.storage.ParallelHDF5Reader(reserved={'experiment': self.experiment})
+
+        directory_content = [os.path.join(path, file)
+                             for file in sorted(os.listdir(path))]
+        for loaded_data in reader.read_iter(directory_content):
+            autotuner = loaded_data['autotuner']
+            self.append_autotuner(autotuner)
 
     def load_file(self, path):
         hdf5_handle = h5py.File(path, mode="r")
-        loaded_data = qtune.storage.from_hdf5(hdf5_handle, reserved={"experiment": None})
+        loaded_data = qtune.storage.from_hdf5(hdf5_handle, reserved={"experiment": self.experiment})
         autotuner = loaded_data["autotuner"]
         self.append_autotuner(autotuner=autotuner)
 
