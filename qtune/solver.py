@@ -407,7 +407,7 @@ class ForwardingSolver(Solver):
         if next_position is None:
             next_position = self._current_position.copy()
         else:
-            next_position = next_position[self._current_position]
+            next_position = next_position[self._current_position.index]
         self._next_position = next_position
 
     @property
