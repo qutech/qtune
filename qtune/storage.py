@@ -5,6 +5,7 @@ import itertools
 import threading
 import queue
 import multiprocessing
+import pickle
 
 from typing import Union, Iterable, Generator
 
@@ -166,10 +167,20 @@ def _from_hdf5(root: h5py.File, hdf5_obj: h5py.HLObject, deserialized=None):
 
         elif hdf5_obj.attrs['#type'] in serializables:
             cls = serializables[hdf5_obj.attrs['#type']]
-            deserialized[hdf5_obj.id] = cls(
-                **{k: _from_hdf5(root, v, deserialized)
-                   for k, v in hdf5_obj.items()}
-            )
+            kwargs = {k: _from_hdf5(root, v, deserialized)
+                      for k, v in hdf5_obj.items()}
+
+            try:
+                deserialized[hdf5_obj.id] = cls(**kwargs)
+            except ValueError:
+                import logging
+                logging.getLogger().error(hdf5_obj.name)
+                import pickle
+                with open(r'D:\temp.txt', 'wb') as f:
+                    pickle.dump(kwargs, f)
+                logging.getLogger().error(kwargs)
+
+                raise
             return deserialized[hdf5_obj.id]
 
         elif hdf5_obj.attrs['#type'] == 'list':

@@ -42,7 +42,8 @@ class Autotuner(metaclass=HDF5Serializable):
     @property
     def asynchrone_writer(self):
         if self._asynchrone_writer is None:
-            self._asynchrone_writer = AsynchronousHDF5Writer(reserved={"experiment": self._experiment})
+            self._asynchrone_writer = AsynchronousHDF5Writer(reserved={"experiment": self._experiment},
+                                                             multiprocess=False)
         return self._asynchrone_writer
 
     @property
