@@ -207,7 +207,23 @@ def plot_raw_data_fit(y_data: np.ndarray, x_data: Optional[np.ndarray], fit_func
         if function_args:
             ax.plot(x_data, fit_function(x_data, **function_args), 'r', label='Fit')
         if initial_arguments:
-            ax.plot(x_data, fit_function(x_data, **function_args), 'k--', label='Initial Guess')
+            ax.plot(x_data, fit_function(x_data, **initial_arguments), 'k--', label='Initial Guess')
+    return ax
+
+
+def plot_raw_data_vertical_marks(y_data, x_data, transition_position, ax):
+    if ax is None:
+        ax = plt.gca()
+    if y_data is None:
+        return ax
+    y_data = y_data.squeeze()
+    if len(y_data) == 2:
+        y_data = np.nanmean(y_data)
+    if x_data is None:
+        x_data = np.arange(0, y_data.shape[0])
+
+    ax.plot(x_data, y_data, 'b.', label='Raw Data')
+    ax.axvline(x=transition_position, ymin=min(y_data), ymax=max(y_data), label='Transition Position')
     return ax
 
 
