@@ -227,6 +227,16 @@ def plot_raw_data_vertical_marks(y_data, x_data, transition_position, ax):
     return ax
 
 
+def plot_raw_data_2_dim_marks(y_data, x_data, ax):
+    if ax is None:
+        ax = plt.gca()
+    if y_data is None:
+        return ax
+    y_data = y_data.squeeze()
+    ax.pcolor(x_data[0], x_data[1], y_data)
+    return ax
+
+
 def get_git_info():
     if os.path.isdir(os.path.join(os.path.dirname(__file__), '..', '.git')):
         git_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))

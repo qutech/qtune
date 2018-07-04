@@ -19,16 +19,22 @@ class Evaluator(metaclass=HDF5Serializable):
                  measurements: Sequence[Measurement],
                  parameters: Sequence[str],
                  raw_x_data: Tuple[Optional[np.ndarray]],
-                 raw_y_data: Tuple[Optional[np.ndarray]]):
+                 raw_y_data: Tuple[Optional[np.ndarray]],
+                 name: str):
         self._experiment = experiment
         self._measurements = tuple(measurements)  # Is this the behaviour that was intended?
         self._parameters = tuple(parameters)
         self._raw_x_data = raw_x_data
         self._raw_y_data = raw_y_data
+        self._name = name
 
     @property
     def logger(self):
         return logging.getLogger(name="qtune")
+
+    @property
+    def name(self):
+        return self._name
 
     @property
     def experiment(self) -> Experiment:
@@ -57,7 +63,8 @@ class Evaluator(metaclass=HDF5Serializable):
                     measurements=self.measurements,
                     parameters=self.parameters,
                     raw_x_data=self._raw_x_data,
-                    raw_y_data=self._raw_y_data)
+                    raw_y_data=self._raw_y_data,
+                    name=self.name)
 
     def __repr__(self):
         return "{type}({data})".format(type=type(self), data=self.to_hdf5())
@@ -71,12 +78,13 @@ class FittingEvaluator(Evaluator):
                  raw_x_data: Tuple[Optional[np.ndarray]],
                  raw_y_data: Tuple[Optional[np.ndarray]],
                  fit_results: Optional[pd.Series],
-                 initial_fit_arguments: Optional):
+                 initial_fit_arguments: Optional,
+                 name: str):
 
         self._fit_results = fit_results
         self._initial_fit_arguments = initial_fit_arguments
         super().__init__(experiment=experiment, measurements=measurements, parameters=parameters,
-                         raw_x_data=raw_x_data, raw_y_data=raw_y_data)
+                         raw_x_data=raw_x_data, raw_y_data=raw_y_data, name=name)
 
     @property
     def fit_results(self) -> Optional[pd.Series]:
@@ -113,8 +121,8 @@ class NewLeadTunnelTimeByLeadScan(FittingEvaluator):
                  fit_results: Optional[pd.Series]=None,
                  fit_function: Optional=None,
                  evaluation_arguments=None,
-                 initial_fit_args=None
-                 ):
+                 initial_fit_args=None,
+                 name = 'LeadTunnelTimeByLeadScan'):
         if measurements is None:
             measurements = (Measurement('lead_scan', gate='B', AWGorDecaDAC='DecaDAC'), )
         if fit_function is None:
@@ -126,7 +134,7 @@ class NewLeadTunnelTimeByLeadScan(FittingEvaluator):
         self.sample_rate = sample_rate
         super().__init__(experiment=experiment, measurements=measurements, parameters=parameters,
                          raw_x_data=raw_x_data, raw_y_data=raw_y_data, fit_results=fit_results,
-                         initial_fit_arguments=initial_fit_args)
+                         initial_fit_arguments=initial_fit_args, name=name)
 
     def evaluate(self) -> (pd.Series, pd.Series):
         raw_data = self.experiment.measure(self.measurements[0])
@@ -216,7 +224,7 @@ class NewInterDotTCByLineScan(FittingEvaluator):
     def __init__(self, experiment: Experiment, parameters: Sequence[str]=('parameter_tunnel_coupling', ),
                  measurements: Tuple[Measurement] = None, raw_x_data: Tuple[Optional[np.ndarray]]=None,
                  raw_y_data: Tuple[Optional[np.ndarray]]=None, fit_results: Optional[pd.Series]=None,
-                 initial_fit_arguments=None, intermediate_fit_arguments=None):
+                 initial_fit_arguments=None, intermediate_fit_arguments=None, name='InterDotTCByLineScan'):
         if measurements is None:
             measurements = (Measurement('detune_scan', center=0., range=2e-3, N_points=100, ramptime=.02, N_average=10,
                                         AWGorDecaDAC='AWG'), )
@@ -233,7 +241,7 @@ class NewInterDotTCByLineScan(FittingEvaluator):
 
         super().__init__(experiment=experiment, measurements=measurements, parameters=parameters,
                          raw_x_data=raw_x_data, raw_y_data=raw_y_data, fit_results=fit_results,
-                         initial_fit_arguments=initial_fit_arguments)
+                         initial_fit_arguments=initial_fit_arguments, name=name)
 
     def evaluate(self):
         ydata = np.squeeze(self.experiment.measure(self.measurements[0]))
@@ -305,7 +313,7 @@ class NewLoadTime(FittingEvaluator):
     def __init__(self, experiment: Experiment, parameters: Sequence[str]=('parameter_time_load',),
                  measurements: Measurement = None, raw_x_data: Tuple[Optional[np.ndarray]]=None,
                  raw_y_data: Tuple[Optional[np.ndarray]]=None, fit_results: Optional[pd.Series]=None,
-                 initial_fit_arguments=None, initial_curvature=10):
+                 initial_fit_arguments=None, initial_curvature=10, name='LoadTime'):
         if measurements is None:
             measurements = (Measurement("load_scan"), )
         if initial_fit_arguments is None:
@@ -313,7 +321,7 @@ class NewLoadTime(FittingEvaluator):
         self.initial_curvature = initial_curvature
         super().__init__(experiment=experiment, measurements=measurements, parameters=parameters,
                          raw_x_data=raw_x_data, raw_y_data=raw_y_data, fit_results=fit_results,
-                         initial_fit_arguments=initial_fit_arguments)
+                         initial_fit_arguments=initial_fit_arguments, name=name)
 
     def evaluate(self) -> (pd.Series, pd.Series):
         data = self.experiment.measure(self.measurements[0])
@@ -369,7 +377,8 @@ class LeadTransition(Evaluator):
                  raw_x_data: Tuple[Optional[np.ndarray]]=None,
                  raw_y_data: Tuple[Optional[np.ndarray]]=None,
                  transition_positions=pd.Series(),
-                 transition_width=.2e-3):
+                 transition_width=.2e-3,
+                 name='LeadTransition'):
         if measurements is None:
             measurements = []
             for gate in sweeping_gates:
@@ -381,7 +390,7 @@ class LeadTransition(Evaluator):
         self.transition_width = transition_width
         self.transition_positions = transition_positions
         super().__init__(experiment, measurements, parameters, raw_x_data=raw_x_data,
-                         raw_y_data=raw_y_data)
+                         raw_y_data=raw_y_data, name=name)
 
     def evaluate(self):
         current_gate_voltages = self.experiment.read_gate_voltages()
@@ -438,7 +447,8 @@ class SensingDot1D(Evaluator):
                  raw_y_data: Tuple[Optional[np.ndarray]] = None,
                  current_signal=None,
                  optimal_signal=None,
-                 optimal_position=None):
+                 optimal_position=None,
+                 name='SensingDot1D'):
         self._sweeping_gate = sweeping_gate
         self.current_signal = current_signal
         self.optimal_signal = optimal_signal
@@ -449,7 +459,7 @@ class SensingDot1D(Evaluator):
                                         N_points=1280, ramptime=.0005,
                                         N_average=1, AWGorDecaDAC='DecaDAC'),)
         super().__init__(experiment, measurements=measurements, parameters=parameters,
-                         raw_x_data=raw_x_data, raw_y_data=raw_y_data)
+                         raw_x_data=raw_x_data, raw_y_data=raw_y_data, name=name)
 
     def evaluate(self):
         sensing_dot_measurement = self.measurements[0]
@@ -512,24 +522,32 @@ class SensingDot2D(Evaluator):
                  parameters: Sequence[str]=("position_SDB1", "position_SDB2"),
                  measurements: Measurement=None,
                  raw_x_data: Tuple[Optional[np.ndarray]]=None,
-                 raw_y_data: Tuple[Optional[np.ndarray]] = None):
+                 raw_y_data: Tuple[Optional[np.ndarray]] = None,
+                 name='SensingDot2D'):
         self._sweeping_gates = sweeping_gates
         self._scan_range = scan_range
         if measurements is None:
             measurements = (Measurement('2d_scan', center=[None, None],
                                         range=scan_range,
                                         gate1=sweeping_gates[0],
-                                        gate2=sweeping_gates[1],
-                                        N_points=1280, ramptime=.0005, n_lines=20,
+                                        gate2=sweeping_gates[1], ramptime=.0005, n_lines=20,
                                         n_points=104, N_average=1, AWGorDecaDAC='DecaDAC'),)
-        super().__init__(experiment, (measurements,), parameters=parameters, raw_x_data=raw_x_data,
-                         raw_y_data=raw_y_data)
+        super().__init__(experiment, measurements, parameters=parameters, raw_x_data=raw_x_data,
+                         raw_y_data=raw_y_data, name=name)
 
     def evaluate(self):
         self.measurements[0].options["center"] = [
             self.experiment.read_gate_voltages()[self.measurements[0].options["gate1"]],
             self.experiment.read_gate_voltages()[self.measurements[0].options["gate2"]]]
         data = self.experiment.measure(self.measurements[0])
+        self._raw_y_data = data
+        self._raw_x_data = []
+        for i in range(2):
+            self._raw_x_data.append(np.linspace(self.measurements[0].options['center'][i] -
+                                                self.measurements[0].options['range'],
+                                                self.measurements[0].options['center'][i] +
+                                                self.measurements[0].options['range'],
+                                                data.shape[i]))
         new_voltages, error = self.process_raw_data(data)
         return new_voltages, error
 
@@ -543,7 +561,7 @@ class SensingDot2D(Evaluator):
         min_point = np.argmin(data_diff[min_line])
         gate_1_pos = float(min_line) / float(self.measurements[0].options["n_lines"]) * 2 * \
             self.measurements[0].options["range"] - self.measurements[0].options["range"]
-        gate_2_pos = float(min_point) / float(self.measurements[0].options["N_points"]) * 2 * \
+        gate_2_pos = float(min_point) / float(self.measurements[0].options["n_points"]) * 2 * \
             self.measurements[0].options["range"] - self.measurements[0].options["range"]
         new_voltages = pd.Series([gate_1_pos, gate_2_pos], ["position_" + self.measurements[0].options["gate1"],
                                                             "position_" + self.measurements[0].options["gate2"]])

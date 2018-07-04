@@ -8,6 +8,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.axes
+import logging
 
 import qtune.storage
 import qtune.autotuner
@@ -95,6 +96,7 @@ class History:
         self._evaluator_data = pd.DataFrame()
         self._evaluator_names = []
         self.experiment = experiment
+        self._logger = 'qtune'
         if directory_or_file is None:
             pass
         elif os.path.isdir(directory_or_file):
@@ -104,6 +106,10 @@ class History:
         else:
             raise RuntimeWarning("The directory of file used to instantiate the qtune.history.History object could not"
                                  "be identified as such. An empty History object is instantiated.")
+
+    @property
+    def logger(self):
+        return logging.getLogger(self._logger)
 
     @property
     def gate_names(self) -> Set[str]:
@@ -273,7 +279,12 @@ class History:
 
         return [voltage_fig, parameter_fig, gradient_fig], [voltage_ax, parameter_ax, gradient_ax]
 
-    def plot_evaluator_data(self, start: int=0, end: Optional[int]=None, parameters: Sequence[str]=None):
+    def plot_evaluator_data(self, start: int=0, end: Optional[int]=None, evaluator_names: Sequence[str]=None):
+        for name in evaluator_names:
+            if name not in self._evaluator_data.columns:
+                self.logger.warning(name + ' is not in the evaluation data.')
+                evaluator_names.remove(name)
+
         if end is None:
             end = start + 1
         eval_data_figs = []
@@ -281,14 +292,22 @@ class History:
         for i in range(start, end):
             if i not in self._evaluator_data.index:
                 raise RuntimeError('These indices are not in the aquired data!')
-            eval_data_fig, eval_data_ax = plt.subplots(nrows=2, ncols=len(parameters) // 2 + len(parameters) % 2)
+            number_measurements = [
+                len(self._evaluator_data.loc[self._evaluator_data.index[i], evaluator]['measurements'])
+                for evaluator in evaluator_names]
+            eval_data_fig, eval_data_ax = plt.subplots(nrows=2,
+                                                       ncols=sum(number_measurements) // 2 + sum(
+                                                           number_measurements) % 2)
             eval_data_figs.append(eval_data_fig)
             eval_data_axs.append(eval_data_ax)
-            for parameter, ax in zip(parameters, eval_data_ax.ravel()):
-                plot_data = self._evaluator_data.loc[self._evaluator_data.index[i], parameter]
+            ax_list = [eval_data_ax.ravel()[sum(number_measurements[0:j]):sum(number_measurements[0:j + 1])] for j in
+                       range(len(number_measurements))]
+            for evaluator, axs in zip(evaluator_names, ax_list):
+                plot_data = self._evaluator_data.loc[self._evaluator_data.index[i], evaluator]
                 if not plot_data != plot_data:
-                    plot_function_matching[parameter](ax=ax, evaluator_hdf5=plot_data, parameter=parameter)
-                    ax.set_title(parameter)
+                    plot_function_matching[evaluator](ax=axs, evaluator_hdf5=plot_data, evaluator=evaluator)
+                    for ax in axs:
+                        ax.set_title(evaluator)
             eval_data_fig.tight_layout()
         return eval_data_figs, eval_data_axs
 
@@ -407,12 +426,21 @@ def read_evaluator_data_from_autotuner(autotuner: qtune.autotuner.Autotuner, sta
     relevant_tuner = autotuner.tuning_hierarchy[int(start):end]
     evaluator_data = pd.DataFrame()
     for par_tuner in relevant_tuner:
-        for evaluator in par_tuner.evaluators:
-            if evaluator.raw_data is not None:
-                eval_data = evaluator.to_hdf5()
-                evaluator_data[evaluator.parameters[0]] = [eval_data, ]
-                for parameter_name in evaluator.parameters[1:]:
-                    evaluator_data[parameter_name] = evaluator_data[evaluator.parameters[0]]
+        if isinstance(par_tuner, qtune.parameter_tuner.SensingDotTuner):
+            relevant_evaluators = par_tuner.cheap_evaluators
+            if not par_tuner.cheap_evaluation_only:
+                relevant_evaluators += par_tuner.expensive_evaluators
+            for evaluator in relevant_evaluators:
+                if evaluator.raw_data is not None:
+                    eval_data = evaluator.to_hdf5()
+                    evaluator_data[evaluator.name] = [eval_data, ]
+        else:
+            for evaluator in par_tuner.evaluators:
+                if evaluator.raw_data is not None:
+                    eval_data = evaluator.to_hdf5()
+                    evaluator_data[evaluator.name] = [eval_data, ]
+                    for parameter_name in evaluator.parameters[1:]:
+                        evaluator_data[parameter_name] = evaluator_data[evaluator.parameters[0]]
     return evaluator_data
 
 
@@ -420,36 +448,43 @@ def plot_load_time(ax, evaluator_hdf5, **_):
     qtune.util.plot_raw_data_fit(y_data=evaluator_hdf5['raw_y_data'], x_data=evaluator_hdf5['raw_x_data'],
                                  fit_function=qtune.evaluator.func_load_time,
                                  function_args=evaluator_hdf5['fit_results'],
-                                 initial_arguments=evaluator_hdf5['initial_fit_arguments'], ax=ax)
-    ax.legend(['Data', 'Fit', 'Initial_parameters'])
+                                 initial_arguments=evaluator_hdf5['initial_fit_arguments'], ax=ax[0])
+    ax[0].legend(['Data', 'Fit', 'Initial_parameters'])
 
 
 def plot_inter_dot_tc(ax, evaluator_hdf5: dict, **_):
     qtune.util.plot_raw_data_fit(y_data=evaluator_hdf5['raw_y_data'], x_data=evaluator_hdf5['raw_x_data'],
                                  fit_function=qtune.evaluator.func_inter_dot_coupling,
                                  function_args=evaluator_hdf5['fit_results'],
-                                 initial_arguments=evaluator_hdf5['initial_fit_arguments'], ax=ax)
-    ax.legend(['Data', 'Fit', 'Initial_parameters'])
+                                 initial_arguments=evaluator_hdf5['initial_fit_arguments'], ax=ax[0])
+    ax[0].legend(['Data', 'Fit', 'Initial_parameters'])
 
 
-def plot_transition(ax, evaluator_hdf5: dict, parameter, **_):
-    index = [i for i, par in enumerate(evaluator_hdf5['parameters']) if par == parameter]
-    qtune.util.plot_raw_data_vertical_marks(y_data=evaluator_hdf5['raw_y_data'][index[0]],
-                                            x_data=evaluator_hdf5['raw_x_data'][index[0]],
-                                            transition_position=evaluator_hdf5['transition_positions'][index[0]],
-                                            ax=ax)
-    ax.set_title(evaluator_hdf5['parameters'][index[0]])
+def plot_transition(ax, evaluator_hdf5: dict, **_):
+    for i, axi in enumerate(ax):
+        qtune.util.plot_raw_data_vertical_marks(y_data=evaluator_hdf5['raw_y_data'][i],
+                                                x_data=evaluator_hdf5['raw_x_data'][i],
+                                                transition_position=evaluator_hdf5['transition_positions'][i],
+                                                ax=axi)
+        axi.set_title(evaluator_hdf5['parameters'][i])
 
 
 def plot_1dim_sensing_dot_scan(ax, evaluator_hdf5: dict, **_):
     qtune.util.plot_raw_data_vertical_marks(y_data=evaluator_hdf5['raw_y_data'],
                                             x_data=evaluator_hdf5['raw_x_data'],
                                             transition_position=evaluator_hdf5['optimal_position'],
-                                            ax=ax)
+                                            ax=ax[0])
 
 
-plot_function_matching = {'parameter_tunnel_coupling': plot_inter_dot_tc,
-                          'parameter_time_load': plot_load_time,
-                          'position_RFA': plot_transition,
-                          'position_RFB': plot_transition,
-                          'position_SDB2': plot_1dim_sensing_dot_scan}
+def plot_2dim_sensing_dot_scan(ax, evaluator_hdf5: dict, **_):
+    qtune.util.plot_raw_data_2_dim_marks(y_data=evaluator_hdf5['raw_y_data'],
+                                         x_data=evaluator_hdf5['raw_x_data'],
+                                         ax=ax[0])
+
+
+plot_function_matching = {'InterDotTCByLineScan': plot_inter_dot_tc,
+                          'LoadTime': plot_load_time,
+                          'LeadTransitionRFA': plot_transition,
+                          'LeadTransitionRFB': plot_transition,
+                          'SensingDot1D': plot_1dim_sensing_dot_scan,
+                          'SensingDot2D': plot_2dim_sensing_dot_scan}
