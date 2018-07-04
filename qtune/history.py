@@ -207,9 +207,9 @@ class History:
                     new_evaluator_data.iloc[0]
         else:
             new_information = self.read_autotuner_to_data_frame(autotuner, end=evaluated_tuner_index)
-            self._data_frame = self._data_frame.append(new_information, ignore_index=True)
+            self._data_frame = self._data_frame.append(new_information, ignore_index=True, sort=True)
             new_evaluator_data = read_evaluator_data_from_autotuner(autotuner, end=evaluated_tuner_index)
-            self._evaluator_data = self._evaluator_data.append(new_evaluator_data, ignore_index=True)
+            self._evaluator_data = self._evaluator_data.append(new_evaluator_data, ignore_index=True, sort=True)
 
     def load_directory(self, path):
         with qtune.storage.ParallelHDF5Reader(reserved={'experiment': self.experiment}, multiprocess=True) as reader:
