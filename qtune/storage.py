@@ -1,17 +1,19 @@
 import warnings
 import copy
+import itertools
 
 import threading
 import queue
 import multiprocessing
+import pickle
 
-from typing import Union
+from typing import Union, Iterable, Generator
 
 import h5py
 import numpy as np
 import pandas as pd
 
-from qtune.util import time_string
+from qtune.util import time_string, get_version
 
 
 __all__ = ["serializables", "HDF5Serializable"]
@@ -25,6 +27,14 @@ def _get_dtype(arr):
         if all(isinstance(t, str) for t in arr.ravel()):
             return h5py.special_dtype(vlen=str)
     return arr.dtype
+
+
+def _import_all():
+    import qtune.autotuner
+    import qtune.evaluator
+    import qtune.experiment
+    import qtune.gradient
+    import qtune.solver
 
 
 class HDF5Serializable(type):
@@ -121,7 +131,10 @@ def to_hdf5(filename_or_handle: Union[str, h5py.Group], name: str, obj,
     if isinstance(filename_or_handle, h5py.Group):
         root = filename_or_handle
     else:
-        root = h5py.File(filename_or_handle, mode='r+')
+        root = h5py.File(filename_or_handle, mode='a')
+
+    if '#version' not in root:
+        root.attrs['#version'] = get_version()
 
     if not reserved:
         reserved = dict()
@@ -154,10 +167,20 @@ def _from_hdf5(root: h5py.File, hdf5_obj: h5py.HLObject, deserialized=None):
 
         elif hdf5_obj.attrs['#type'] in serializables:
             cls = serializables[hdf5_obj.attrs['#type']]
-            deserialized[hdf5_obj.id] = cls(
-                **{k: _from_hdf5(root, v, deserialized)
-                   for k, v in hdf5_obj.items()}
-            )
+            kwargs = {k: _from_hdf5(root, v, deserialized)
+                      for k, v in hdf5_obj.items()}
+
+            try:
+                deserialized[hdf5_obj.id] = cls(**kwargs)
+            except ValueError:
+                import logging
+                logging.getLogger().error(hdf5_obj.name)
+                import pickle
+                with open(r'D:\temp.txt', 'wb') as f:
+                    pickle.dump(kwargs, f)
+                logging.getLogger().error(kwargs)
+
+                raise
             return deserialized[hdf5_obj.id]
 
         elif hdf5_obj.attrs['#type'] == 'list':
@@ -177,7 +200,7 @@ def _from_hdf5(root: h5py.File, hdf5_obj: h5py.HLObject, deserialized=None):
             return result
 
         else:
-            warnings.warn('Unknown type: "%s"' % hdf5_obj.attrs['#type'])
+            warnings.warn('Unknown type: {}'.format(hdf5_obj.attrs['#type']))
 
     elif isinstance(hdf5_obj, h5py.Dataset):
         if '#type' in hdf5_obj.attrs:
@@ -215,6 +238,8 @@ def _from_hdf5(root: h5py.File, hdf5_obj: h5py.HLObject, deserialized=None):
 
 
 def from_hdf5(filename_or_handle, reserved):
+    _import_all()
+
     if isinstance(filename_or_handle, h5py.Group):
         root = filename_or_handle
     else:
@@ -229,62 +254,84 @@ def from_hdf5(filename_or_handle, reserved):
     return _from_hdf5(root, root, deserialized)
 
 
+def _writer_target(write_queue: Union[multiprocessing.JoinableQueue, queue.Queue]):
+    while True:
+        task = write_queue.get()
+        try:
+            if task is None:
+                return
+            else:
+                name, file_name, obj, reserved = task
+
+            to_hdf5(file_name, name, obj, reserved=reserved)
+        finally:
+            write_queue.task_done()
+
+
 class AsynchronousHDF5Writer:
-    def __init__(self, filename, reserved, multiprocess=True):
-        self.filename = filename
-
+    def __init__(self, reserved, multiprocess=True):
         reserved = reserved.copy()
-
-        for key, value in reserved.items():
-            dset = self.root.create_dataset(name=key, dtype='f')
-            reserved[id(value)] = dset
-            dset.attrs["#type"] = "#reserved"
 
         self.reserved = reserved
 
         if multiprocess:
-            Queue = multiprocessing.Queue
+            Queue = multiprocessing.JoinableQueue
             Worker = multiprocessing.Process
         else:
             Queue = queue.Queue
             Worker = threading.Thread
         self._queue = Queue()
-        self._worker = Worker(target=self._async_write)
+        self._worker = Worker(target=_writer_target, args=(self._queue, ))
         self._worker.start()
-
-    def _async_write(self):
-        with h5py.File(self.filename, 'w') as root:
-            while True:
-                task = self._queue.get()
-                if task is None:
-                    self._queue.task_done()
-                    break
-                else:
-                    name, obj, reserved = task
-
-                _to_hdf5(root, name, obj, serialized=reserved)
-
-                self._queue.task_done()
 
     def join(self):
         """Stop writing and join thread."""
-        self._queue.put(None)
-        self._queue.join()
+        if self._worker.is_alive():
+            self._queue.put(None)
+            self._queue.join()
+
+        elif self._queue.qsize():
+            warnings.warn("Storage queue contains data but the writer worker is already dead.")
+
         self._worker.join()
 
     def __del__(self):
         self.join()
 
-    def write(self, obj, name=None):
+    def write(self, obj, file_name, name=None):
         if not self._worker.is_alive():
             raise RuntimeError('Writer already stopped')
 
         if name is None:
             name = time_string()
 
-        if isinstance(self._worker, threading.Thread):
-            obj, reserved = copy.deepcopy((obj, self.reserved))
-        else:
-            reserved = self.reserved
+        obj, reserved = copy.deepcopy((obj, self.reserved))
 
-        self._queue.put((name, obj, reserved))
+        self._queue.put((name, file_name, obj, reserved))
+
+
+class ParallelHDF5Reader:
+    def __init__(self, reserved, multiprocess=True, max_workers=None):
+        import concurrent.futures
+        if multiprocess:
+            Executor = concurrent.futures.ProcessPoolExecutor
+        else:
+            Executor = concurrent.futures.ThreadPoolExecutor
+
+        self._executor = Executor(max_workers=max_workers)
+        self.reserved = reserved
+
+    def read_iter(self, file_names: Iterable[str]) -> Generator:
+        yield from self._executor.map(from_hdf5, file_names, itertools.repeat(self.reserved), chunksize=1)
+
+    def shutdown(self):
+        self._executor.shutdown()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.shutdown()
+
+    def __del__(self):
+        self.shutdown()

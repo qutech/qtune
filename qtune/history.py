@@ -1,18 +1,22 @@
 import os
 import operator
 import re
-from typing import Optional, Set, Dict
+from typing import Optional, Set, Dict, Sequence
 
 import h5py
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.axes
+import logging
 
 import qtune.storage
 import qtune.autotuner
 import qtune.solver
 import qtune.gradient
 import qtune.parameter_tuner
+import qtune.util
+import qtune.evaluator
 
 
 parameter_information = {
@@ -104,11 +108,15 @@ class History:
     _gradient_name = '{parameter_name}#{gate_name}#grad'
     _gradient_covariance_name = '{parameter_name}#{gate_name_1}#{gate_name_2}#cov'
 
-    def __init__(self, directory_or_file: Optional[str]):
+    def __init__(self, directory_or_file: Optional[str], experiment: Optional=None):
         self._data_frame = pd.DataFrame()
         self._gate_names = set()
         self._parameter_names = set()
         self._gradient_controlled_parameters = dict()
+        self._evaluator_data = pd.DataFrame()
+        self._evaluator_names = []
+        self.experiment = experiment
+        self._logger = 'qtune'
         if directory_or_file is None:
             pass
         elif os.path.isdir(directory_or_file):
@@ -118,6 +126,10 @@ class History:
         else:
             raise RuntimeWarning("The directory of file used to instantiate the qtune.history.History object could not"
                                  "be identified as such. An empty History object is instantiated.")
+
+    @property
+    def logger(self):
+        return logging.getLogger(self._logger)
 
     @property
     def gate_names(self) -> Set[str]:
@@ -171,8 +183,9 @@ class History:
         elif end == 0:
             voltages = extract_voltages_from_hierarchy(autotuner.tuning_hierarchy)
             return pd.DataFrame(dict(voltages), index=[0, ])
-        relevant_hierarchy = autotuner.tuning_hierarchy[start:end]
-        voltages = extract_voltages_from_hierarchy(relevant_hierarchy)
+        relevant_hierarchy = autotuner.tuning_hierarchy[int(start):end]
+        voltages = extract_voltages_from_hierarchy(autotuner.tuning_hierarchy)
+        # voltages are extracted from the first and therefore most updated partuner
         parameters, variances = extract_parameters_from_hierarchy(relevant_hierarchy)
         gradients, grad_covariances = extract_gradients_from_hierarchy(relevant_hierarchy)
 
@@ -201,27 +214,40 @@ class History:
     def append_autotuner(self, autotuner: qtune.autotuner.Autotuner):
         if self._data_frame.empty:
             self._data_frame = self.read_autotuner_to_data_frame(autotuner)
+            self._evaluator_data = read_evaluator_data_from_autotuner(autotuner=autotuner)
             return
 
         voltages = extract_voltages_from_hierarchy(autotuner.tuning_hierarchy).sort_index()
         evaluated_tuner_index = autotuner.current_tuner_index
         if autotuner.voltages_to_set is not None or autotuner.current_tuner_status:
             evaluated_tuner_index += 1
-        new_information = self.read_autotuner_to_data_frame(autotuner, end=evaluated_tuner_index)
+
         if voltages.equals(self._data_frame[sorted(self.gate_names)].iloc[-1]):
             # stay in the row
+            start = self._data_frame['tuner_index'].iloc[-1]
+            new_information = self.read_autotuner_to_data_frame(autotuner, start=start, end=evaluated_tuner_index)
             self._data_frame.loc[self._data_frame.index[-1], new_information.columns] = new_information.iloc[0]
+            new_evaluator_data = read_evaluator_data_from_autotuner(autotuner, start=start, end=evaluated_tuner_index)
+            if not new_evaluator_data.empty:
+                self._evaluator_data.loc[self._evaluator_data.index[-1], new_evaluator_data.columns] = \
+                    new_evaluator_data.iloc[0]
         else:
-            self._data_frame = self._data_frame.append(new_information, ignore_index=True)
+            new_information = self.read_autotuner_to_data_frame(autotuner, end=evaluated_tuner_index)
+            self._data_frame = self._data_frame.append(new_information, ignore_index=True, sort=True)
+            new_evaluator_data = read_evaluator_data_from_autotuner(autotuner, end=evaluated_tuner_index)
+            self._evaluator_data = self._evaluator_data.append(new_evaluator_data, ignore_index=True, sort=True)
 
     def load_directory(self, path):
-        directory_content = sorted(os.listdir(path))
-        for file in directory_content:
-            self.load_file(path=os.path.join(path, file))
+        with qtune.storage.ParallelHDF5Reader(reserved={'experiment': self.experiment}, multiprocess=True) as reader:
+            directory_content = [os.path.join(path, file)
+                                 for file in sorted(os.listdir(path))]
+            for loaded_data in reader.read_iter(directory_content):
+                autotuner = loaded_data['autotuner']
+                self.append_autotuner(autotuner)
 
     def load_file(self, path):
         hdf5_handle = h5py.File(path, mode="r")
-        loaded_data = qtune.storage.from_hdf5(hdf5_handle, reserved={"experiment": None})
+        loaded_data = qtune.storage.from_hdf5(hdf5_handle, reserved={"experiment": self.experiment})
         autotuner = loaded_data["autotuner"]
         self.append_autotuner(autotuner=autotuner)
 
@@ -273,6 +299,38 @@ class History:
 
         return [voltage_fig, parameter_fig, gradient_fig], [voltage_ax, parameter_ax, gradient_ax]
 
+    def plot_evaluator_data(self, start: int=0, end: Optional[int]=None, evaluator_names: Sequence[str]=None):
+        for name in evaluator_names:
+            if name not in self._evaluator_data.columns:
+                self.logger.warning(name + ' is not in the evaluation data.')
+                evaluator_names.remove(name)
+
+        if end is None:
+            end = start + 1
+        eval_data_figs = []
+        eval_data_axs = []
+        for i in range(start, end):
+            if i not in self._evaluator_data.index:
+                raise RuntimeError('These indices are not in the aquired data!')
+            number_measurements = [
+                len(self._evaluator_data.loc[self._evaluator_data.index[i], evaluator]['measurements'])
+                for evaluator in evaluator_names]
+            eval_data_fig, eval_data_ax = plt.subplots(nrows=2,
+                                                       ncols=sum(number_measurements) // 2 + sum(
+                                                           number_measurements) % 2)
+            eval_data_figs.append(eval_data_fig)
+            eval_data_axs.append(eval_data_ax)
+            ax_list = [eval_data_ax.ravel()[sum(number_measurements[0:j]):sum(number_measurements[0:j + 1])] for j in
+                       range(len(number_measurements))]
+            for evaluator, axs in zip(evaluator_names, ax_list):
+                plot_data = self._evaluator_data.loc[self._evaluator_data.index[i], evaluator]
+                if not plot_data != plot_data:
+                    plot_function_matching[evaluator](ax=axs, evaluator_hdf5=plot_data, evaluator=evaluator)
+                    for ax in axs:
+                        ax.set_title(evaluator)
+            eval_data_fig.tight_layout()
+        return eval_data_figs, eval_data_axs
+
     @classmethod
     def _unravel_gradient_covariance_matrix(cls, parameter_name, covariance_matrix: pd.DataFrame):
         return {
@@ -302,10 +360,15 @@ def plot_voltages(voltage_data_frame: pd.DataFrame):
     return voltage_fig, voltage_ax
 
 
-def plot_parameters(parameter_data_frame: pd.DataFrame, parameter_std: Optional[pd.DataFrame]):
+def plot_parameters(parameter_data_frame: pd.DataFrame,
+                    parameter_std: Optional[pd.DataFrame],
+                    axes: Optional[Sequence[matplotlib.axes.Axes]]=None):
     if parameter_std is None:
         parameter_std = pd.DataFrame()
-    parameter_fig, parameter_ax = plt.subplots(nrows=len(parameter_data_frame.columns))
+    if axes is None:
+        parameter_fig, parameter_ax = plt.subplots(nrows=len(parameter_data_frame.columns))
+    else:
+        parameter_fig, parameter_ax = None, axes
     parameter_ax = parameter_data_frame.plot(subplots=True, yerr=parameter_std,
                                              ax=parameter_ax, sharex=True, legend=False)
     for ax, par_name in zip(parameter_ax, parameter_data_frame.columns):
@@ -316,10 +379,15 @@ def plot_parameters(parameter_data_frame: pd.DataFrame, parameter_std: Optional[
 
 
 def plot_gradients(gradients: Dict[str, pd.DataFrame],
-                   gradient_std: Optional[Dict[str, pd.DataFrame]]):
+                   gradient_std: Optional[Dict[str, pd.DataFrame]],
+                   axes: Optional[Sequence[matplotlib.axes.Axes]]=None):
     if gradient_std is None:
         gradient_std = dict()
-    grad_fig, grad_ax = plt.subplots(nrows=len(gradients))
+
+    if axes is None:
+        grad_fig, grad_ax = plt.subplots(nrows=len(gradients))
+    else:
+        grad_fig, grad_ax = None, axes
 
     for ax, (parameter_name, gradient) in zip(grad_ax, gradients.items()):
         if parameter_name in gradient_std:
@@ -369,3 +437,74 @@ def extract_diagonal_from_data_frame(df: pd.DataFrame) -> pd.Series:
     if not set(df.index) == set(df.columns):
         raise ValueError("The index must match the columns to extract diagonal elements!")
     return pd.Series(data=[df[i][i] for i in df.index], index=df.index)
+
+
+def read_evaluator_data_from_autotuner(autotuner: qtune.autotuner.Autotuner, start: int=0, end: Optional[int] = None) \
+        -> pd.DataFrame:
+    if end is None:
+        end = len(autotuner.tuning_hierarchy)
+    relevant_tuner = autotuner.tuning_hierarchy[int(start):end]
+    evaluator_data = pd.DataFrame()
+    for par_tuner in relevant_tuner:
+        if isinstance(par_tuner, qtune.parameter_tuner.SensingDotTuner):
+            relevant_evaluators = par_tuner.cheap_evaluators
+            if not par_tuner.cheap_evaluation_only:
+                relevant_evaluators += par_tuner.expensive_evaluators
+            for evaluator in relevant_evaluators:
+                if evaluator.raw_data is not None:
+                    eval_data = evaluator.to_hdf5()
+                    evaluator_data[evaluator.name] = [eval_data, ]
+        else:
+            for evaluator in par_tuner.evaluators:
+                if evaluator.raw_data is not None:
+                    eval_data = evaluator.to_hdf5()
+                    evaluator_data[evaluator.name] = [eval_data, ]
+                    for parameter_name in evaluator.parameters[1:]:
+                        evaluator_data[parameter_name] = evaluator_data[evaluator.parameters[0]]
+    return evaluator_data
+
+
+def plot_load_time(ax, evaluator_hdf5, **_):
+    qtune.util.plot_raw_data_fit(y_data=evaluator_hdf5['raw_y_data'], x_data=evaluator_hdf5['raw_x_data'],
+                                 fit_function=qtune.evaluator.func_load_time,
+                                 function_args=evaluator_hdf5['fit_results'],
+                                 initial_arguments=evaluator_hdf5['initial_fit_arguments'], ax=ax[0])
+    ax[0].legend(['Data', 'Fit', 'Initial_parameters'])
+
+
+def plot_inter_dot_tc(ax, evaluator_hdf5: dict, **_):
+    qtune.util.plot_raw_data_fit(y_data=evaluator_hdf5['raw_y_data'], x_data=evaluator_hdf5['raw_x_data'],
+                                 fit_function=qtune.evaluator.func_inter_dot_coupling,
+                                 function_args=evaluator_hdf5['fit_results'],
+                                 initial_arguments=evaluator_hdf5['initial_fit_arguments'], ax=ax[0])
+    ax[0].legend(['Data', 'Fit', 'Initial_parameters'])
+
+
+def plot_transition(ax, evaluator_hdf5: dict, **_):
+    for i, axi in enumerate(ax):
+        qtune.util.plot_raw_data_vertical_marks(y_data=evaluator_hdf5['raw_y_data'][i],
+                                                x_data=evaluator_hdf5['raw_x_data'][i],
+                                                transition_position=evaluator_hdf5['transition_positions'][i],
+                                                ax=axi)
+        axi.set_title(evaluator_hdf5['parameters'][i])
+
+
+def plot_1dim_sensing_dot_scan(ax, evaluator_hdf5: dict, **_):
+    qtune.util.plot_raw_data_vertical_marks(y_data=evaluator_hdf5['raw_y_data'],
+                                            x_data=evaluator_hdf5['raw_x_data'],
+                                            transition_position=evaluator_hdf5['optimal_position'],
+                                            ax=ax[0])
+
+
+def plot_2dim_sensing_dot_scan(ax, evaluator_hdf5: dict, **_):
+    qtune.util.plot_raw_data_2_dim_marks(y_data=evaluator_hdf5['raw_y_data'],
+                                         x_data=evaluator_hdf5['raw_x_data'],
+                                         ax=ax[0])
+
+
+plot_function_matching = {'InterDotTCByLineScan': plot_inter_dot_tc,
+                          'LoadTime': plot_load_time,
+                          'LeadTransitionRFA': plot_transition,
+                          'LeadTransitionRFB': plot_transition,
+                          'SensingDot1D': plot_1dim_sensing_dot_scan,
+                          'SensingDot2D': plot_2dim_sensing_dot_scan}

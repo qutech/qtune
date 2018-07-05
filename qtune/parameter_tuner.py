@@ -167,7 +167,7 @@ class SensingDotTuner(ParameterTuner):
     """
 
     def __init__(self, cheap_evaluators: Sequence[Evaluator], expensive_evaluators: Sequence[Evaluator],
-                 gates: Sequence[str], **kwargs):
+                 gates: Sequence[str], cheap_evaluation_only = True, **kwargs):
         """
 
         :param cheap_evaluators: An evaluator with little measurement costs. (i.e. one dimensional sweep of gates
@@ -199,6 +199,7 @@ class SensingDotTuner(ParameterTuner):
             last_parameter_values_covariances.append(series)
 
         self._tunable_gates = sorted(gates)
+        self.cheap_evaluation_only = cheap_evaluation_only
 
         super().__init__(cheap_evaluators, last_parameter_values=last_parameter_values_covariances[0],
                          last_parameters_variances=last_parameter_values_covariances[1], **kwargs)
@@ -210,6 +211,14 @@ class SensingDotTuner(ParameterTuner):
     def evaluators(self) -> Tuple[Evaluator, ]:
         return tuple(self._cheap_evaluators) + tuple(self._expensive_evaluators)
 
+    @property
+    def cheap_evaluators(self):
+        return tuple(self._cheap_evaluators)
+
+    @property
+    def expensive_evaluators(self):
+        return tuple(self._expensive_evaluators)
+
     def is_tuned(self, voltages: pd.Series):
         current_parameter, variances = self.evaluate(cheap=True)
         self._last_voltage = voltages
@@ -217,7 +226,9 @@ class SensingDotTuner(ParameterTuner):
         self._last_parameters_variances[current_parameter.index] = variances[current_parameter.index]
 
         if current_parameter.le(self.target["minimum"]).any():
+            self.cheap_evaluation_only = True
             if current_parameter.le(self.target["cost_threshold"]).any():
+                self.cheap_evaluation_only = False
                 current_parameter, variances = self.evaluate(cheap=False)
                 self._last_parameter_values[current_parameter.index] = current_parameter[current_parameter.index]
                 self._last_parameters_variances[current_parameter.index] = variances[current_parameter.index]
@@ -225,13 +236,13 @@ class SensingDotTuner(ParameterTuner):
             self.solver.update_after_step(voltages, current_parameter, variances)
             return False
         else:
+            self.cheap_evaluation_only = True
             self._tuned_voltages.append(voltages)
             return True
 
     def get_next_voltages(self):
-        solver_step = self._solver.suggest_next_position()
-
-        return self._last_voltage.add(solver_step, fill_value=0)
+        next_voltages = self._solver.suggest_next_position()
+        return next_voltages
 
     def evaluate(self, cheap=True, **kwargs) -> (pd.Series, pd.Series):
         #  no list comprehension for easier debugging
@@ -257,4 +268,5 @@ class SensingDotTuner(ParameterTuner):
                     solver=self.solver,
                     last_voltage=self._last_voltage,
                     last_parameter_values=self._last_parameter_values,
-                    last_parameter_covariances=self._last_parameters_variances)
+                    last_parameter_covariances=self._last_parameters_variances,
+                    cheap_evaluation_only=self.cheap_evaluation_only)

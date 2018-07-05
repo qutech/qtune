@@ -1,9 +1,16 @@
 import itertools
 import datetime
-from typing import Iterable, Any, Callable, Sequence
+import time
+import os
+import subprocess
+from typing import Iterable, Any, Callable, Sequence, Optional, Dict
+import numbers
+import matplotlib.axes
+import matplotlib.pyplot as plt
 
 import numpy as np
 import sympy as sp
+import pandas as pd
 
 
 __all__ = ['nth']
@@ -26,8 +33,25 @@ def static_vars(**kwargs) -> Callable[[Callable], Callable]:
     return decorate
 
 
+def high_res_datetime():
+    now_perf = time.perf_counter()
+    start_perf, start_datetime = high_res_datetime.start
+
+    return start_datetime + datetime.timedelta(seconds=now_perf - start_perf)
+
+
+high_res_datetime.start = (time.perf_counter(), datetime.datetime.now())
+
+
 def time_string() -> str:
-    return datetime.datetime.now().strftime('%Y_%m_%d_%H_%M_%S_%f')
+    return high_res_datetime().strftime('%Y_%m_%d_%H_%M_%S_%f')
+
+
+def new_find_lead_transition_index(data: np.ndarray, width_in_index_points: int) -> int:
+    data = data.copy().squeeze()
+    for i in range(0, len(data)-width_in_index_points-1):
+        data[i] -= data[i+width_in_index_points]
+    return int(np.argmax(np.abs(data)[:-width_in_index_points-1]) + round(width_in_index_points / 2))
 
 
 def find_lead_transition(data: np.ndarray, center: float, scan_range: float, npoints: int, width: float = .2e-3) -> float:
@@ -154,3 +178,96 @@ def get_orthogonal_vector(vectors: Sequence[np.ndarray]):
     ov = np.array(ov).astype(float)
     ov = np.squeeze(ov)
     return ov / np.linalg.norm(ov)
+
+
+def plot_raw_data_fit(y_data: np.ndarray, x_data: Optional[np.ndarray], fit_function=None,
+                      function_args: Optional[Dict[str, numbers.Number]]=None,
+                      initial_arguments: Optional[Dict[str, numbers.Number]]=None,
+                      ax: Optional[matplotlib.axes.Axes]=None):
+    if ax is None:
+        ax = plt.gca()
+    if y_data is None:
+        return ax
+    y_data = y_data.squeeze()
+    if len(y_data) == 2:
+        y_data = np.nanmean(y_data)
+    if x_data is None:
+        x_data = np.arange(0, y_data.shape[0])
+    if isinstance(function_args, pd.Series):
+        function_args = dict(function_args)
+    if isinstance(initial_arguments, pd.Series):
+        initial_arguments = dict(initial_arguments)
+
+    for data in [x_data, y_data]:
+        if len(data.shape) > 1:
+            raise RuntimeError('Data has too many dimensions and therefore can not be plotted')
+
+    ax.plot(x_data, y_data, 'b.', label='Raw Data')
+    if fit_function:
+        if function_args:
+            ax.plot(x_data, fit_function(x_data, **function_args), 'r', label='Fit')
+        if initial_arguments:
+            ax.plot(x_data, fit_function(x_data, **initial_arguments), 'k--', label='Initial Guess')
+    return ax
+
+
+def plot_raw_data_vertical_marks(y_data, x_data, transition_position, ax):
+    if ax is None:
+        ax = plt.gca()
+    if y_data is None:
+        return ax
+    y_data = y_data.squeeze()
+    if len(y_data) == 2:
+        y_data = np.nanmean(y_data)
+    if x_data is None:
+        x_data = np.arange(0, y_data.shape[0])
+
+    ax.plot(x_data, y_data, 'b.', label='Raw Data')
+    ax.axvline(x=transition_position, ymin=min(y_data), ymax=max(y_data), label='Transition Position')
+    return ax
+
+
+def plot_raw_data_2_dim_marks(y_data, x_data, ax):
+    if ax is None:
+        ax = plt.gca()
+    if y_data is None:
+        return ax
+    y_data = y_data.squeeze()
+    ax.pcolor(x_data[0], x_data[1], y_data)
+    return ax
+
+
+def get_git_info():
+    if os.path.isdir(os.path.join(os.path.dirname(__file__), '..', '.git')):
+        git_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
+        try:
+            import git
+            repo = git.Repo(git_root)
+            commit_time = repo.head.object.committed_date
+            commit_hash = git.Repo(git_root).head.object.hexsha
+            return commit_time, commit_hash
+        except (ImportError, RuntimeError):
+            pass
+
+        try:
+            commit_time = int(subprocess.check_output(['git', 'show', '-s', '--format=%ct', 'HEAD'],
+                                                      timeout=3).strip().decode('ascii'))
+            commit_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD'], timeout=3).strip().decode('ascii')
+            return commit_time, commit_hash
+        except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            pass
+
+    return None, None
+
+
+def get_version():
+    import qtune
+    base = qtune.__version__
+
+    commit_time, commit_hash = get_git_info()
+
+    if commit_time:
+        return '%s+%d+%s' % (base, commit_time, commit_hash)
+
+    return base
