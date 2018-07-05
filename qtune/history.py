@@ -163,17 +163,21 @@ class History:
         elif end == 0:
             voltages = extract_voltages_from_hierarchy(autotuner.tuning_hierarchy)
             return pd.DataFrame(dict(voltages), index=[0, ])
-        relevant_hierarchy = autotuner.tuning_hierarchy[int(start):end]
-        voltages = extract_voltages_from_hierarchy(autotuner.tuning_hierarchy)
-        # voltages are extracted from the first and therefore most updated partuner
-        parameters, variances = extract_parameters_from_hierarchy(relevant_hierarchy)
-        gradients, grad_covariances = extract_gradients_from_hierarchy(relevant_hierarchy)
 
         if self._data_frame.empty:
+            voltages = extract_voltages_from_hierarchy(autotuner.tuning_hierarchy)
             self._gate_names = set(voltages.index)
+            parameters, variances = extract_parameters_from_hierarchy(autotuner.tuning_hierarchy)
             self._parameter_names = set(parameters.index)
+            gradients, grad_covariances = extract_gradients_from_hierarchy(autotuner.tuning_hierarchy)
             self._gradient_controlled_parameters = {parameter_name: set(gradient.index)
                                                     for parameter_name, gradient in gradients.items()}
+        else:
+            relevant_hierarchy = autotuner.tuning_hierarchy[int(start):end]
+            voltages = extract_voltages_from_hierarchy(autotuner.tuning_hierarchy)
+            # voltages are extracted from the first and therefore most updated partuner
+            parameters, variances = extract_parameters_from_hierarchy(relevant_hierarchy)
+            gradients, grad_covariances = extract_gradients_from_hierarchy(relevant_hierarchy)
 
         voltages = dict(voltages)
         parameters = dict(parameters)
@@ -192,16 +196,19 @@ class History:
                              **tuner_index}, index=[0, ], dtype=float)
 
     def append_autotuner(self, autotuner: qtune.autotuner.Autotuner):
-        if self._data_frame.empty:
-            self._data_frame = self.read_autotuner_to_data_frame(autotuner)
-            self._evaluator_data = read_evaluator_data_from_autotuner(autotuner=autotuner)
-            return
-
         voltages = extract_voltages_from_hierarchy(autotuner.tuning_hierarchy).sort_index()
         evaluated_tuner_index = autotuner.current_tuner_index
         if autotuner.voltages_to_set is not None or autotuner.current_tuner_status:
             evaluated_tuner_index += 1
 
+        if self._data_frame.empty:
+            new_information = self.read_autotuner_to_data_frame(autotuner)
+            self._data_frame = self._data_frame.append(new_information, ignore_index=True, sort=True)
+            new_evaluator_data = read_evaluator_data_from_autotuner(autotuner)
+            for evaluator_name in new_evaluator_data.columns:
+                if new_evaluator_data.loc[new_evaluator_data.index[0], evaluator_name]['raw_y_data'] is None:
+                    new_evaluator_data.loc[new_evaluator_data.index[0], evaluator_name] = np.nan
+            self._evaluator_data = self._evaluator_data.append(new_evaluator_data, ignore_index=True, sort=True)
         if voltages.equals(self._data_frame[sorted(self.gate_names)].iloc[-1]):
             # stay in the row
             start = self._data_frame['tuner_index'].iloc[-1]
@@ -294,7 +301,14 @@ class History:
                 raise RuntimeError('These indices are not in the aquired data!')
             number_measurements = [
                 len(self._evaluator_data.loc[self._evaluator_data.index[i], evaluator]['measurements'])
-                for evaluator in evaluator_names]
+                for evaluator in evaluator_names
+                if not self._evaluator_data.loc[self._evaluator_data.index[i], evaluator] != self._evaluator_data.loc[
+                    self._evaluator_data.index[i], evaluator]]
+            relevant_evaluators = [
+                evaluator
+                for evaluator in evaluator_names
+                if not self._evaluator_data.loc[self._evaluator_data.index[i], evaluator] != self._evaluator_data.loc[
+                    self._evaluator_data.index[i], evaluator]]
             eval_data_fig, eval_data_ax = plt.subplots(nrows=2,
                                                        ncols=sum(number_measurements) // 2 + sum(
                                                            number_measurements) % 2)
@@ -302,7 +316,7 @@ class History:
             eval_data_axs.append(eval_data_ax)
             ax_list = [eval_data_ax.ravel()[sum(number_measurements[0:j]):sum(number_measurements[0:j + 1])] for j in
                        range(len(number_measurements))]
-            for evaluator, axs in zip(evaluator_names, ax_list):
+            for evaluator, axs in zip(relevant_evaluators, ax_list):
                 plot_data = self._evaluator_data.loc[self._evaluator_data.index[i], evaluator]
                 if not plot_data != plot_data:
                     plot_function_matching[evaluator](ax=axs, evaluator_hdf5=plot_data, evaluator=evaluator)

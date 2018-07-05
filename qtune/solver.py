@@ -129,7 +129,7 @@ class NewtonSolver(Solver):
 
         jacobian = self.jacobian[self._current_position.index]
 
-        step, *_ = np.linalg.lstsq(jacobian, required_diff)
+        step, *_ = np.linalg.lstsq(jacobian, required_diff, rcond=None)
         return self._current_position + step
 
     def update_after_step(self, position: pd.Series, values: pd.Series, variances: pd.Series):
@@ -421,8 +421,8 @@ class ForwardingSolver(Solver):
         self._current_position[position.index] = position
         self._next_position[position.index] = position
 
-        new_position_names = self._values_to_position[values.index]
-        self._next_position[new_position_names] = values
+        new_position_names = self._values_to_position[values.index].dropna()
+        self._next_position[new_position_names] = values[new_position_names.index]
 
     def state(self):
         return pd.Series()
