@@ -478,7 +478,7 @@ def plot_transition(ax, evaluator_hdf5: dict, **_):
     for i, axi in enumerate(ax):
         qtune.util.plot_raw_data_vertical_marks(y_data=evaluator_hdf5['raw_y_data'][i],
                                                 x_data=evaluator_hdf5['raw_x_data'][i],
-                                                transition_position=evaluator_hdf5['transition_positions'][i],
+                                                marking_position=evaluator_hdf5['transition_positions'][i],
                                                 ax=axi)
         axi.set_title(evaluator_hdf5['parameters'][i])
 
@@ -486,14 +486,15 @@ def plot_transition(ax, evaluator_hdf5: dict, **_):
 def plot_1dim_sensing_dot_scan(ax, evaluator_hdf5: dict, **_):
     qtune.util.plot_raw_data_vertical_marks(y_data=evaluator_hdf5['raw_y_data'],
                                             x_data=evaluator_hdf5['raw_x_data'],
-                                            transition_position=evaluator_hdf5['optimal_position'],
+                                            marking_position=evaluator_hdf5['optimal_position'],
                                             ax=ax[0])
 
 
 def plot_2dim_sensing_dot_scan(ax, evaluator_hdf5: dict, **_):
     qtune.util.plot_raw_data_2_dim_marks(y_data=evaluator_hdf5['raw_y_data'],
                                          x_data=evaluator_hdf5['raw_x_data'],
-                                         ax=ax[0])
+                                         ax=ax[0],
+                                         marking_position=evaluator_hdf5['new_voltages'])
 
 
 plot_function_matching = {'InterDotTCByLineScan': plot_inter_dot_tc,

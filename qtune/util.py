@@ -211,7 +211,7 @@ def plot_raw_data_fit(y_data: np.ndarray, x_data: Optional[np.ndarray], fit_func
     return ax
 
 
-def plot_raw_data_vertical_marks(y_data, x_data, transition_position, ax):
+def plot_raw_data_vertical_marks(y_data, x_data, marking_position, ax):
     if ax is None:
         ax = plt.gca()
     if y_data is None:
@@ -223,17 +223,22 @@ def plot_raw_data_vertical_marks(y_data, x_data, transition_position, ax):
         x_data = np.arange(0, y_data.shape[0])
 
     ax.plot(x_data, y_data, 'b.', label='Raw Data')
-    ax.axvline(x=transition_position, ymin=min(y_data), ymax=max(y_data), label='Transition Position')
+    ax.vlines(x=marking_position, ymin=min(y_data), ymax=max(y_data), label='Transition Position')
+    ax.legend()
     return ax
 
 
-def plot_raw_data_2_dim_marks(y_data, x_data, ax):
+def plot_raw_data_2_dim_marks(y_data, x_data, ax, marking_position):
     if ax is None:
         ax = plt.gca()
     if y_data is None:
         return ax
     y_data = y_data.squeeze()
-    ax.pcolor(x_data[0], x_data[1], y_data)
+    x, y = np.meshgrid(x_data[1], x_data[0])
+    image = ax.pcolormesh(x, y, y_data)
+    ax.hlines(y=marking_position.iloc[0], xmin=min(x_data[1]), xmax=max(x_data[1]))
+    ax.vlines(x=marking_position.iloc[1], ymin=min(x_data[0]), ymax=max(x_data[0]))
+    # plt.colorbar()
     return ax
 
 

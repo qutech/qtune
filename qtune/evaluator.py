@@ -478,6 +478,7 @@ class SensingDot1D(Evaluator):
             stop=self._measurements[0].options['center'] + self.measurements[0].options['range'],
             num=self.measurements[0].options['N_points'])
 
+        self.optimal_position = sensing_dot_measurement.options["center"] + optimal_position
         values["position_" + gate] = sensing_dot_measurement.options["center"] + optimal_position
         error["position_" + gate] = 0.1e-3
         values["current_signal"] = current_signal
@@ -523,9 +524,11 @@ class SensingDot2D(Evaluator):
                  measurements: Measurement=None,
                  raw_x_data: Tuple[Optional[np.ndarray]]=None,
                  raw_y_data: Tuple[Optional[np.ndarray]] = None,
-                 name='SensingDot2D'):
+                 name='SensingDot2D',
+                 new_voltages=pd.Series()):
         self._sweeping_gates = sweeping_gates
         self._scan_range = scan_range
+        self._new_voltages = new_voltages
         if measurements is None:
             measurements = (Measurement('2d_scan', center=[None, None],
                                         range=scan_range,
@@ -548,8 +551,8 @@ class SensingDot2D(Evaluator):
                                                 self.measurements[0].options['center'][i] +
                                                 self.measurements[0].options['range'],
                                                 data.shape[i]))
-        new_voltages, error = self.process_raw_data(data)
-        return new_voltages, error
+        self._new_voltages, error = self.process_raw_data(data)
+        return self._new_voltages, error
 
     def process_raw_data(self, raw_data):
         data_filtered = scipy.ndimage.filters.gaussian_filter1d(input=raw_data, sigma=.5, axis=0, order=0,
@@ -572,4 +575,5 @@ class SensingDot2D(Evaluator):
     def to_hdf5(self):
         return dict(super().to_hdf5(),
                     sweeping_gates=self._sweeping_gates,
-                    scan_range=self._scan_range)
+                    scan_range=self._scan_range,
+                    new_voltages=self._new_voltages)

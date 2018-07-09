@@ -136,15 +136,16 @@ def load_simulation(gate_voltages, measurement_options, simulation_options):
 def ss1d_simulation(gate_voltages, measurement: Measurement, simulation_options):
     points = np.arange(-4e-3, 4e-3, 8e-3 / 1280.)
     factor = 1 + gate_voltages['SDB1'] - gate_voltages['N']
-    return factor * np.exp(-.5 * (points + gate_voltages['SDB2']) ** 2 / 2e-6)
+    return (1 + 1e3 * gate_voltages['SDB1']) * factor * np.exp(-.5 * (points + gate_voltages['SDB2']) ** 2 / 2e-6)
 
 
 def ss2d_simulation(gate_voltages, measurement: Measurement, simulation_options):
     gate1 = simulation_options["gate1"]
-    x = np.linspace(start=-5., stop=5., num=104)
-    y = np.linspace(start=-5., stop=5., num=20)
+    gate2 = simulation_options["gate2"]
+    x = np.linspace(start=-5. + 1e3 * gate_voltages[gate2], stop=5. + 1e3 * gate_voltages[gate2], num=104)
+    y = np.linspace(start=-5. + 1e3 * gate_voltages[gate1], stop=5. + 1e3 * gate_voltages[gate1], num=20)
     xx, yy = np.meshgrid(x, y, sparse=True)
-    return np.sin(xx + yy + gate_voltages[gate1])
+    return (1 + yy) * (1 - .1 * abs(xx - 1e3 * gate_voltages[gate2]) - .1 * abs(yy - 1e3 * gate_voltages[gate1])) * np.sin(xx + yy)
 
 
 def detune_simulation(gate_voltages, measurement: Measurement, simulation_options):
