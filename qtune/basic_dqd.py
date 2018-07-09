@@ -135,7 +135,8 @@ def load_simulation(gate_voltages, measurement_options, simulation_options):
 
 def ss1d_simulation(gate_voltages, measurement: Measurement, simulation_options):
     points = np.arange(-4e-3, 4e-3, 8e-3 / 1280.)
-    return np.exp(-.5 * points ** 2 / 2e-6)
+    factor = 1 + gate_voltages['SDB1'] - gate_voltages['N']
+    return factor * np.exp(-.5 * (points + gate_voltages['SDB2']) ** 2 / 2e-6)
 
 
 def ss2d_simulation(gate_voltages, measurement: Measurement, simulation_options):

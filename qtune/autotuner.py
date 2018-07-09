@@ -146,6 +146,8 @@ class Autotuner(metaclass=HDF5Serializable):
             raise RuntimeError('The tuning is already complete!')
 
         if self._voltage_to_set is not None:
+            if self.voltages_to_set.isna().any():
+                raise RuntimeError('A voltage is required to be set to NAN')
             self.logger.info("The voltages will be changed by:")
             self.logger.info(self._voltage_to_set - self._tuning_hierarchy[0].last_voltages[self._voltage_to_set.index])
             self._experiment.set_gate_voltages(self._voltage_to_set)
@@ -172,26 +174,6 @@ class Autotuner(metaclass=HDF5Serializable):
             self.logger.info("Next voltages are being calculated.")
 
         self.save_current_status()
-
-    def autotune(self):
-
-            """
-            if self._live_plotting:
-                if self._reader is None:
-                    self._reader = Reader(self._tuning_hierarchy)
-                else:
-                    self._reader.append_tuning_hierarchy(tuning_hierarchy=self._tuning_hierarchy)
-
-                if self._plotting_objects is not None:
-                    for obj in self._plotting_objects:
-                        if isinstance(obj, matplotlib.figure.Figure):
-                            plt.close(obj)
-                self._plotting_objects = self._reader.plot_tuning(voltage_indices=self._plotted_gates,
-                                                                  parameter_names=self._plotted_parameters,
-                                                                  gradient_names=self._plotted_gradients,
-                                                                  mode=self._plotting_mode)
-                plt.pause(5)
-            """
 
     def to_hdf5(self):
         return dict(
