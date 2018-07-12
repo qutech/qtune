@@ -167,7 +167,7 @@ class SensingDotTuner(ParameterTuner):
     """
 
     def __init__(self, cheap_evaluators: Sequence[Evaluator], expensive_evaluators: Sequence[Evaluator],
-                 gates: Sequence[str], cheap_evaluation_only = True, **kwargs):
+                 gates: Sequence[str], cheap_evaluation_only=True, **kwargs):
         """
 
         :param cheap_evaluators: An evaluator with little measurement costs. (i.e. one dimensional sweep of gates

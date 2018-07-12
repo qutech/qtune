@@ -2,3 +2,6 @@ pandas
 numpy
 filterpy
 scipy
+matplotlib
+pyqtgraph
+h5py

@@ -7,7 +7,7 @@ from qtune.experiment import Experiment
 from typing import List, Optional
 from qtune.parameter_tuner import ParameterTuner, SubsetTuner
 from qtune.solver import NewtonSolver
-from qtune.storage import to_hdf5, HDF5Serializable, from_hdf5, AsynchronousHDF5Writer
+from qtune.storage import HDF5Serializable, from_hdf5, AsynchronousHDF5Writer
 import logging
 
 

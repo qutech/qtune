@@ -5,7 +5,6 @@ import itertools
 import threading
 import queue
 import multiprocessing
-import pickle
 
 from typing import Union, Iterable, Generator
 
@@ -16,7 +15,7 @@ import pandas as pd
 from qtune.util import time_string, get_version
 
 
-__all__ = ["serializables", "HDF5Serializable"]
+__all__ = ["serializables", "HDF5Serializable", 'from_hdf5', 'AsynchronousHDF5Writer']
 
 
 serializables = dict()
