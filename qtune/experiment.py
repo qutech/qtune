@@ -68,3 +68,6 @@ class Experiment:
         :return data:
         """
         raise NotImplementedError()
+
+    def __deepcopy__(self, memodict={}):
+        return id(self)

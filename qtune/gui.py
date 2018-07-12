@@ -458,7 +458,10 @@ class GUI(QtWidgets.QMainWindow):
                             self.pause()
                         else:
                             self.auto_tuner.iterate()
-                            self._history.append_autotuner(self._auto_tuner)
+
+                            if self.history:
+                                self.history.append_autotuner(self._auto_tuner)
+
                             self._update_plots.emit()
 
                     except Exception:

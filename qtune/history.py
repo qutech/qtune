@@ -473,8 +473,6 @@ def read_evaluator_data_from_autotuner(autotuner: qtune.autotuner.Autotuner, sta
                 if evaluator.raw_data is not None:
                     eval_data = evaluator.to_hdf5()
                     evaluator_data[evaluator.name] = [eval_data, ]
-                    for parameter_name in evaluator.parameters[1:]:
-                        evaluator_data[parameter_name] = evaluator_data[evaluator.parameters[0]]
     return evaluator_data
 
 
