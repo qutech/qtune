@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from typing import Tuple, List, Sequence
 from numbers import Number
-import itertools
+from itertools import count
 
 from qtune.experiment import Experiment, Measurement
 from qtune.evaluator import Evaluator
@@ -162,7 +162,7 @@ class SMQQDPassThru(Evaluator):
                  parameters: List[str]):
 
         super().__init__(experiment, measurements, parameters, tuple(), tuple(), 'PassThruEvaluator')
-        _count = count(0)
+        self._count = count(0)
 
     def evaluate(self) -> Tuple[pd.Series, pd.Series]:
 
