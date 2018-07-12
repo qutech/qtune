@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from typing import Tuple, List, Sequence
 from numbers import Number
+import itertools
 
 from qtune.experiment import Experiment, Measurement
 from qtune.evaluator import Evaluator
@@ -160,7 +161,8 @@ class SMQQDPassThru(Evaluator):
     def __init__(self, experiment: SMTuneQQD, measurements: List[Measurement],
                  parameters: List[str]):
 
-        super().__init__(experiment, measurements, parameters)
+        super().__init__(experiment, measurements, parameters, tuple(), tuple(), 'PassThruEvaluator')
+        _count = count(0)
 
     def evaluate(self) -> Tuple[pd.Series, pd.Series]:
 
@@ -179,6 +181,9 @@ class SMQQDPassThru(Evaluator):
             result[parameter] = value
             error[parameter] = np.abs((value/100)**2)   # Estimate the error as 10% of the value
 
+
+        self._raw_x_data = (next(self._count),)
+        self._raw_y_data = tuple(result)
         return result, error
 
     def to_hdf5(self):
