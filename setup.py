@@ -10,7 +10,8 @@ REQUIRED_PACKAGES = [
     'numpy',
     'filterpy',
     'scipy',
-    'h5py'
+    'h5py',
+    'sympy'
 ]
 
 
