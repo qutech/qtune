@@ -261,12 +261,13 @@ class KalmanGradientEstimator(GradientEstimator):
                covariance: float,
                is_new_position=False):
         position = position[self._current_position.index]
-        diff_position = (position - self._current_position)
+        diff_position = (position - self._current_position).dropna(0)
         diff_values = (value - self._current_value)
 
-        self._kalman_gradient.update(diff_position=diff_position,
-                                     diff_values=[diff_values],
-                                     measurement_covariance=covariance)
+        if not np.linalg.norm(diff_position) < 1e-7:
+            self._kalman_gradient.update(diff_position=diff_position,
+                                         diff_values=[diff_values],
+                                         measurement_covariance=covariance)
 
         if is_new_position:
             self._current_value = value

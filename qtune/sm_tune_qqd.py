@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from typing import Tuple, List, Sequence
 from numbers import Number
+from itertools import count
 
 from qtune.experiment import Experiment, Measurement
 from qtune.evaluator import Evaluator
@@ -13,7 +14,6 @@ from qtune import mat2py
 
 
 # TODO Add Tests
-# TODO QQB or general QDArray?
 class SMTuneQQD(Experiment):
     """
     QQD implementation using the MATLAB backend and the tune.m script on the Trition 200 Setup
@@ -54,43 +54,18 @@ class SMTuneQQD(Experiment):
     def read_gate_voltages(self) -> pd.Series:
         return pd.Series(self._matlab.engine.qtune.read_qqd_gate_voltages()).sort_index()
 
-# the following function has been depreciated. Newer versions of this class contain only the functions defined in the
-# parent class "qtune.experiment.Experiment". The Gates an instance of qtune.gradient.GradientEstimator uses are defined
-# by the instance. Julian
-    def _read_sensing_dot_voltages(self) -> pd.Series:
-        # TODO: Maybe allow for getting only one sensor at a time?
-        # TODO change MATLAB gate names or put them in the python part
-        return pd.Series(self._matlab.engine.qtune.read_qqd_sensing_dot_voltages()).sort_index()
 
     def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
-        """
-        untested proposition by Julian:
-        current_gate_voltages = self.read_gate_voltages()
-        current_gate_voltages[new_gate_voltages.index] = new_gate_voltages[new_gate_voltages.index]
-        current_gate_voltages.applymap(self._matlab.to_matlab, convert_dtype=False)
-        return pd.Series(self._matlab.engine.qtune.set_qqd_gate_voltages(current_gate_voltages)) # set_qqd_gate_voltages
-        # needs to be adapted
-        """
-        current_gate_voltages = self.read_gate_voltages()
-        for key in current_gate_voltages.index.tolist():
-            if key not in new_gate_voltages.index.tolist():
-                new_gate_voltages[key] = current_gate_voltages[key]
-        new_gate_voltages = dict(new_gate_voltages)
-        for key in new_gate_voltages:
-            new_gate_voltages[key] = new_gate_voltages[key].item()
-        return pd.Series(self._matlab.engine.qtune.set_qqd_gate_voltages(new_gate_voltages))
 
-# depreciated! Done by set_gate_voltages. Julian
-    def _set_sensing_dot_voltages(self, new_sensing_dot_voltage: pd.Series):
-        # currently handled in MATLAB
-        current_sensing_dot_voltages = self._read_sensing_dot_voltages()
-        for key in current_sensing_dot_voltages.index.tolist():
-            if key not in new_sensing_dot_voltage.index.tolist():
-                new_sensing_dot_voltage[key] = current_sensing_dot_voltages[key]
-        new_sensing_dot_voltage = dict(new_sensing_dot_voltage)
-        for key in new_sensing_dot_voltage:
-            new_sensing_dot_voltage[key] = new_sensing_dot_voltage[key].item()
-        self._matlab.engine.qtune.set_sensing_dot_gate_voltages()
+        current_gate_voltages = self.read_gate_voltages()
+        #current_gate_voltages[new_gate_voltages.index] = new_gate_voltages[new_gate_voltages.index]
+        gate_voltages_to_matlab= new_gate_voltages.to_dict()
+        for key, value in gate_voltages_to_matlab.items():
+            gate_voltages_to_matlab[key] = float(value)
+        self._matlab.engine.qtune.set_qqd_gate_voltages(gate_voltages_to_matlab)
+        
+        return self.read_gate_voltages() # set_qqd_gate_voltages
+
 
     def tune(self, measurement_name, index: np.int, **kwargs) -> pd.Series:
         # Tune wrapper using the MATLAB syntax
@@ -116,7 +91,7 @@ class SMTuneQQD(Experiment):
 
             data_view = tune_view(measurement_name, *([np.float(index)] + name_value_pairs))
         else:
-            data_view = tune_view(measurement_name, index)
+            data_view = tune_view(measurement_name, np.float(index))
 
         return pd.Series({'data': data_view})
 
@@ -142,35 +117,41 @@ class SMTuneQQD(Experiment):
 
     def measure(self, measurement: Measurement) -> np.ndarray:
         """This function basically wraps the tune.m script on the Trition 200 setup"""
+        # TODO allow this to create the measurement on the fly when arguments cntrl, index, options are passed
         if measurement.name not in self._measurements.keys():
             raise ValueError('Unknown measurement: {}'.format(measurement))
 
         result = self.pytune(measurement)
 
         if measurement.name == 'line':
-            result = np.array(result['data'].ana.width)
+            ret = np.array(result['data'].ana.width)
         elif measurement.name == 'lead':
-            result = np.array(result['data'].ana.fitParams[1][3])
+            ret = np.array(result['data'].ana.fitParams[1][3])
         elif measurement.name == 'load':
-            pass
+            ret = result
         elif measurement.name == 'load pos':
-            pass
+            ret = result
         elif measurement.name == 'chrg rnd':
-            pass
+            ret = result
         elif measurement.name == 'chrg s':
-            pass
+            ret = result
         elif measurement.name == 'sensor':
-            result = np.array(result['data'].ana.xVal, result['data'].ana.minGradData)
+            ret = np.array([result['data'].ana.xVal, np.abs(result['data'].ana.minGradData)])
         elif measurement.name == 'sensor 2d':
-            result = np.array([result['data'].ana.xVal, result['data'].ana.yVal])
+            ret = np.array([result['data'].ana.xVal, result['data'].ana.yVal, np.abs(result['data'].ana.minGradData)])
         elif measurement.name == 'chrg':
-            result = np.squeeze(result['data'].ana.O)
+            ret = np.squeeze(result['data'].ana.O)
         elif measurement.name == 'stp':
-            result = np.array([result['data'].ana.STp_x, result['data'].ana.STp_y])
+            ret = np.array([result['data'].ana.STp_x, result['data'].ana.STp_y])
         elif measurement.name == 'tl':
-            result = np.array([result['data'].ana.Tp_x, result['data'].ana.Tp_y])
+            ret = np.array([result['data'].ana.Tp_x, result['data'].ana.Tp_y])
+        elif measurement.name == 'resp':
+            n = len(result['data'].ana)
+            ret = np.full(n, np.nan)
+            for i in range(n):
+                ret[i] = result['data'].ana[i].position
 
-        return result
+        return ret
 
 
 class SMQQDPassThru(Evaluator):
@@ -180,11 +161,14 @@ class SMQQDPassThru(Evaluator):
     def __init__(self, experiment: SMTuneQQD, measurements: List[Measurement],
                  parameters: List[str]):
 
-        super().__init__(experiment, measurements, parameters)
+        super().__init__(experiment, measurements, parameters, tuple(), tuple(), 'PassThruEvaluator')
+        self._count = count(0)
 
     def evaluate(self) -> Tuple[pd.Series, pd.Series]:
 
         result = pd.Series(index=self._parameters)
+        error = pd.Series(index=self._parameters)
+
         return_values = np.array([])
 
         # get all measurement results first
@@ -195,8 +179,12 @@ class SMQQDPassThru(Evaluator):
         # one value for each parameter since they have already been evaluated
         for parameter, value in zip(self.parameters, return_values):
             result[parameter] = value
+            error[parameter] = np.abs((value/100)**2)   # Estimate the error as 10% of the value
 
-        return result, pd.Series()
+
+        self._raw_x_data = (next(self._count),)
+        self._raw_y_data = tuple(result)
+        return result, error
 
     def to_hdf5(self):
         return dict(experiment=self.experiment,

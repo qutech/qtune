@@ -4,7 +4,15 @@ import os.path
 import re
 import sys
 
-from pip.req import parse_requirements
+
+REQUIRED_PACKAGES = [
+    'pandas',
+    'numpy',
+    'filterpy',
+    'scipy',
+    'h5py',
+    'sympy'
+]
 
 
 def get_file(*args):
@@ -74,10 +82,6 @@ class MatlabInstall(setuptools.Command):
                 raise RuntimeError('Error while installing matlab engine')
 
 
-def get_requirements():
-    return [str(ir.req) for ir in parse_requirements(get_file('requirements.txt'), session=True)]
-
-
 setuptools.setup(
     name="qtune",
     version=get_version(),
@@ -88,10 +92,10 @@ setuptools.setup(
     packages=['qtune'],
     package_data={'qtune': ['qtune/MATLAB/*/*.m']},
     long_description=read('README.md'),
-    install_requires=get_requirements(),
+    install_requires=REQUIRED_PACKAGES,
 
-    setup_requires=['pytest-runner'] + get_requirements(),
-    tests_require=['pytest'] + get_requirements(),
+    setup_requires=['pytest-runner'] + REQUIRED_PACKAGES,
+    tests_require=['pytest'] + REQUIRED_PACKAGES,
 
     cmdclass={'install_matlab': MatlabInstall}
 )
