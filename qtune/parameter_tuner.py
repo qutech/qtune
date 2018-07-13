@@ -7,6 +7,8 @@ from qtune.evaluator import Evaluator
 from qtune.solver import Solver
 from qtune.storage import HDF5Serializable
 
+import logging
+
 
 class ParameterTuner(metaclass=HDF5Serializable):
     """This class tunes a specific set of parameters which are defined by the given evaluators."""
@@ -21,6 +23,7 @@ class ParameterTuner(metaclass=HDF5Serializable):
         self._tuned_voltages = tuned_voltages or []
         self._solver = solver
         self._last_voltage = last_voltage
+        self._logger = 'qtune'
 
         if last_parameter_values is None:
             self._last_parameter_values = pd.Series(index=solver.target.index)
@@ -42,6 +45,10 @@ class ParameterTuner(metaclass=HDF5Serializable):
         if len(parameters) != len(set(parameters)):
             raise ValueError('Parameter duplicates: ', {p for p in parameters if parameters.count(p) > 1})
         assert set(self.target.index).issubset(set(parameters))
+
+    @property
+    def logger(self):
+        return logging.getLogger(self._logger)
 
     @property
     def last_voltages(self) -> pd.Series:
@@ -83,6 +90,7 @@ class ParameterTuner(metaclass=HDF5Serializable):
         parameters = []
         variances = []
         for evaluator in self._evaluators:
+            self.logger.info('Evaluating %s' % evaluator.name)
             parameter, variance = evaluator.evaluate()
             parameters.append(parameter)
             variances.append(variance)
@@ -228,6 +236,7 @@ class SensingDotTuner(ParameterTuner):
         if current_parameter.le(self.target["minimum"]).any():
             self.cheap_evaluation_only = True
             if current_parameter.le(self.target["cost_threshold"]).any():
+                self.logger.info('Expensive evaluation required.')
                 self.cheap_evaluation_only = False
                 current_parameter, variances = self.evaluate(cheap=False)
                 self._last_parameter_values[current_parameter.index] = current_parameter[current_parameter.index]
@@ -251,11 +260,13 @@ class SensingDotTuner(ParameterTuner):
         variances = []
         if cheap:
             for evaluator in self._cheap_evaluators:
+                self.logger.info('Evaluating the cheap evaluator %s' % evaluator.name)
                 parameter, variance = evaluator.evaluate()
                 parameters.append(parameter)
                 variances.append(variance)
         else:
             for evaluator in self._expensive_evaluators:
+                self.logger.info('Evaluating the expensive evaluator %s' % evaluator.name)
                 parameter, variance = evaluator.evaluate()
                 parameters.append(parameter)
                 variances.append(variance)
