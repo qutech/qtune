@@ -148,8 +148,15 @@ class Autotuner(metaclass=HDF5Serializable):
         if self._voltage_to_set is not None:
             if self.voltages_to_set.isna().any():
                 raise RuntimeError('A voltage is required to be set to NAN')
-            self.logger.info("The voltages will be changed by:")
-            self.logger.info(self._voltage_to_set - self._tuning_hierarchy[0].last_voltages[self._voltage_to_set.index])
+
+            voltage_state_change = pd.DataFrame()
+            voltage_state_change['current'] = self._tuning_hierarchy[0].last_voltages[self._voltage_to_set.index]
+            voltage_state_change['target']  = self._voltage_to_set
+            voltage_state_change['step']    = voltage_state_change['target'] - voltage_state_change['current']
+            self.logger.info("The voltages will be changed by:\n{}".format(
+                voltage_state_change
+            ))
+
             self._experiment.set_gate_voltages(self._voltage_to_set)
             self._current_tuner_index = 0
             self._voltage_to_set = None

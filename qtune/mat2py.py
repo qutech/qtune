@@ -154,6 +154,10 @@ class MATLABStructView(MATLABView):
         idx = transform_index(idx)
         return MATLABStructView(self._engine,
                                 _get_item_array(self._eval_str, idx))
+
+    def __iter__(self):
+        for i in range(len(self)):
+            yield self[i]
     
     def __dir__(self):
         return super().__dir__() + self._eval('fieldnames(%s)' % self._eval_str)
@@ -171,6 +175,10 @@ class MATLABCellView(MATLABView):
         
         else:
             raise NotImplementedError()
+
+    def __iter__(self):
+        for i in range(len(self)):
+            yield self[i]
     
     @property
     def shape(self):
