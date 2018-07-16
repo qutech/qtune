@@ -66,6 +66,10 @@ class ParameterTuner(metaclass=HDF5Serializable):
     def target(self) -> pd.DataFrame:
         return self.solver.target
 
+    @target.setter
+    def target(self, changes):
+        self.solver.target = changes
+
     @property
     def parameters(self) -> Sequence[str]:
         """Alphabetically sorted parameters"""
@@ -143,6 +147,7 @@ class SubsetTuner(ParameterTuner):
 
     def is_tuned(self, voltages: pd.Series) -> bool:
         current_parameters, current_variances = self.evaluate()
+        self.solver.rescale_values(current_parameters, current_variances)
 
         self._solver.update_after_step(voltages, current_parameters, current_variances)
 
@@ -229,6 +234,7 @@ class SensingDotTuner(ParameterTuner):
 
     def is_tuned(self, voltages: pd.Series):
         current_parameter, variances = self.evaluate(cheap=True)
+        self.solver.rescale_values(current_parameter, variances)
         self._last_voltage = voltages
         self._last_parameter_values[current_parameter.index] = current_parameter[current_parameter.index]
         self._last_parameters_variances[current_parameter.index] = variances[current_parameter.index]
@@ -239,6 +245,7 @@ class SensingDotTuner(ParameterTuner):
                 self.logger.info('Expensive evaluation required.')
                 self.cheap_evaluation_only = False
                 current_parameter, variances = self.evaluate(cheap=False)
+                self.solver.rescale_values(current_parameter, variances)
                 self._last_parameter_values[current_parameter.index] = current_parameter[current_parameter.index]
                 self._last_parameters_variances[current_parameter.index] = variances[current_parameter.index]
 

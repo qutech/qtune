@@ -4,7 +4,7 @@ import os.path
 import pandas as pd
 from qtune.util import time_string
 from qtune.experiment import Experiment
-from typing import List, Optional
+from typing import List, Optional, Dict
 from qtune.parameter_tuner import ParameterTuner, SubsetTuner
 from qtune.solver import NewtonSolver
 from qtune.storage import HDF5Serializable, from_hdf5, AsynchronousHDF5Writer
@@ -119,6 +119,17 @@ class Autotuner(metaclass=HDF5Serializable):
                             self.logger.error(gradient_estimator)
                             naming_coherent = False
         return naming_coherent
+
+    def change_targets(self, target_changes: List[Dict[str, pd.Series]]):
+        """
+        This function changes the targets to continue the tuning towards a new goal.
+        :param target_changes: A list corresponding to the tuning hierarchy. The list elements contain dicts
+        corresponding to the categories of the target like 'desired' or 'tolerance'.
+        :return:
+        """
+        assert(len(target_changes) <= len(self.tuning_hierarchy))
+        for i, target_change in enumerate(target_changes):
+            self.tuning_hierarchy[i].target = target_change
 
     def __getstate__(self):
         """Do not pickle the async writer object"""
