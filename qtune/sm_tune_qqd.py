@@ -159,9 +159,9 @@ class SMQQDPassThru(Evaluator):
     Pass thru Evaluator
     """
     def __init__(self, experiment: SMTuneQQD, measurements: List[Measurement],
-                 parameters: List[str], name: str):
+                 parameters: List[str], name: str, raw_x_data=tuple(), raw_y_data=tuple()):
 
-        super().__init__(experiment, measurements, parameters, tuple(), tuple(), name)
+        super().__init__(experiment, measurements, parameters, raw_x_data, raw_y_data, name=name)
         self._count = count(0)
 
     def evaluate(self) -> Tuple[pd.Series, pd.Series]:
