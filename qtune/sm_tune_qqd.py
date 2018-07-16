@@ -12,6 +12,18 @@ from qtune import mat2py
 # This file bundles everything connected to the QQD
 # Is this the file structure we want?
 
+class QQDMeasurement(Measurement):
+    """
+    This class saves all necessary information for a measurement.
+    """
+    def __init__(self, name, **kwargs):
+        self.data=None
+
+
+    def to_hdf5(self):
+        return dict(self.options,
+                    name=self.name)
+
 
 # TODO Add Tests
 class SMTuneQQD(Experiment):
@@ -24,7 +36,7 @@ class SMTuneQQD(Experiment):
         self._matlab = matlab_instance
         # TODO Add some more comments
 
-        self._file_name = ''
+        self._last_file_name = None
 
         self._measurements = {'sensor 2d': Measurement('sensor 2d'),
                               'sensor': Measurement('sensor'),
@@ -56,6 +68,8 @@ class SMTuneQQD(Experiment):
     def read_gate_voltages(self) -> pd.Series:
         return pd.Series(self._matlab.engine.qtune.read_qqd_gate_voltages()).sort_index()
 
+    def get_last_file_name(self):
+        return self._last_file_name
 
     def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
 
@@ -125,7 +139,7 @@ class SMTuneQQD(Experiment):
 
         result = self.pytune(measurement)
         # check if this is saved correctly
-        self._file_name = result['data'].args.fullFile
+        self._last_file_name = result['data'].args.fullFile
 
         if measurement.name == 'line':
             ret = np.array(result['data'].ana.width)
@@ -171,34 +185,38 @@ class SMQQDPassThru(Evaluator):
         self._count = count(0)
         self._error = None
         self._n_error_estimate = 5
+        self._last_file_names = None
 
-    def evaluate_error(self) -> Float:
+    def evaluate_error(self):
         self.logger.info(f'Evaluating {str(self)} {self._n_error_estimate} times to estimate error.')
         values = []
         for i in range(self._n_error_estimate):
             values.append(self.evaluate())
 
         df = pd.DataFrame(values)
-        self._error = df.std() # check if this is the right axis
+        self._error = df.std()
 
-        return self._error
 
     def evaluate(self) -> Tuple[pd.Series, pd.Series]:
         self.logger.info(f'Evaluating {str(self)}.')
         result = pd.Series(index=self._parameters)
         error = pd.Series(index=self._parameters)
 
+        if self._error is None: self.evaluate_error()
+
         return_values = np.array([])
+        self._last_file_names = []
 
         # get all measurement results first
         for measurement in self.measurements:
             return_values = np.append(return_values, self.experiment.measure(measurement))
+            self._last_file_names.append(self.experiment.get_last_file_name())
 
         # deal meas results to parameters
         # one value for each parameter since they have already been evaluated
         for parameter, value in zip(self.parameters, return_values):
             result[parameter] = value
-            error[parameter] = np.abs((value/100)**2)   # Estimate the error as 10% of the value
+            error[parameter] = self._error[parameter]
 
 
         self._raw_x_data = (next(self._count),)
@@ -208,4 +226,5 @@ class SMQQDPassThru(Evaluator):
     def to_hdf5(self):
         return dict(experiment=self.experiment,
                     measurements=self.measurements,
-                    parameters=self.parameters)
+                    parameters=self.parameters,
+                    file_names=self._last_file_names)

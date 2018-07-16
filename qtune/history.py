@@ -466,12 +466,12 @@ def read_evaluator_data_from_autotuner(autotuner: qtune.autotuner.Autotuner, sta
                 relevant_evaluators += par_tuner.expensive_evaluators
             for evaluator in relevant_evaluators:
                 if evaluator.raw_data is not None:
-                    eval_data = evaluator.to_hdf5()
+                    eval_data = evaluator.to_hdf5
                     evaluator_data[evaluator.name] = [eval_data, ]
         else:
             for evaluator in par_tuner.evaluators:
                 if evaluator.raw_data is not None:
-                    eval_data = evaluator.to_hdf5()
+                    eval_data = evaluator.to_hdf5
                     evaluator_data[evaluator.name] = [eval_data, ]
     return evaluator_data
 

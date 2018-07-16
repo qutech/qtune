@@ -78,7 +78,7 @@ def _to_hdf5(hdf5_parent_group: h5py.Group, name, obj, serialized):
 
         serialized[id(obj)] = hdf5_group
 
-        data = obj.to_hdf5()
+        data = obj.to_hdf5
         for key, value in data.items():
             _to_hdf5(hdf5_group, key, value, serialized)
         return
