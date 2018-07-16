@@ -67,7 +67,7 @@ class Evaluator(metaclass=HDF5Serializable):
                     name=self.name)
 
     def __repr__(self):
-        return "{type}({data})".format(type=type(self), data=self.to_hdf5())
+        return "{type}({data})".format(type=type(self).__name__, data=self.to_hdf5())
 
 
 class FittingEvaluator(Evaluator):

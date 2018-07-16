@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from typing import Tuple, List, Sequence, Float
+from typing import Tuple, List, Sequence
 from numbers import Number
 from itertools import count
 
@@ -173,28 +173,35 @@ class SMTuneQQD(Experiment):
 
         return ret
 
+    def __repr__(self):
+        return "{type}({data})".format(type=type(self).__name__,
+                                       data=self._matlab.engine.matlab.engine.engineName())
+
 
 class SMQQDPassThru(Evaluator):
     """
     Pass thru Evaluator
     """
     def __init__(self, experiment: SMTuneQQD, measurements: List[Measurement],
-                 parameters: List[str], name: str, raw_x_data=tuple(), raw_y_data=tuple()):
+                 parameters: List[str], name: str, raw_x_data=tuple(), raw_y_data=tuple(), last_file_names=None):
 
         super().__init__(experiment, measurements, parameters, raw_x_data, raw_y_data, name=name)
         self._count = count(0)
         self._error = None
         self._n_error_estimate = 5
-        self._last_file_names = None
+        self._last_file_names = last_file_names
 
     def evaluate_error(self):
         self.logger.info(f'Evaluating {str(self)} {self._n_error_estimate} times to estimate error.')
         values = []
+
+        self._error = pd.Series(index=self.parameters)
         for i in range(self._n_error_estimate):
-            values.append(self.evaluate())
+            tmp, _ = self.evaluate()
+            values.append(tmp)
 
         df = pd.DataFrame(values)
-        self._error = df.std()
+        self._error = df.var(0)
 
 
     def evaluate(self) -> Tuple[pd.Series, pd.Series]:
@@ -224,7 +231,5 @@ class SMQQDPassThru(Evaluator):
         return result, error
 
     def to_hdf5(self):
-        return dict(experiment=self.experiment,
-                    measurements=self.measurements,
-                    parameters=self.parameters,
-                    file_names=self._last_file_names)
+        return dict(super().to_hdf5(),
+                    last_file_names=self._last_file_names)
