@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from typing import Tuple, List, Sequence
+from typing import Tuple, List, Sequence, Float
 from numbers import Number
 from itertools import count
 
@@ -23,6 +23,8 @@ class SMTuneQQD(Experiment):
         super().__init__()
         self._matlab = matlab_instance
         # TODO Add some more comments
+
+        self._file_name = ''
 
         self._measurements = {'sensor 2d': Measurement('sensor 2d'),
                               'sensor': Measurement('sensor'),
@@ -119,9 +121,11 @@ class SMTuneQQD(Experiment):
         """This function basically wraps the tune.m script on the Trition 200 setup"""
         # TODO allow this to create the measurement on the fly when arguments cntrl, index, options are passed
         if measurement.name not in self._measurements.keys():
-            raise ValueError('Unknown measurement: {}'.format(measurement))
+            raise ValueError(f'Unknown measurement: {measurement}')
 
         result = self.pytune(measurement)
+        # check if this is saved correctly
+        self._file_name = result['data'].args.fullFile
 
         if measurement.name == 'line':
             ret = np.array(result['data'].ana.width)
@@ -150,6 +154,8 @@ class SMTuneQQD(Experiment):
             ret = np.full(n, np.nan)
             for i in range(n):
                 ret[i] = result['data'].ana[i].position
+        else:
+            raise ValueError(f'Measurement {measurement} not implemented')
 
         return ret
 
@@ -163,9 +169,22 @@ class SMQQDPassThru(Evaluator):
 
         super().__init__(experiment, measurements, parameters, tuple(), tuple(), name)
         self._count = count(0)
+        self._error = None
+        self._n_error_estimate = 5
+
+    def evaluate_error(self) -> Float:
+        self.logger.info(f'Evaluating {str(self)} {self._n_error_estimate} times to estimate error.')
+        values = []
+        for i in range(self._n_error_estimate):
+            values.append(self.evaluate())
+
+        df = pd.DataFrame(values)
+        self._error = df.std() # check if this is the right axis
+
+        return self._error
 
     def evaluate(self) -> Tuple[pd.Series, pd.Series]:
-
+        self.logger.info(f'Evaluating {str(self)}.')
         result = pd.Series(index=self._parameters)
         error = pd.Series(index=self._parameters)
 
