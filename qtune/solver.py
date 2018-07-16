@@ -14,7 +14,8 @@ def make_target(desired: pd.Series=np.nan,
                 maximum: pd.Series=np.nan,
                 minimum: pd.Series=np.nan,
                 tolerance: pd.Series=np.nan,
-                cost_threshold: pd.Series=np.nan):
+                cost_threshold: pd.Series=np.nan,
+                rescaling_factor: pd.Series=np.nan):
     for ser in (desired, maximum, minimum, tolerance):
         if isinstance(ser, pd.Series):
             names = ser.index
@@ -28,11 +29,16 @@ def make_target(desired: pd.Series=np.nan,
         else:
             return arg[names]
 
+    if not isinstance(rescaling_factor, pd.Series):
+        if rescaling_factor != rescaling_factor:
+            rescaling_factor = pd.Series(data=1, index=names)
+
     return pd.DataFrame({'desired': to_series(desired),
                          'minimum': to_series(minimum),
                          'maximum': to_series(maximum),
                          'tolerance': to_series(tolerance),
-                         'cost_threshold': to_series(cost_threshold)},
+                         'cost_threshold': to_series(cost_threshold),
+                         'rescaling_factor': to_series(rescaling_factor)},
                         index=names)
 
 
@@ -63,6 +69,22 @@ class Solver(metaclass=HDF5Serializable):
     @property
     def state(self) -> pd.Series:
         raise NotImplementedError()
+
+    def rescale_values(self, values: pd.Series, variances: pd.Series):
+        """The values are rescaling right after they have been given to the Solver. The target must therefore hold
+        rescaled value."""
+        rescaling_factor = self.target['rescaling_factor'].append(
+            pd.Series(index=values.index.difference(self.target['rescaling_factor'].index), data=1))
+        values /= rescaling_factor[values.index]
+        variances /= rescaling_factor[values.index]**2
+
+    def descale_values(self, values: pd.Series, variances: pd.Series):
+        """The values are rescaling right after they have been given to the Solver. The target must therefore hold
+        rescaled value."""
+        rescaling_factor = self.target['rescaling_factor'].append(
+            pd.Series(index=values.index.difference(self.target['rescaling_factor'].index), data=1))
+        values *= rescaling_factor[values.index]
+        variances *= rescaling_factor[values.index]**2
 
 
 class NewtonSolver(Solver):
@@ -420,7 +442,7 @@ class ForwardingSolver(Solver):
     def update_after_step(self, position: pd.Series, values: pd.Series, variances: pd.Series):
         self._current_position[position.index] = position
         self._next_position[position.index] = position
-
+        self.descale_values(values, variances)
         new_position_names = self._values_to_position[values.index].dropna()
         self._next_position[new_position_names] = values[new_position_names.index]
 
