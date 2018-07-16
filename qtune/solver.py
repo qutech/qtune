@@ -1,6 +1,7 @@
-from typing import Tuple, Sequence, Deque, Callable, Optional
+from typing import Tuple, Sequence, Deque, Callable, Optional, Dict
 import enum
 import math
+import logging
 
 import numpy as np
 import pandas as pd
@@ -48,10 +49,16 @@ class Solver(metaclass=HDF5Serializable):
     """
     _current_position = None
     _current_values = None
+    _target = None
+    _logger = 'qtune'
 
     @property
     def current_position(self) -> pd.Series:
         return self._current_position
+
+    @property
+    def logger(self):
+        return logging.getLogger(self._logger)
 
     def suggest_next_position(self) -> pd.Series:
         raise NotImplementedError()
@@ -64,7 +71,16 @@ class Solver(metaclass=HDF5Serializable):
 
     @property
     def target(self) -> pd.DataFrame:
-        raise NotImplementedError()
+        return self._target
+
+    @target.setter
+    def target(self, changes: Dict[str, pd.Series]):
+        for category in changes:
+            if not changes[category].index.isin(self.target[category].index).all():
+                self.logger.warning('The new target %s %s is not consistent with the previous one!'
+                                    % (category, changes[category].index.difference(self.target[category].index)))
+            self.target.loc[changes[category].index, category] = changes[category]
+
 
     @property
     def state(self) -> pd.Series:
@@ -115,10 +131,6 @@ class NewtonSolver(Solver):
     @property
     def gradient_estimators(self):
         return self._gradient_estimators
-
-    @property
-    def target(self) -> pd.DataFrame:
-        return self._target
 
     @property
     def jacobian(self) -> pd.DataFrame:
@@ -431,10 +443,6 @@ class ForwardingSolver(Solver):
         else:
             next_position = next_position[self._current_position.index]
         self._next_position = next_position
-
-    @property
-    def target(self) -> pd.DataFrame:
-        return self._target
 
     def suggest_next_position(self) -> pd.Series:
         return self._next_position

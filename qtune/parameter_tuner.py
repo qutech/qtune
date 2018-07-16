@@ -66,6 +66,10 @@ class ParameterTuner(metaclass=HDF5Serializable):
     def target(self) -> pd.DataFrame:
         return self.solver.target
 
+    @target.setter
+    def target(self, changes):
+        self.solver.target = changes
+
     @property
     def parameters(self) -> Sequence[str]:
         """Alphabetically sorted parameters"""
