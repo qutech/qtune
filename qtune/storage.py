@@ -5,7 +5,6 @@ import itertools
 import threading
 import queue
 import multiprocessing
-import pickle
 
 from typing import Union, Iterable, Generator
 
@@ -16,7 +15,7 @@ import pandas as pd
 from qtune.util import time_string, get_version
 
 
-__all__ = ["serializables", "HDF5Serializable"]
+__all__ = ["serializables", "HDF5Serializable", 'from_hdf5', 'AsynchronousHDF5Writer']
 
 
 serializables = dict()
@@ -79,7 +78,7 @@ def _to_hdf5(hdf5_parent_group: h5py.Group, name, obj, serialized):
 
         serialized[id(obj)] = hdf5_group
 
-        data = obj.to_hdf5()
+        data = obj.to_hdf5
         for key, value in data.items():
             _to_hdf5(hdf5_group, key, value, serialized)
         return

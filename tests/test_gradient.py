@@ -53,7 +53,7 @@ class GradientSerializationTest(unittest.TestCase):
 
             recovered = from_hdf5(temp_file.name, reserved=[])['estimator']
 
-            hdf5 = recovered.to_hdf5()
+            hdf5 = recovered.to_hdf5
             pd.testing.assert_series_equal(hdf5['current_position'], est_args['current_position'])
             self.assertEqual(hdf5['current_value'], est_args['current_value'])
             if isinstance(est_args['maximum_covariance'], float):
@@ -63,7 +63,7 @@ class GradientSerializationTest(unittest.TestCase):
             else:
                 pd.testing.assert_series_equal(hdf5['maximum_covariance'], est_args['maximum_covariance'])
 
-            np.testing.assert_equal(kal_args, hdf5['kalman_gradient'].to_hdf5())
+            np.testing.assert_equal(kal_args, hdf5['kalman_gradient'].to_hdf5)
         finally:
             os.remove(temp_file.name)
 

@@ -7,12 +7,19 @@ from qtune.kalman_gradient import KalmanGradient
 from qtune.storage import HDF5Serializable
 from qtune.util import get_orthogonal_vector, calculate_gradient_non_orthogonal
 
+import logging
+
 __all__ = ["GradientEstimator", "FiniteDifferencesGradientEstimator", "KalmanGradientEstimator"]
 
 
 class GradientEstimator(metaclass=HDF5Serializable):
     """Estimate the gradient of a scalar function"""
     _current_position = None
+    _logger = 'qtune'
+
+    @property
+    def logger(self):
+        return logging.getLogger(self._logger)
 
     @property
     def current_position(self):
@@ -109,15 +116,18 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
             raise RuntimeError("No measurement can be requested before defining the current position.")
 
         if self._current_estimate is None:
+            self.logger.info('Gradient is being estimated.')
             measured_points = [v for v, *_ in self._stored_measurements]
 
             if len(measured_points) == 0:
                 #  start with arbitrary position
+                self.logger.debug('Requiring first measurement in gradient calculation.')
                 first_step = np.zeros_like(self._current_position)
                 first_step[0] += 1
                 self._requested_measurements.append(self._current_position + first_step * self._epsilon)
 
             elif self._symmetric_calculation:
+                self.logger.debug('Gradient estimation by symmetric calculation.')
                 if len(measured_points) % 2 == 1:
                     self._requested_measurements.append(2 * self._current_position - measured_points[-1])
                 else:
@@ -127,6 +137,7 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
                         self._current_position + get_orthogonal_vector(measured_point_diffs) * self._epsilon)
 
             else:
+                self.logger.debug('Gradient estimation by asymmetric calculation.')
                 if len(measured_points) == 1:
                     measured_point_diffs = [pd.Series(index=measured_points[0].index, data=0)]
                 elif len(measured_points) <= self._current_position.size:
@@ -253,6 +264,8 @@ class KalmanGradientEstimator(GradientEstimator):
         lengths = np.linalg.norm(rescaled_eigenvectors, axis=0)
         if np.any(lengths > 1):
             # if so, pick the longest and scale it with epsilon
+            self.logger.info('New measurement required by kalman gradient estimator.')
+            self.logger.debug(self._epsilon[gates] * eigenvectors[:, np.argmax(lengths)])
             return self._current_position.add(self._epsilon[gates] * eigenvectors[:, np.argmax(lengths)], fill_value=0.)
 
     def update(self,

@@ -7,6 +7,8 @@ from qtune.evaluator import Evaluator
 from qtune.solver import Solver
 from qtune.storage import HDF5Serializable
 
+import logging
+
 
 class ParameterTuner(metaclass=HDF5Serializable):
     """This class tunes a specific set of parameters which are defined by the given evaluators."""
@@ -21,6 +23,7 @@ class ParameterTuner(metaclass=HDF5Serializable):
         self._tuned_voltages = tuned_voltages or []
         self._solver = solver
         self._last_voltage = last_voltage
+        self._logger = 'qtune'
 
         if last_parameter_values is None:
             self._last_parameter_values = pd.Series(index=solver.target.index)
@@ -44,6 +47,10 @@ class ParameterTuner(metaclass=HDF5Serializable):
         assert set(self.target.index).issubset(set(parameters))
 
     @property
+    def logger(self):
+        return logging.getLogger(self._logger)
+
+    @property
     def last_voltages(self) -> pd.Series:
         return self._last_voltage
 
@@ -58,6 +65,10 @@ class ParameterTuner(metaclass=HDF5Serializable):
     @property
     def target(self) -> pd.DataFrame:
         return self.solver.target
+
+    @target.setter
+    def target(self, changes):
+        self.solver.target = changes
 
     @property
     def parameters(self) -> Sequence[str]:
@@ -83,6 +94,7 @@ class ParameterTuner(metaclass=HDF5Serializable):
         parameters = []
         variances = []
         for evaluator in self._evaluators:
+            self.logger.info('Evaluating %s' % evaluator.name)
             parameter, variance = evaluator.evaluate()
             parameters.append(parameter)
             variances.append(variance)
@@ -135,6 +147,7 @@ class SubsetTuner(ParameterTuner):
 
     def is_tuned(self, voltages: pd.Series) -> bool:
         current_parameters, current_variances = self.evaluate()
+        self.solver.rescale_values(current_parameters, current_variances)
 
         self._solver.update_after_step(voltages, current_parameters, current_variances)
 
@@ -167,7 +180,7 @@ class SensingDotTuner(ParameterTuner):
     """
 
     def __init__(self, cheap_evaluators: Sequence[Evaluator], expensive_evaluators: Sequence[Evaluator],
-                 gates: Sequence[str], cheap_evaluation_only = True, **kwargs):
+                 gates: Sequence[str], cheap_evaluation_only=True, **kwargs):
         """
 
         :param cheap_evaluators: An evaluator with little measurement costs. (i.e. one dimensional sweep of gates
@@ -221,6 +234,7 @@ class SensingDotTuner(ParameterTuner):
 
     def is_tuned(self, voltages: pd.Series):
         current_parameter, variances = self.evaluate(cheap=True)
+        self.solver.rescale_values(current_parameter, variances)
         self._last_voltage = voltages
         self._last_parameter_values[current_parameter.index] = current_parameter[current_parameter.index]
         self._last_parameters_variances[current_parameter.index] = variances[current_parameter.index]
@@ -228,8 +242,10 @@ class SensingDotTuner(ParameterTuner):
         if current_parameter.le(self.target["minimum"]).any():
             self.cheap_evaluation_only = True
             if current_parameter.le(self.target["cost_threshold"]).any():
+                self.logger.info('Expensive evaluation required.')
                 self.cheap_evaluation_only = False
                 current_parameter, variances = self.evaluate(cheap=False)
+                self.solver.rescale_values(current_parameter, variances)
                 self._last_parameter_values[current_parameter.index] = current_parameter[current_parameter.index]
                 self._last_parameters_variances[current_parameter.index] = variances[current_parameter.index]
 
@@ -251,11 +267,13 @@ class SensingDotTuner(ParameterTuner):
         variances = []
         if cheap:
             for evaluator in self._cheap_evaluators:
+                self.logger.info('Evaluating the cheap evaluator %s' % evaluator.name)
                 parameter, variance = evaluator.evaluate()
                 parameters.append(parameter)
                 variances.append(variance)
         else:
             for evaluator in self._expensive_evaluators:
+                self.logger.info('Evaluating the expensive evaluator %s' % evaluator.name)
                 parameter, variance = evaluator.evaluate()
                 parameters.append(parameter)
                 variances.append(variance)

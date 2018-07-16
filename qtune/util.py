@@ -13,7 +13,7 @@ import sympy as sp
 import pandas as pd
 
 
-__all__ = ['nth']
+__all__ = ['nth', 'get_orthogonal_vector', 'time_string', 'calculate_gradient_non_orthogonal']
 
 
 class EvaluationError(RuntimeError):
