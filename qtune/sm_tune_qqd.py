@@ -142,9 +142,9 @@ class SMTuneQQD(Experiment):
         self._last_file_name = result['data'].args.fullFile
 
         if measurement.name == 'line':
-            ret = np.array(result['data'].ana.width)
+            ret = np.array(result['data'].ana.width, result['data'].ana.gof)
         elif measurement.name == 'lead':
-            ret = np.array(result['data'].ana.fitParams[1][3])
+            ret = np.array(result['data'].ana.fitParams[1][3], result['data'].ana.gof)
         elif measurement.name == 'load':
             ret = result
         elif measurement.name == 'load pos':
@@ -222,8 +222,9 @@ class SMQQDPassThru(Evaluator):
         # deal meas results to parameters
         # one value for each parameter since they have already been evaluated
         for parameter, value in zip(self.parameters, return_values):
-            result[parameter] = value
-            error[parameter] = self._error[parameter]
+            result[parameter] = value[0]
+            # The r square error is written to the return values and used to scale the error
+            error[parameter] = self._error[parameter] * value[-1]
 
 
         self._raw_x_data = (next(self._count),)
