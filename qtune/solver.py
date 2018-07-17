@@ -113,11 +113,12 @@ class NewtonSolver(Solver):
     def __init__(self, target: pd.DataFrame,
                  gradient_estimators: Sequence[GradientEstimator],
                  current_position: pd.Series,
-                 current_values: pd.Series=None):
+                 current_values: pd.Series=None,
+                 maximal_step_size: float=np.nan):
         self._target = target
         self._gradient_estimators = list(gradient_estimators)
         assert (len(self._target.index) == len(self._gradient_estimators))
-
+        self._maximal_step_size = maximal_step_size
         self._current_position = current_position
         for gradient_estimator in gradient_estimators:
             assert set(self._current_position.index).issubset(set(gradient_estimator.current_position.index))
@@ -164,6 +165,8 @@ class NewtonSolver(Solver):
         jacobian = self.jacobian[self._current_position.index]
 
         step, *_ = np.linalg.lstsq(jacobian, required_diff, rcond=None)
+        if np.linalg.norm(step) > self._maximal_step_size:
+            step *= self._maximal_step_size / np.linalg.norm(step)
         return self._current_position + step
 
     def update_after_step(self, position: pd.Series, values: pd.Series, variances: pd.Series):
@@ -179,7 +182,8 @@ class NewtonSolver(Solver):
         return dict(target=self.target,
                     gradient_estimators=self._gradient_estimators,
                     current_position=self._current_position,
-                    current_values=self._current_values)
+                    current_values=self._current_values,
+                    maximal_step_size=self._maximal_step_size)
 
     def __repr__(self):
         return "{type}({data})".format(type=type(self), data=self.to_hdf5())
