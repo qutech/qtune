@@ -188,7 +188,7 @@ class SMQQDPassThru(Evaluator):
         super().__init__(experiment, measurements, parameters, raw_x_data, raw_y_data, name=name)
         self._count = count(0)
         self._error = None
-        self._n_error_estimate = 5
+        self._n_error_estimate = 3
         self._last_file_names = last_file_names
 
     def evaluate_error(self):
