@@ -142,9 +142,9 @@ class SMTuneQQD(Experiment):
         self._last_file_name = result['data'].args.fullFile
 
         if measurement.name == 'line':
-            ret = np.array(result['data'].ana.width, result['data'].ana.gof)
+            ret = np.array([result['data'].ana.width, result['data'].ana.gof])
         elif measurement.name == 'lead':
-            ret = np.array(result['data'].ana.fitParams[1][3], result['data'].ana.gof)
+            ret = np.array([result['data'].ana.fitParams[1][3], result['data'].ana.gof])
         elif measurement.name == 'load':
             ret = result
         elif measurement.name == 'load pos':
@@ -188,7 +188,7 @@ class SMQQDPassThru(Evaluator):
         super().__init__(experiment, measurements, parameters, raw_x_data, raw_y_data, name=name)
         self._count = count(0)
         self._error = None
-        self._n_error_estimate = 3
+        self._n_error_estimate = 8
         self._last_file_names = last_file_names
 
     def evaluate_error(self):
@@ -212,19 +212,31 @@ class SMQQDPassThru(Evaluator):
         if self._error is None: self.evaluate_error()
 
         return_values = np.array([])
+        gof = np.array([])
         self._last_file_names = []
 
         # get all measurement results first
         for measurement in self.measurements:
-            return_values = np.append(return_values, self.experiment.measure(measurement))
+            measurement_result = self.experiment.measure(measurement)
             self._last_file_names.append(self.experiment.get_last_file_name())
+            if measurement.name in ['lead', 'line']:
+                return_values = np.append(return_values, measurement_result[0:-1])
+                gof = np.append(gof, np.full(len(return_values),measurement_result[-1]))
+            else:
+                return_values = np.append(return_values, measurement_result)
+                gof = np.append(gof, np.full(len(return_values),np.nan))
 
         # deal meas results to parameters
         # one value for each parameter since they have already been evaluated
-        for parameter, value in zip(self.parameters, return_values):
-            result[parameter] = value[0]
+        for parameter, value, err_gof in zip(self.parameters, return_values, gof):
+            result[parameter] = value
             # The r square error is written to the return values and used to scale the error
-            error[parameter] = self._error[parameter] * value[-1]
+            if err_gof == err_gof:
+                error[parameter] = self._error[parameter] / err_gof
+            else:
+                error[parameter] = self._error[parameter]
+                if measurement.name in ['lead', 'line']:
+                    pass
 
 
         self._raw_x_data = (next(self._count),)

@@ -149,11 +149,11 @@ class SubsetTuner(ParameterTuner):
         current_parameters, current_variances = self.evaluate()
         self.solver.rescale_values(current_parameters, current_variances)
 
-        self._solver.update_after_step(voltages, current_parameters, current_variances)
-
         self._last_voltage = voltages
         self._last_parameter_values = current_parameters[self._last_parameter_values.index]
         self._last_parameters_variances = current_variances[self._last_parameter_values.index]
+
+        self._solver.update_after_step(voltages, current_parameters, current_variances)
         if ((self.target.desired - current_parameters).abs().fillna(0.) < self.target['tolerance'].fillna(
                 np.inf)).all():
             self._tuned_voltages.append(voltages)

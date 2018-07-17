@@ -275,6 +275,12 @@ class KalmanGradientEstimator(GradientEstimator):
                is_new_position=False):
         position = position[self._current_position.index]
         diff_position = (position - self._current_position).dropna(0)
+
+        if self._current_value is None:
+            self._current_value = value
+            self._current_position = position
+            return
+
         diff_values = (value - self._current_value)
 
         if not np.linalg.norm(diff_position) < 1e-7:
