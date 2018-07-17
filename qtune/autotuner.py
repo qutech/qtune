@@ -130,6 +130,7 @@ class Autotuner(metaclass=HDF5Serializable):
         assert(len(target_changes) <= len(self.tuning_hierarchy))
         for i, target_change in enumerate(target_changes):
             self.tuning_hierarchy[i].target = target_change
+        self._current_tuner_index = 0
 
     def __getstate__(self):
         """Do not pickle the async writer object"""

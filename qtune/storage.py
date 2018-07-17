@@ -1,6 +1,7 @@
 import warnings
 import copy
 import itertools
+import logging
 
 import threading
 import queue
@@ -253,7 +254,7 @@ def from_hdf5(filename_or_handle, reserved):
     return _from_hdf5(root, root, deserialized)
 
 
-def _writer_target(write_queue: Union[multiprocessing.JoinableQueue, queue.Queue]):
+def _writer_target(write_queue: Union[multiprocessing.JoinableQueue, queue.Queue], logger='qtune'):
     while True:
         task = write_queue.get()
         try:
@@ -262,7 +263,11 @@ def _writer_target(write_queue: Union[multiprocessing.JoinableQueue, queue.Queue
             else:
                 name, file_name, obj, reserved = task
 
-            to_hdf5(file_name, name, obj, reserved=reserved)
+            try:
+                to_hdf5(file_name, name, obj, reserved=reserved)
+            except:
+                logging.getLogger(logger).exception('Error while writing "%s"' % file_name)
+                raise
         finally:
             write_queue.task_done()
 
@@ -274,14 +279,26 @@ class AsynchronousHDF5Writer:
         self.reserved = reserved
 
         if multiprocess:
-            Queue = multiprocessing.JoinableQueue
-            Worker = multiprocessing.Process
+            self.QueueType = multiprocessing.JoinableQueue
+            self.WorkerType = multiprocessing.Process
         else:
-            Queue = queue.Queue
-            Worker = threading.Thread
-        self._queue = Queue()
-        self._worker = Worker(target=_writer_target, args=(self._queue, ))
+            self.QueueType = queue.Queue
+            self.WorkerType = threading.Thread
+
+        self._worker = None
+        self._queue = None
+
+        self._initialize()
+
+    def _initialize(self):
+        self._queue = self.QueueType()
+        self._worker = self.WorkerType(target=_writer_target, args=(self._queue,))
         self._worker.start()
+
+    def restart(self):
+        self.join()
+
+        self._initialize()
 
     def join(self):
         """Stop writing and join thread."""

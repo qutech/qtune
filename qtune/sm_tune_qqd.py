@@ -12,6 +12,18 @@ from qtune import mat2py
 # This file bundles everything connected to the QQD
 # Is this the file structure we want?
 
+class QQDMeasurement(Measurement):
+    """
+    This class saves all necessary information for a measurement.
+    """
+    def __init__(self, name, **kwargs):
+        self.data=None
+
+
+    def to_hdf5(self):
+        return dict(self.options,
+                    name=self.name)
+
 
 # TODO Add Tests
 class SMTuneQQD(Experiment):
@@ -23,6 +35,8 @@ class SMTuneQQD(Experiment):
         super().__init__()
         self._matlab = matlab_instance
         # TODO Add some more comments
+
+        self._last_file_name = None
 
         self._measurements = {'sensor 2d': Measurement('sensor 2d'),
                               'sensor': Measurement('sensor'),
@@ -54,6 +68,8 @@ class SMTuneQQD(Experiment):
     def read_gate_voltages(self) -> pd.Series:
         return pd.Series(self._matlab.engine.qtune.read_qqd_gate_voltages()).sort_index()
 
+    def get_last_file_name(self):
+        return self._last_file_name
 
     def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
 
@@ -119,14 +135,16 @@ class SMTuneQQD(Experiment):
         """This function basically wraps the tune.m script on the Trition 200 setup"""
         # TODO allow this to create the measurement on the fly when arguments cntrl, index, options are passed
         if measurement.name not in self._measurements.keys():
-            raise ValueError('Unknown measurement: {}'.format(measurement))
+            raise ValueError(f'Unknown measurement: {measurement}')
 
         result = self.pytune(measurement)
+        # check if this is saved correctly
+        self._last_file_name = result['data'].args.fullFile
 
         if measurement.name == 'line':
-            ret = np.array(result['data'].ana.width)
+            ret = np.array([result['data'].ana.width, result['data'].ana.gof])
         elif measurement.name == 'lead':
-            ret = np.array(result['data'].ana.fitParams[1][3])
+            ret = np.array([result['data'].ana.fitParams[1][3], result['data'].ana.gof])
         elif measurement.name == 'load':
             ret = result
         elif measurement.name == 'load pos':
@@ -150,8 +168,14 @@ class SMTuneQQD(Experiment):
             ret = np.full(n, np.nan)
             for i in range(n):
                 ret[i] = result['data'].ana[i].position
+        else:
+            raise ValueError(f'Measurement {measurement} not implemented')
 
         return ret
+
+    def __repr__(self):
+        return "{type}({data})".format(type=type(self).__name__,
+                                       data=self._matlab.engine.matlab.engine.engineName())
 
 
 class SMQQDPassThru(Evaluator):
@@ -159,27 +183,60 @@ class SMQQDPassThru(Evaluator):
     Pass thru Evaluator
     """
     def __init__(self, experiment: SMTuneQQD, measurements: List[Measurement],
-                 parameters: List[str], name: str):
+                 parameters: List[str], name: str, raw_x_data=tuple(), raw_y_data=tuple(), last_file_names=None):
 
-        super().__init__(experiment, measurements, parameters, tuple(), tuple(), name)
+        super().__init__(experiment, measurements, parameters, raw_x_data, raw_y_data, name=name)
         self._count = count(0)
+        self._error = None
+        self._n_error_estimate = 8
+        self._last_file_names = last_file_names
+
+    def evaluate_error(self):
+        self.logger.info(f'Evaluating {str(self)} {self._n_error_estimate} times to estimate error.')
+        values = []
+
+        self._error = pd.Series(index=self.parameters)
+        for i in range(self._n_error_estimate):
+            tmp, _ = self.evaluate()
+            values.append(tmp)
+
+        df = pd.DataFrame(values)
+        self._error = df.var(0)
+
 
     def evaluate(self) -> Tuple[pd.Series, pd.Series]:
-
+        self.logger.info(f'Evaluating {str(self)}.')
         result = pd.Series(index=self._parameters)
         error = pd.Series(index=self._parameters)
 
+        if self._error is None: self.evaluate_error()
+
         return_values = np.array([])
+        gof = np.array([])
+        self._last_file_names = []
 
         # get all measurement results first
         for measurement in self.measurements:
-            return_values = np.append(return_values, self.experiment.measure(measurement))
+            measurement_result = self.experiment.measure(measurement)
+            self._last_file_names.append(self.experiment.get_last_file_name())
+            if measurement.name in ['lead', 'line']:
+                return_values = np.append(return_values, measurement_result[0:-1])
+                gof = np.append(gof, np.full(len(return_values),measurement_result[-1]))
+            else:
+                return_values = np.append(return_values, measurement_result)
+                gof = np.append(gof, np.full(len(return_values),np.nan))
 
         # deal meas results to parameters
         # one value for each parameter since they have already been evaluated
-        for parameter, value in zip(self.parameters, return_values):
+        for parameter, value, err_gof in zip(self.parameters, return_values, gof):
             result[parameter] = value
-            error[parameter] = np.abs((value/100)**2)   # Estimate the error as 10% of the value
+            # The r square error is written to the return values and used to scale the error
+            if err_gof == err_gof:
+                error[parameter] = self._error[parameter] / err_gof
+            else:
+                error[parameter] = self._error[parameter]
+                if measurement.name in ['lead', 'line']:
+                    pass
 
 
         self._raw_x_data = (next(self._count),)
@@ -187,6 +244,5 @@ class SMQQDPassThru(Evaluator):
         return result, error
 
     def to_hdf5(self):
-        return dict(experiment=self.experiment,
-                    measurements=self.measurements,
-                    parameters=self.parameters)
+        return dict(super().to_hdf5(),
+                    last_file_names=self._last_file_names)

@@ -89,7 +89,8 @@ class PlotOrganizer(pg.LayoutWidget):
             if plot_param.endswith('error'):
                 data_std = self.history.get_parameter_std(param)
                 error_plot_args = dict(x=data.index.values, y=data,
-                                       height=data_std)
+                                       height=data_std * 2)
+                # QT graph is plotting only half the height to each side. Our errors are 2 sided
 
                 if error_plot_name in self._plots:
                     self._plots[error_plot_name].setData(**error_plot_args)
@@ -123,7 +124,8 @@ class PlotOrganizer(pg.LayoutWidget):
                 if plot_grad.endswith('error') and gate in data_var:
                     gate_data_var = data_var[gate]
                     error_plot_args = dict(x=gate_data.index.values, y=gate_data,
-                                           height=gate_data_var.apply(np.sqrt))
+                                           height=gate_data_var.apply(np.sqrt) * 2)
+                    # QT graph is plotting only half the height to each side. Our errors are 2 sided
 
                     if grad_err_name in self._plots:
                         self._plots[grad_err_name].setData(**error_plot_args)

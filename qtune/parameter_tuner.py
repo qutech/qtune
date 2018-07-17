@@ -28,7 +28,7 @@ class ParameterTuner(metaclass=HDF5Serializable):
         if last_parameter_values is None:
             self._last_parameter_values = pd.Series(index=solver.target.index)
         else:
-            assert set(self.target.index).issubset(set(last_parameter_values.index))
+            assert set(self.target.dropna().index).issubset(set(last_parameter_values.index))
             self._last_parameter_values = last_parameter_values
 
         if last_parameters_variances is None:
@@ -44,7 +44,7 @@ class ParameterTuner(metaclass=HDF5Serializable):
                             for parameter in evaluator.parameters)
         if len(parameters) != len(set(parameters)):
             raise ValueError('Parameter duplicates: ', {p for p in parameters if parameters.count(p) > 1})
-        assert set(self.target.index).issubset(set(parameters))
+        assert set(self.target.dropna().index).issubset(set(parameters))
 
     @property
     def logger(self):
@@ -149,11 +149,11 @@ class SubsetTuner(ParameterTuner):
         current_parameters, current_variances = self.evaluate()
         self.solver.rescale_values(current_parameters, current_variances)
 
-        self._solver.update_after_step(voltages, current_parameters, current_variances)
-
         self._last_voltage = voltages
         self._last_parameter_values = current_parameters[self._last_parameter_values.index]
         self._last_parameters_variances = current_variances[self._last_parameter_values.index]
+
+        self._solver.update_after_step(voltages, current_parameters, current_variances)
         if ((self.target.desired - current_parameters).abs().fillna(0.) < self.target['tolerance'].fillna(
                 np.inf)).all():
             self._tuned_voltages.append(voltages)

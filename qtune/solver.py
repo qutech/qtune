@@ -148,19 +148,19 @@ class NewtonSolver(Solver):
         return pd.Series(jacobian.values.ravel(), index=index)
 
     def suggest_next_position(self) -> pd.Series:
-        for estimator in self._gradient_estimators:
-            suggestion = estimator.require_measurement(self._current_position.index)
-            if suggestion is not None and not suggestion.empty:
-                return suggestion
+        for i, estimator in enumerate(self._gradient_estimators):
+            if self.target.iloc[i].desired == self.target.iloc[i].desired:
+                suggestion = estimator.require_measurement(self._current_position.index)
+                if suggestion is not None and not suggestion.empty:
+                    return suggestion
 
         if self._current_position is None:
             raise RuntimeError('NewtonSolver: Position not initialized.')
 
         # our jacobian is sufficiently accurate
         # nan targets are replaced with the current values
-        target = self.target.desired.fillna(self._current_values)
 
-        required_diff = target - self._current_values
+        required_diff = self.target.desired.add(-1*self._current_values, fill_value=0).fillna(0)
 
         jacobian = self.jacobian[self._current_position.index]
 
