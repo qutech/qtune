@@ -199,9 +199,9 @@ class KalmanGradientEstimator(GradientEstimator):
     def __init__(self,
                  kalman_gradient: KalmanGradient,
                  current_position: pd.Series,
-                 current_value: float,
                  maximum_covariance: Union[pd.Series, float],
-                 epsilon: Union[pd.Series, float]):
+                 epsilon: Union[pd.Series, float],
+                 current_value: Optional[float]=None):
         """
         This gradient estimator uses the Kalman filter to track the gradient.
         :param kalman_gradient: The Kalman filter tracking the gradient.
