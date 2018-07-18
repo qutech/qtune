@@ -107,7 +107,7 @@ class FiniteDiffGradientTest(unittest.TestCase):
 class KalmanGradientTest(unittest.TestCase):
     def test_require_measurement(self):
         kalman_grad = KalmanGradient(n_pos_dim=3, n_values=1, initial_gradient=None,
-                                                           initial_covariance_matrix=np.diag([2, .9, .9]))
+                                     initial_covariance_matrix=np.diag([2, .9, .9]))
         kalman_args = dict(kalman_gradient=kalman_grad,
                            current_position=pd.Series(data=[1, 2, 3], index=["a", "b", "c"]), current_value=1.,
                            maximum_covariance=1., epsilon=0.1)

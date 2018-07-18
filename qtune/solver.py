@@ -77,8 +77,12 @@ class Solver(metaclass=HDF5Serializable):
     def target(self, changes: Dict[str, pd.Series]):
         for category in changes:
             if not changes[category].index.isin(self.target[category].index).all():
-                self.logger.warning('The new target %s %s is not consistent with the previous one!'
-                                    % (category, changes[category].index.difference(self.target[category].index)))
+                self.logger.error('The new target %s %s is not consistent with the previous one!'
+                                  % (category, changes[category].index.difference(self.target[category].index)))
+            if len(self.target.loc[changes[category].index, category]) != changes[category]:
+                self.logger.error('The new target %s %s is not consistent with the previous one! It does not have the '
+                                  'right number of entries.'
+                                  % (category, changes[category].index.difference(self.target[category].index)))
             self.target.loc[changes[category].index, category] = changes[category]
 
 

@@ -71,6 +71,16 @@ class Autotuner(metaclass=HDF5Serializable):
     def current_tuner_status(self):
         return self._current_tuner_status
 
+    @property
+    def all_estimators_ready(self):
+        for par_tuner in self.tuning_hierarchy:
+            solver = par_tuner.solver
+            if isinstance(solver, NewtonSolver):
+                for grad_est in solver.gradient_estimators:
+                    if grad_est.require_measurement(solver.current_position.index):
+                        return False
+        return True
+
     def is_tuning_complete(self) -> bool:
         if self._current_tuner_index == len(self._tuning_hierarchy):
             return True
@@ -163,8 +173,8 @@ class Autotuner(metaclass=HDF5Serializable):
 
             voltage_state_change = pd.DataFrame()
             voltage_state_change['current'] = self._tuning_hierarchy[0].last_voltages[self._voltage_to_set.index]
-            voltage_state_change['target']  = self._voltage_to_set
-            voltage_state_change['step']    = voltage_state_change['target'] - voltage_state_change['current']
+            voltage_state_change['target'] = self._voltage_to_set
+            voltage_state_change['step'] = voltage_state_change['target'] - voltage_state_change['current']
             self.logger.info("The voltages will be changed by:\n{}".format(
                 voltage_state_change
             ))
