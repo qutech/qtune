@@ -112,7 +112,7 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
     def covariance(self) -> pd.DataFrame:
         return self._covariance
 
-    def require_measurement(self, gates=None) -> pd.Series:
+    def require_measurement(self, gates=None, tuned_jacobian=None) -> pd.Series:
         if self._current_position.isnull().all():
             raise RuntimeError("No measurement can be requested before defining the current position.")
 
@@ -359,8 +359,8 @@ class SelfInitializingKalmanEstimator(GradientEstimator):
     def covariance(self):
         return self.active_estimator.covariance()
 
-    def require_measurement(self, gates: Sequence[str]=None):
-        return self.active_estimator.require_measurement(gates=gates)
+    def require_measurement(self, gates: Sequence[str]=None, tuned_jacobian=None):
+        return self.active_estimator.require_measurement(gates=gates, tuned_jacobian=tuned_jacobian)
 
     def update(self, position: pd.Series, value: float, covariance: float, is_new_position=False):
         self.finite_difference_estimator.update(position, value, covariance, is_new_position)

@@ -60,7 +60,7 @@ class Solver(metaclass=HDF5Serializable):
     def logger(self):
         return logging.getLogger(self._logger)
 
-    def suggest_next_position(self, tuned_parameters) -> pd.Series:
+    def suggest_next_position(self, tuned_parameters=None) -> pd.Series:
         raise NotImplementedError()
 
     def update_after_step(self, position: pd.Series, values: pd.Series, variances: pd.Series):
@@ -163,7 +163,8 @@ class NewtonSolver(Solver):
 
         for i, estimator in enumerate(self._gradient_estimators):
             if self.target.iloc[i].desired == self.target.iloc[i].desired:
-                suggestion = estimator.require_measurement(self._current_position.index, tuned_jacobian)
+                suggestion = estimator.require_measurement(gates=self._current_position.index,
+                                                           tuned_jacobian=tuned_jacobian)
                 if suggestion is not None and not suggestion.empty:
                     return suggestion
 
