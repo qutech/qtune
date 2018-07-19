@@ -60,7 +60,7 @@ class Solver(metaclass=HDF5Serializable):
     def logger(self):
         return logging.getLogger(self._logger)
 
-    def suggest_next_position(self) -> pd.Series:
+    def suggest_next_position(self, tuned_parameters=None) -> pd.Series:
         raise NotImplementedError()
 
     def update_after_step(self, position: pd.Series, values: pd.Series, variances: pd.Series):
@@ -84,7 +84,6 @@ class Solver(metaclass=HDF5Serializable):
                                   'right number of entries.'
                                   % (category, changes[category].index.difference(self.target[category].index)))
             self.target.loc[changes[category].index, category] = changes[category]
-
 
     @property
     def state(self) -> pd.Series:
@@ -151,10 +150,21 @@ class NewtonSolver(Solver):
                 index.append('d{}/d{}'.format(param, gate))
         return pd.Series(jacobian.values.ravel(), index=index)
 
-    def suggest_next_position(self) -> pd.Series:
+    def suggest_next_position(self, tuned_parameters=None) -> pd.Series:
+        tuned_parameters = set() if tuned_parameters is None else tuned_parameters
+        tuned_estimators = [gradient
+                            for i, gradient in enumerate(self._gradient_estimators)
+                            if self.target.index[i] in tuned_parameters]
+        tuned_gradients = [gradient.estimate() for gradient in tuned_estimators]
+        if len(tuned_gradients) == 0:
+            tuned_jacobian = None
+        else:
+            tuned_jacobian = pd.concat(tuned_gradients, axis=1).T
+
         for i, estimator in enumerate(self._gradient_estimators):
             if self.target.iloc[i].desired == self.target.iloc[i].desired:
-                suggestion = estimator.require_measurement(self._current_position.index)
+                suggestion = estimator.require_measurement(gates=self._current_position.index,
+                                                           tuned_jacobian=tuned_jacobian)
                 if suggestion is not None and not suggestion.empty:
                     return suggestion
 
@@ -452,7 +462,7 @@ class ForwardingSolver(Solver):
             next_position = next_position[self._current_position.index]
         self._next_position = next_position
 
-    def suggest_next_position(self) -> pd.Series:
+    def suggest_next_position(self, tuned_parameters) -> pd.Series:
         return self._next_position
 
     def update_after_step(self, position: pd.Series, values: pd.Series, variances: pd.Series):

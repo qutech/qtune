@@ -21,7 +21,8 @@ class ForwardingSolverTests(unittest.TestCase):
 
         fs = ForwardingSolver(values_to_position=v2p,
                               current_position=start,
-                              target=pd.DataFrame())
+                              target=pd.DataFrame(
+                                  {'rescaling_factor': pd.Series(index=['v1', 'v2', 'v3'], data=[1, 1, 1])}))
 
         volts = pd.Series([1.1, 2.2, 3.3, 4.4], index=start.index)
         params = pd.Series([1, 2, 3], index=['p1', 'p2', 'p3'])
@@ -31,7 +32,7 @@ class ForwardingSolverTests(unittest.TestCase):
 
         expected = pd.Series([1, 2, 3, 4.4], index=start.index)
 
-        pd.testing.assert_series_equal(expected, fs.suggest_next_position())
+        pd.testing.assert_series_equal(expected, fs.suggest_next_position(tuned_parameters=None))
 
 
 class NewtonSolverTest(unittest.TestCase):
@@ -52,7 +53,7 @@ class NewtonSolverTest(unittest.TestCase):
         solver = NewtonSolver(target=target, gradient_estimators=gradient_estimators, current_position=start,
                               current_values=current_values)
 
-        next_step = solver.suggest_next_position()
+        next_step = solver.suggest_next_position(tuned_parameters=None)
         assert (np.allclose(a=target.desired.values,
                             b=current_values + np.asarray(solver.jacobian).dot(np.asarray(next_step - start))))
 
@@ -116,4 +117,3 @@ class NewtonSolverTest(unittest.TestCase):
         pandas.testing.assert_index_equal(call_args_2[0][0].index, pd.Index(["position2", "position3", "position1"]))
         self.assertAlmostEqual(call_args_2[0][1:], (2, 4))
         self.assertEqual(call_args_2[1], dict(is_new_position=True))
-

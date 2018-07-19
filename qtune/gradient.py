@@ -2,6 +2,7 @@ from typing import Optional, Union, Sequence
 
 import numpy as np
 import pandas as pd
+import sympy as sp
 
 from qtune.kalman_gradient import KalmanGradient
 from qtune.storage import HDF5Serializable
@@ -34,7 +35,7 @@ class GradientEstimator(metaclass=HDF5Serializable):
     def covariance(self) -> pd.Series:
         raise NotImplementedError()
 
-    def require_measurement(self, gates: Sequence[str]=None) -> Optional[pd.Series]:
+    def require_measurement(self, gates: Sequence[str]=None, tuned_jacobian=None) -> Optional[pd.Series]:
         raise NotImplementedError()
 
     def update(self, position: pd.Series, value: float, covariance: float, is_new_position=False):
@@ -111,7 +112,7 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
     def covariance(self) -> pd.DataFrame:
         return self._covariance
 
-    def require_measurement(self, gates=None) -> pd.Series:
+    def require_measurement(self, gates=None, tuned_jacobian=None) -> pd.Series:
         if self._current_position.isnull().all():
             raise RuntimeError("No measurement can be requested before defining the current position.")
 
@@ -242,31 +243,42 @@ class KalmanGradientEstimator(GradientEstimator):
         return pd.DataFrame(self._kalman_gradient.cov, index=self._current_position.index,
                             columns=self._current_position.index)
 
-    def require_measurement(self, gates: Sequence[str]=None):
+    def require_measurement(self, gates: Sequence[str]=None, tuned_jacobian=None):
         """I do not think this is good math. Julian to the rescue!"""
         if gates is None:
             gates = self._current_position.index
 
-        # extract relevant entries of the covariance matrix
-        full_cov = pd.DataFrame(data=self._kalman_gradient.cov, index=self._current_position.index,
-                                columns=self._current_position.index)
-        relevant_cov = full_cov.loc[gates, gates]
+        if tuned_jacobian is None:
+            # extract relevant entries of the covariance matrix
+            full_cov = pd.DataFrame(data=self._kalman_gradient.cov, index=self._current_position.index,
+                                    columns=self._current_position.index)
+            relevant_cov = full_cov.loc[gates, gates]
 
-        eigenvalues, eigenvectors = np.linalg.eigh(relevant_cov)
+            eigenvalues, eigenvectors = np.linalg.eigh(relevant_cov)
 
-        # scale the eigenvectors with their eigenvalues (vector-wise)
-        scaled_eigenvectors = eigenvalues[np.newaxis, :] * eigenvectors
+            # scale the eigenvectors with their eigenvalues (vector-wise)
+            scaled_eigenvectors = eigenvalues[np.newaxis, :] * eigenvectors
 
-        # divide them by the maximum covariance (dimension-wise)
-        rescaled_eigenvectors = scaled_eigenvectors / self._maximum_covariance[gates].values[:, np.newaxis]
+            # divide them by the maximum covariance (dimension-wise)
+            rescaled_eigenvectors = scaled_eigenvectors / self._maximum_covariance[gates].values[:, np.newaxis]
 
-        # check whether the rescaled vectors are longer than one
-        lengths = np.linalg.norm(rescaled_eigenvectors, axis=0)
-        if np.any(lengths > 1):
-            # if so, pick the longest and scale it with epsilon
-            self.logger.info('New measurement required by kalman gradient estimator.')
-            self.logger.debug(self._epsilon[gates] * eigenvectors[:, np.argmax(lengths)])
-            return self._current_position.add(self._epsilon[gates] * eigenvectors[:, np.argmax(lengths)], fill_value=0.)
+            # check whether the rescaled vectors are longer than one
+            lengths = np.linalg.norm(rescaled_eigenvectors, axis=0)
+            if np.any(lengths > 1):
+                # if so, pick the longest and scale it with epsilon
+                self.logger.info('New measurement required by kalman gradient estimator.')
+                self.logger.debug(self._epsilon[gates] * eigenvectors[:, np.argmax(lengths)])
+                return self._current_position.add(self._epsilon[gates] * eigenvectors[:, np.argmax(lengths)],
+                                                  fill_value=0.)
+        else:
+            tuned_matrix = sp.Matrix(tuned_jacobian)
+            eigenvectors = tuned_matrix.nullspace()
+            max_covariance = self._maximum_covariance.max()
+            directional_covariances = [v.T * self._kalman_gradient.cov * v for v in eigenvectors]
+            if np.any(np.array(directional_covariances) > max_covariance):
+                return self._current_position.add(
+                    self._epsilon[gates] * np.squeeze(
+                        np.array(eigenvectors[np.argmax(directional_covariances)]).astype(float)), fill_value=0.)
 
     def update(self,
                position: pd.Series,
@@ -347,8 +359,8 @@ class SelfInitializingKalmanEstimator(GradientEstimator):
     def covariance(self):
         return self.active_estimator.covariance()
 
-    def require_measurement(self, gates: Sequence[str]=None):
-        return self.active_estimator.require_measurement(gates=gates)
+    def require_measurement(self, gates: Sequence[str]=None, tuned_jacobian=None):
+        return self.active_estimator.require_measurement(gates=gates, tuned_jacobian=tuned_jacobian)
 
     def update(self, position: pd.Series, value: float, covariance: float, is_new_position=False):
         self.finite_difference_estimator.update(position, value, covariance, is_new_position)

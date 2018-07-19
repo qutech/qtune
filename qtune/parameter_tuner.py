@@ -113,7 +113,7 @@ class ParameterTuner(metaclass=HDF5Serializable):
         """
         raise NotImplementedError()
 
-    def get_next_voltages(self) -> pd.Series:
+    def get_next_voltages(self, tuned_parameters=None) -> pd.Series:
         """The next voltage in absolute values.
         :return: next_voltages
         """
@@ -165,8 +165,8 @@ class SubsetTuner(ParameterTuner):
         else:
             return False
 
-    def get_next_voltages(self):
-        solver_voltage = self._solver.suggest_next_position()
+    def get_next_voltages(self, tuned_parameters=None):
+        solver_voltage = self._solver.suggest_next_position(tuned_parameters)
         result = pd.Series(self._last_voltage)
 
         result[solver_voltage.index] = solver_voltage
@@ -260,8 +260,8 @@ class SensingDotTuner(ParameterTuner):
             self._tuned_voltages.append(voltages)
             return True
 
-    def get_next_voltages(self):
-        next_voltages = self._solver.suggest_next_position()
+    def get_next_voltages(self, tuned_parameters=None):
+        next_voltages = self._solver.suggest_next_position(tuned_parameters=tuned_parameters)
         return next_voltages
 
     def evaluate(self, cheap=True, **kwargs) -> (pd.Series, pd.Series):
