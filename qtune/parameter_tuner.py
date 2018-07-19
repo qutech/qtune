@@ -28,7 +28,7 @@ class ParameterTuner(metaclass=HDF5Serializable):
         if last_parameter_values is None:
             not_na_index = self.target.drop([ind for ind in self.target.columns if self.target.isna().all()[ind]],
                                             axis='columns').dropna().index
-            self._last_parameter_values = pd.Series(not_na_index)
+            self._last_parameter_values = pd.Series(index=not_na_index)
         else:
             assert set(self.target.dropna().index).issubset(set(last_parameter_values.index))
             self._last_parameter_values = last_parameter_values
@@ -36,7 +36,7 @@ class ParameterTuner(metaclass=HDF5Serializable):
         if last_parameters_variances is None:
             not_na_index = self.target.drop([ind for ind in self.target.columns if self.target.isna().all()[ind]],
                                             axis='columns').dropna().index
-            self._last_parameters_variances = pd.Series(not_na_index)
+            self._last_parameters_variances = pd.Series(index=not_na_index)
         else:
             assert set(self.target.index).issubset(set(last_parameters_variances.index))
             self._last_parameters_variances = last_parameters_variances
