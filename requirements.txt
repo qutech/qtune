@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 pandas
 numpy
 filterpy
@@ -7,6 +6,3 @@ sympy
 matplotlib
 pyqtgraph
 h5py
-=======
-.
->>>>>>> 773ad36e7933b6c282a12a8243d24f4a9ade18fe
