@@ -272,13 +272,16 @@ class KalmanGradientEstimator(GradientEstimator):
                                                   fill_value=0.)
         else:
             tuned_matrix = sp.Matrix(tuned_jacobian)
-            eigenvectors = tuned_matrix.nullspace()
+            nullvecotors = [vec / vec.norm() for vec in tuned_matrix.nullspace()]
             max_covariance = self._maximum_covariance.max()
-            directional_covariances = [v.T * self._kalman_gradient.cov * v for v in eigenvectors]
+            directional_covariances = [v.T * self._kalman_gradient.cov * v for v in nullvecotors]
             if np.any(np.array(directional_covariances) > max_covariance):
+                self.logger.info('New measurement required by kalman gradient estimator.')
+                self.logger.debug(self._epsilon[gates] * np.squeeze(
+                        np.array(nullvecotors[np.argmax(directional_covariances)]).astype(float)))
                 return self._current_position.add(
                     self._epsilon[gates] * np.squeeze(
-                        np.array(eigenvectors[np.argmax(directional_covariances)]).astype(float)), fill_value=0.)
+                        np.array(nullvecotors[np.argmax(directional_covariances)]).astype(float)), fill_value=0.)
 
     def update(self,
                position: pd.Series,

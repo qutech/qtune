@@ -199,7 +199,7 @@ class SMQQDPassThru(Evaluator):
         self._last_file_names = last_file_names
 
     def evaluate_error(self):
-        self.logger.info(f'Evaluating {str(self)} {self._n_error_estimate} times to estimate error.')
+        self.logger.info(f'Evaluating {self.parameters} {self._n_error_estimate} times to estimate error.')
         values = []
 
         self._error = pd.Series(index=self.parameters)
@@ -212,7 +212,7 @@ class SMQQDPassThru(Evaluator):
 
 
     def evaluate(self) -> Tuple[pd.Series, pd.Series]:
-        self.logger.info(f'Evaluating {str(self)}.')
+        self.logger.info(f'Evaluating {self.parameters}.')
         result = pd.Series(index=self._parameters)
         error = pd.Series(index=self._parameters)
 
@@ -234,7 +234,7 @@ class SMQQDPassThru(Evaluator):
             else:
                 return_values = np.append(return_values, measurement_result)
                 # gof = np.append(gof, np.full(len(return_values),np.nan))
-                sum_residuals = np.append(sum_residuals, np.full(len(measurement_result) - 1, np.nan))
+                sum_residuals = np.append(sum_residuals, np.full(len(measurement_result), np.nan))
 
         # deal meas results to parameters
         # one value for each parameter since they have already been evaluated
