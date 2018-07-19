@@ -19,7 +19,7 @@ class Autotuner(metaclass=HDF5Serializable):
     def __init__(self, experiment: Experiment, tuning_hierarchy: List[ParameterTuner] = None,
                  current_tuner_index: int = 0, current_tuner_status: bool = False,
                  voltage_to_set: Optional[pd.Series] = None, hdf5_storage_path: Optional[str] = None,
-                 append_time_to_path: bool=True):
+                 append_time_to_path: bool = True):
         self._experiment = experiment
         self._tuning_hierarchy = tuning_hierarchy
         for par_tuner in tuning_hierarchy:
@@ -81,6 +81,16 @@ class Autotuner(metaclass=HDF5Serializable):
                         return False
         return True
 
+    @property
+    def tuned_parameters(self):
+        tuned_parameters = set()
+        for i in range(0, self.current_tuner_index):
+            not_na_index = self.tuning_hierarchy[i].target.drop(
+                [ind for ind in self.tuning_hierarchy[i].target.columns if
+                 self.tuning_hierarchy[i].target.isna().all()[ind]], axis='columns').dropna().index
+            tuned_parameters = tuned_parameters.union(set(not_na_index))
+        return tuned_parameters
+
     def is_tuning_complete(self) -> bool:
         if self._current_tuner_index == len(self._tuning_hierarchy):
             return True
@@ -137,7 +147,7 @@ class Autotuner(metaclass=HDF5Serializable):
         corresponding to the categories of the target like 'desired' or 'tolerance'.
         :return:
         """
-        assert(len(target_changes) <= len(self.tuning_hierarchy))
+        assert (len(target_changes) <= len(self.tuning_hierarchy))
         for i, target_change in enumerate(target_changes):
             self.tuning_hierarchy[i].target = target_change
         self._current_tuner_index = 0
@@ -198,7 +208,7 @@ class Autotuner(metaclass=HDF5Serializable):
                                      self.get_current_tuner().last_parameters_and_variances[0]
                                      [self.get_current_tuner().target.index])
         else:
-            self._voltage_to_set = self.get_current_tuner().get_next_voltages()
+            self._voltage_to_set = self.get_current_tuner().get_next_voltages(tuned_parameters=self.tuned_parameters)
             self._current_tuner_status = False
             self.logger.info("Next voltages are being calculated.")
 
