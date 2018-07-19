@@ -189,7 +189,12 @@ class SMQQDPassThru(Evaluator):
         super().__init__(experiment, measurements, parameters, raw_x_data, raw_y_data, name=name)
         self._count = count(0)
         self._error = error
-        self._reference_residual_sum = reference_residual_sum
+        if reference_residual_sum is None:
+            self._reference_residual_sum = pd.Series(index=parameters, data=np.nan)
+        elif not isinstance(reference_residual_sum, pd.Series):
+            self._reference_residual_sum = pd.Series(index=parameters, data=reference_residual_sum)
+        else:
+            self._reference_residual_sum = reference_residual_sum
         self._n_error_estimate = 8
         self._last_file_names = last_file_names
 
