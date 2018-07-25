@@ -11,12 +11,12 @@ from qtune.storage import HDF5Serializable
 from qtune.util import get_orthogonal_vector
 
 
-def make_target(desired: pd.Series=np.nan,
-                maximum: pd.Series=np.nan,
-                minimum: pd.Series=np.nan,
-                tolerance: pd.Series=np.nan,
-                cost_threshold: pd.Series=np.nan,
-                rescaling_factor: pd.Series=np.nan):
+def make_target(desired: pd.Series = np.nan,
+                maximum: pd.Series = np.nan,
+                minimum: pd.Series = np.nan,
+                tolerance: pd.Series = np.nan,
+                cost_threshold: pd.Series = np.nan,
+                rescaling_factor: pd.Series = np.nan):
     for ser in (desired, maximum, minimum, tolerance):
         if isinstance(ser, pd.Series):
             names = ser.index
@@ -95,7 +95,7 @@ class Solver(metaclass=HDF5Serializable):
         rescaling_factor = self.target['rescaling_factor'].append(
             pd.Series(index=values.index.difference(self.target['rescaling_factor'].index), data=1))
         values /= rescaling_factor[values.index]
-        variances /= rescaling_factor[values.index]**2
+        variances /= rescaling_factor[values.index] ** 2
 
     def descale_values(self, values: pd.Series, variances: pd.Series):
         """The values are rescaling right after they have been given to the Solver. The target must therefore hold
@@ -103,7 +103,7 @@ class Solver(metaclass=HDF5Serializable):
         rescaling_factor = self.target['rescaling_factor'].append(
             pd.Series(index=values.index.difference(self.target['rescaling_factor'].index), data=1))
         values *= rescaling_factor[values.index]
-        variances *= rescaling_factor[values.index]**2
+        variances *= rescaling_factor[values.index] ** 2
 
 
 class NewtonSolver(Solver):
@@ -113,16 +113,21 @@ class NewtonSolver(Solver):
 
     TODO: The jacobian is not automatically in the correct basis
     """
+
     def __init__(self, target: pd.DataFrame,
                  gradient_estimators: Sequence[GradientEstimator],
                  current_position: pd.Series,
-                 current_values: pd.Series=None,
-                 maximal_step_size: float=np.nan):
+                 current_values: pd.Series = None,
+                 maximal_step_size: float = np.nan,
+                 maximal_step_number: int = 1,
+                 updateless_steps: int = 0):
         self._target = target
         self._gradient_estimators = list(gradient_estimators)
         assert (len(self._target.index) == len(self._gradient_estimators))
         self._maximal_step_size = maximal_step_size
+        self._maximal_step_number = maximal_step_number
         self._current_position = current_position
+        self._updateless_steps = updateless_steps
         for gradient_estimator in gradient_estimators:
             assert set(self._current_position.index).issubset(set(gradient_estimator.current_position.index))
         if current_values is not None:
@@ -151,22 +156,23 @@ class NewtonSolver(Solver):
         return pd.Series(jacobian.values.ravel(), index=index)
 
     def suggest_next_position(self, tuned_parameters=None) -> pd.Series:
-        tuned_parameters = set() if tuned_parameters is None else tuned_parameters
-        tuned_estimators = [gradient
-                            for i, gradient in enumerate(self._gradient_estimators)
-                            if self.target.index[i] in tuned_parameters]
-        tuned_gradients = [gradient.estimate() for gradient in tuned_estimators]
-        if len(tuned_gradients) == 0:
-            tuned_jacobian = None
-        else:
-            tuned_jacobian = pd.concat(tuned_gradients, axis=1).T
+        if self._updateless_steps == 0:
+            tuned_parameters = set() if tuned_parameters is None else tuned_parameters
+            tuned_estimators = [gradient
+                                for i, gradient in enumerate(self._gradient_estimators)
+                                if self.target.index[i] in tuned_parameters]
+            tuned_gradients = [gradient.estimate() for gradient in tuned_estimators]
+            if len(tuned_gradients) == 0:
+                tuned_jacobian = None
+            else:
+                tuned_jacobian = pd.concat(tuned_gradients, axis=1).T
 
-        for i, estimator in enumerate(self._gradient_estimators):
-            if self.target.iloc[i].desired == self.target.iloc[i].desired:
-                suggestion = estimator.require_measurement(gates=self._current_position.index,
-                                                           tuned_jacobian=tuned_jacobian)
-                if suggestion is not None and not suggestion.empty:
-                    return suggestion
+            for i, estimator in enumerate(self._gradient_estimators):
+                if self.target.iloc[i].desired == self.target.iloc[i].desired:
+                    suggestion = estimator.require_measurement(gates=self._current_position.index,
+                                                               tuned_jacobian=tuned_jacobian)
+                    if suggestion is not None and not suggestion.empty:
+                        return suggestion
 
         if self._current_position is None:
             raise RuntimeError('NewtonSolver: Position not initialized.')
@@ -174,12 +180,18 @@ class NewtonSolver(Solver):
         # our jacobian is sufficiently accurate
         # nan targets are replaced with the current values
 
-        required_diff = self.target.desired.add(-1*self._current_values, fill_value=0).fillna(0)
+        required_diff = self.target.desired.add(-1 * self._current_values, fill_value=0).fillna(0)
 
         jacobian = self.jacobian[self._current_position.index]
 
         step, *_ = np.linalg.lstsq(jacobian, required_diff, rcond=None)
+
+        # this is not exactly Newton
         if np.linalg.norm(step) > self._maximal_step_size:
+            if self._updateless_steps == 0:
+                number_of_steps = int(np.linalg.norm(step) / self._maximal_step_size)
+                self._updateless_steps = min(number_of_steps, self._maximal_step_number)
+            self._updateless_steps -= 1
             step *= self._maximal_step_size / np.linalg.norm(step)
         return self._current_position + step
 
@@ -197,7 +209,9 @@ class NewtonSolver(Solver):
                     gradient_estimators=self._gradient_estimators,
                     current_position=self._current_position,
                     current_values=self._current_values,
-                    maximal_step_size=self._maximal_step_size)
+                    maximal_step_size=self._maximal_step_size,
+                    maximal_step_number=self._maximal_step_number,
+                    updateless_steps=self._updateless_steps)
 
     def __repr__(self):
         return "{type}({data})".format(type=type(self), data=self.to_hdf5())
@@ -219,9 +233,9 @@ class NelderMeadSolver(Solver):
                  span: pd.Series,
                  current_position: pd.Series,
                  current_values: pd.Series,
-                 reflected_point: Optional[Tuple[pd.Series, pd.Series]]=None,
-                 shrunk_points: Optional[Sequence[Tuple[pd.Series, pd.Series]]]=None,
-                 cost_function: Callable=lambda v: np.sum(v*v),
+                 reflected_point: Optional[Tuple[pd.Series, pd.Series]] = None,
+                 shrunk_points: Optional[Sequence[Tuple[pd.Series, pd.Series]]] = None,
+                 cost_function: Callable = lambda v: np.sum(v * v),
                  state='built_up'):
         """
 
@@ -281,7 +295,7 @@ class NelderMeadSolver(Solver):
         if self._cost_function:
             return self._cost_function(values)
         else:
-            np.sum(values*values)
+            np.sum(values * values)
 
     def get_costs(self):
         return [self.cost_function(values) for _, values in self.simplex]
@@ -298,6 +312,7 @@ class NelderMeadSolver(Solver):
         def get_entry_cost(entry):
             _, values = entry
             return self.cost_function(values)
+
         return sorted(self.simplex, key=get_entry_cost)
 
     def _insert_into_simplex(self, position, values):
@@ -312,7 +327,7 @@ class NelderMeadSolver(Solver):
         m = pd.DataFrame(positions).mean(axis=0)
         r = 2 * m - worst_position
         s = m + 2 * (m - worst_position)
-        c = m + (r - m)/2
+        c = m + (r - m) / 2
         cc = m + (worst_position - m) / 2
 
         if len(self.simplex) < len(self.current_position) + 1:
@@ -443,11 +458,12 @@ class NelderMeadSolver(Solver):
 class ForwardingSolver(Solver):
     """Solves by forwarding the values of the given values and renaming them to a voltage vector which updates the
     given position"""
+
     def __init__(self,
                  target: pd.DataFrame,
                  values_to_position: pd.Series,
                  current_position: pd.Series,
-                 next_position: pd.Series=None):
+                 next_position: pd.Series = None):
         """
 
         :param values_to_position: A series of strings
