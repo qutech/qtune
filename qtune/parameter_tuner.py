@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from qtune.evaluator import Evaluator
-from qtune.solver import Solver
+from qtune.solver import Solver, NewtonSolver
 from qtune.storage import HDF5Serializable
 
 import logging
@@ -131,8 +131,8 @@ class ParameterTuner(metaclass=HDF5Serializable):
 class SubsetTuner(ParameterTuner):
     """This tuner uses only a subset of gates to tune the parameters"""
 
-    def __init__(self, evaluators: Sequence[Evaluator], gates: Sequence[str],
-                 **kwargs):
+    def __init__(self, evaluators: Sequence[Evaluator], gates: Sequence[str], maximal_step_size, maximal_step_number,
+                 number_queued_steps, **kwargs):
         """
         :param evaluators:
         :param gates: Gates which are used to tune the parameters
@@ -145,15 +145,22 @@ class SubsetTuner(ParameterTuner):
         self._tunable_gates = sorted(gates)
         assert set(gates) == set(self.solver.current_position.index)
 
+        self._maximal_step_size = maximal_step_size
+        self._maximal_step_number = maximal_step_number
+        self._number_queued_steps = number_queued_steps
+
     @property
     def tunable_gates(self):
         return self._tunable_gates
 
     def is_tuned(self, voltages: pd.Series) -> bool:
+        self._last_voltage = voltages
+
+        if self._number_queued_steps != 0:
+            return False
+
         current_parameters, current_variances = self.evaluate()
         self.solver.rescale_values(current_parameters, current_variances)
-
-        self._last_voltage = voltages
         self._last_parameter_values = current_parameters[self._last_parameter_values.index]
         self._last_parameters_variances = current_variances[self._last_parameter_values.index]
 
@@ -167,11 +174,19 @@ class SubsetTuner(ParameterTuner):
 
     def get_next_voltages(self, tuned_parameters=None):
         solver_voltage = self._solver.suggest_next_position(tuned_parameters)
-        result = pd.Series(self._last_voltage)
+        new_voltages = pd.Series(self._last_voltage)
+        new_voltages[solver_voltage.index] = solver_voltage
+        step = new_voltages - self._last_voltage
 
-        result[solver_voltage.index] = solver_voltage
+        if np.linalg.norm(step) > self._maximal_step_size:
+            if self._number_queued_steps == 0:
+                number_of_steps = int(np.linalg.norm(step) / self._maximal_step_size)
+                self._number_queued_steps = min(number_of_steps, self._maximal_step_number)
+            self._number_queued_steps -= 1
+            step *= self._maximal_step_size / np.linalg.norm(step)
 
-        return result
+        rescaled_new_voltages = self._last_voltage + step
+        return rescaled_new_voltages
 
     def to_hdf5(self):
         parent_dict = super().to_hdf5()

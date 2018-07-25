@@ -117,17 +117,11 @@ class NewtonSolver(Solver):
     def __init__(self, target: pd.DataFrame,
                  gradient_estimators: Sequence[GradientEstimator],
                  current_position: pd.Series,
-                 current_values: pd.Series = None,
-                 maximal_step_size: float = np.nan,
-                 maximal_step_number: int = 1,
-                 updateless_steps: int = 0):
+                 current_values: pd.Series = None):
         self._target = target
         self._gradient_estimators = list(gradient_estimators)
         assert (len(self._target.index) == len(self._gradient_estimators))
-        self._maximal_step_size = maximal_step_size
-        self._maximal_step_number = maximal_step_number
         self._current_position = current_position
-        self._updateless_steps = updateless_steps
         for gradient_estimator in gradient_estimators:
             assert set(self._current_position.index).issubset(set(gradient_estimator.current_position.index))
         if current_values is not None:
@@ -156,23 +150,22 @@ class NewtonSolver(Solver):
         return pd.Series(jacobian.values.ravel(), index=index)
 
     def suggest_next_position(self, tuned_parameters=None) -> pd.Series:
-        if self._updateless_steps == 0:
-            tuned_parameters = set() if tuned_parameters is None else tuned_parameters
-            tuned_estimators = [gradient
-                                for i, gradient in enumerate(self._gradient_estimators)
-                                if self.target.index[i] in tuned_parameters]
-            tuned_gradients = [gradient.estimate() for gradient in tuned_estimators]
-            if len(tuned_gradients) == 0:
-                tuned_jacobian = None
-            else:
-                tuned_jacobian = pd.concat(tuned_gradients, axis=1).T
+        tuned_parameters = set() if tuned_parameters is None else tuned_parameters
+        tuned_estimators = [gradient
+                            for i, gradient in enumerate(self._gradient_estimators)
+                            if self.target.index[i] in tuned_parameters]
+        tuned_gradients = [gradient.estimate() for gradient in tuned_estimators]
+        if len(tuned_gradients) == 0:
+            tuned_jacobian = None
+        else:
+            tuned_jacobian = pd.concat(tuned_gradients, axis=1).T
 
-            for i, estimator in enumerate(self._gradient_estimators):
-                if self.target.iloc[i].desired == self.target.iloc[i].desired:
-                    suggestion = estimator.require_measurement(gates=self._current_position.index,
-                                                               tuned_jacobian=tuned_jacobian)
-                    if suggestion is not None and not suggestion.empty:
-                        return suggestion
+        for i, estimator in enumerate(self._gradient_estimators):
+            if self.target.iloc[i].desired == self.target.iloc[i].desired:
+                suggestion = estimator.require_measurement(gates=self._current_position.index,
+                                                           tuned_jacobian=tuned_jacobian)
+                if suggestion is not None and not suggestion.empty:
+                    return suggestion
 
         if self._current_position is None:
             raise RuntimeError('NewtonSolver: Position not initialized.')
@@ -187,12 +180,7 @@ class NewtonSolver(Solver):
         step, *_ = np.linalg.lstsq(jacobian, required_diff, rcond=None)
 
         # this is not exactly Newton
-        if np.linalg.norm(step) > self._maximal_step_size:
-            if self._updateless_steps == 0:
-                number_of_steps = int(np.linalg.norm(step) / self._maximal_step_size)
-                self._updateless_steps = min(number_of_steps, self._maximal_step_number)
-            self._updateless_steps -= 1
-            step *= self._maximal_step_size / np.linalg.norm(step)
+
         return self._current_position + step
 
     def update_after_step(self, position: pd.Series, values: pd.Series, variances: pd.Series):
@@ -208,10 +196,7 @@ class NewtonSolver(Solver):
         return dict(target=self.target,
                     gradient_estimators=self._gradient_estimators,
                     current_position=self._current_position,
-                    current_values=self._current_values,
-                    maximal_step_size=self._maximal_step_size,
-                    maximal_step_number=self._maximal_step_number,
-                    updateless_steps=self._updateless_steps)
+                    current_values=self._current_values)
 
     def __repr__(self):
         return "{type}({data})".format(type=type(self), data=self.to_hdf5())
