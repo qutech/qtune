@@ -130,3 +130,19 @@ class KalmanGradientTest(unittest.TestCase):
         kalman_grad_est.update(position=req_meas, value=1, covariance=.01, is_new_position=True)
         req_meas = kalman_grad_est.require_measurement()
         self.assertTrue(req_meas is None)
+
+        # test with tuned jacobian
+        kalman_grad = KalmanGradient(n_pos_dim=3, n_values=1, initial_gradient=None,
+                                     initial_covariance_matrix=np.diag([2, .9, .9]))
+        kalman_args = dict(kalman_gradient=kalman_grad,
+                           current_position=pd.Series(data=[1, 2, 3], index=["a", "b", "c"]), current_value=1.,
+                           maximum_covariance=1., epsilon=0.1)
+
+        kalman_grad_est = KalmanGradientEstimator(**kalman_args)
+
+        tuned_jacobian = np.array([[1, 1, 0], [1, 1, 0], [0, 0, 1]])
+
+        req_meas = kalman_grad_est.require_measurement(tuned_jacobian=tuned_jacobian)
+        expected_diff = pd.Series(index=['a', 'b', 'c'], data=[-1 * kalman_args['epsilon'] / np.sqrt(2),
+                                                               kalman_args['epsilon'] / np.sqrt(2), 0])
+        pd.testing.assert_series_equal(req_meas, kalman_args['current_position'].add(expected_diff))
