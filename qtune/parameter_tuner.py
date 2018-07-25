@@ -131,8 +131,8 @@ class ParameterTuner(metaclass=HDF5Serializable):
 class SubsetTuner(ParameterTuner):
     """This tuner uses only a subset of gates to tune the parameters"""
 
-    def __init__(self, evaluators: Sequence[Evaluator], gates: Sequence[str], maximal_step_size, maximal_step_number,
-                 number_queued_steps, **kwargs):
+    def __init__(self, evaluators: Sequence[Evaluator], gates: Sequence[str], maximal_step_size: float=np.nan,
+                 maximal_step_number: int=1, number_queued_steps: int=0, **kwargs):
         """
         :param evaluators:
         :param gates: Gates which are used to tune the parameters
@@ -190,7 +190,11 @@ class SubsetTuner(ParameterTuner):
 
     def to_hdf5(self):
         parent_dict = super().to_hdf5()
-        return dict(parent_dict, gates=self._tunable_gates)
+        return dict(parent_dict,
+                    gates=self._tunable_gates,
+                    maximal_step_size=self._maximal_step_size,
+                    maximal_step_number=self._maximal_step_number,
+                    number_queued_steps=self._number_queued_steps)
 
 
 class SensingDotTuner(ParameterTuner):
