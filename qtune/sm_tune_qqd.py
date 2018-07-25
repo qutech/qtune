@@ -158,7 +158,11 @@ class SMTuneQQD(Experiment):
         elif measurement.name == 'sensor 2d':
             ret = np.array([result['data'].ana.xVal, result['data'].ana.yVal, np.abs(result['data'].ana.minGradData)])
         elif measurement.name == 'chrg':
-            ret = np.squeeze(result['data'].ana.O)
+            if measurement.options['index'] == 2:
+                ret = np.array([np.linalg.norm(np.array(result['data'].ana.triplePointRight) -
+                                 np.array(result['data'].ana.triplePointLeft))]).astype(float)
+            else:
+                ret = np.squeeze(result['data'].ana.O)
         elif measurement.name == 'stp':
             ret = np.array([result['data'].ana.STp_x, result['data'].ana.STp_y])
         elif measurement.name == 'tl':
