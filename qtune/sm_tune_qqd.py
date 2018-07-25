@@ -160,7 +160,9 @@ class SMTuneQQD(Experiment):
         elif measurement.name == 'chrg':
             if measurement.options['index'] == 2:
                 ret = np.array([np.linalg.norm(np.array(result['data'].ana.triplePointRight) -
-                                 np.array(result['data'].ana.triplePointLeft))]).astype(float)
+                                 np.array(result['data'].ana.triplePointLeft))]
+
+                               ).astype(float)
             else:
                 ret = np.squeeze(result['data'].ana.O)
         elif measurement.name == 'stp':
@@ -169,9 +171,10 @@ class SMTuneQQD(Experiment):
             ret = np.array([result['data'].ana.Tp_x, result['data'].ana.Tp_y])
         elif measurement.name == 'resp':
             n = len(result['data'].ana)
-            ret = np.full(n, np.nan)
+            ret = np.full(2 * n, np.nan)
             for i in range(n):
                 ret[i] = result['data'].ana[i].position
+                ret[n + i] = result['data'].ana[i].sumResiduals
         else:
             raise ValueError(f'Measurement {measurement} not implemented')
 
@@ -235,6 +238,9 @@ class SMQQDPassThru(Evaluator):
                 return_values = np.append(return_values, measurement_result[0:-1])
                 # gof = np.append(gof, np.full(len(return_values),measurement_result[-1]))
                 sum_residuals = np.append(sum_residuals, np.full(len(measurement_result) - 1, measurement_result[-1]))
+            if measurement.name == 'resp':
+                return_values = np.append(return_values, measurement_result[0:4])
+                sum_residuals = np.append(sum_residuals, measurement_result[4:])
             else:
                 return_values = np.append(return_values, measurement_result)
                 # gof = np.append(gof, np.full(len(return_values),np.nan))
