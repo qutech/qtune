@@ -19,11 +19,22 @@ tune.disp_gate_voltages(gateNames, stepDelta);
 util.disp_section('Total Voltage Delta')
 tune.disp_gate_voltages(gateNames, totalDelta);
 
-if any(abs(totalDelta) > 70e-3)
-  error(['The Program tried to detune a gate by more than 70 mV from starting point!'])
+% if any(abs(totalDelta) > 70e-3)
+%   error(['The Program tried to detune a gate by more than 70 mV from starting point!'])
+% 	
+% elseif any(abs(stepDelta) > 30e-3)
+%   error(['The Program tried to step a gate by more than 30 mV!'])
+% 	
+% else %if util.yes_no_input(stdQuestionChangeGateVoltages, [], 'n')
+% 	smset(gateNames, newVoltages)
+% end
+
+
+if any(newVoltages > -.4)
+  error(['The Program tried to detune a gate higher than -0.4V!'])
 	
-elseif any(abs(stepDelta) > 30e-3)
-  error(['The Program tried to step a gate by more than 30 mV!'])
+elseif any(stepDelta < -1.3)
+  error(['The Program tried to detune a gate lower than -1.3V!'])
 	
 else %if util.yes_no_input(stdQuestionChangeGateVoltages, [], 'n')
 	smset(gateNames, newVoltages)
