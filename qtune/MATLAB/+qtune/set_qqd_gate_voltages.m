@@ -29,12 +29,18 @@ tune.disp_gate_voltages(gateNames, totalDelta);
 % 	smset(gateNames, newVoltages)
 % end
 
+if any(cellfun(@(x)(strcmp(x, 'IV_ref')), gateNames))
+	error('Do you really want to use IV_ref?');
+end
 
-if any(newVoltages > -.4)
-  error(['The Program tried to detune a gate higher than -0.4V!'])
+if any(newVoltages > 0)
+  error(['The Program tried to detune a gate higher than 0V!'])
 	
-elseif any(stepDelta < -1.3)
+elseif any(newVoltages < -1.3)
   error(['The Program tried to detune a gate lower than -1.3V!'])
+	
+elseif any(abs(stepDelta) > 10e-3)
+  error(['The Program tried to step a gate by more than 10 mV!'])	
 	
 else %if util.yes_no_input(stdQuestionChangeGateVoltages, [], 'n')
 	smset(gateNames, newVoltages)

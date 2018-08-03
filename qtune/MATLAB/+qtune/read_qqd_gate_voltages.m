@@ -3,6 +3,7 @@ function [gate_voltages] = read_qqd_gate_voltages(gates)
 %   Detailed explanation goes here
 global tunedata
 if nargin<1
+	error('this might return gate names in a differnt order since struct2cell uses the struct order. best use orderfields or something similar first');
   ri = tunedata.runIndex;
   dcGates = tunedata.run{ri}.opts.gates.names;
   rfGates = tunedata.run{ri}.opts.rfGates.names;
