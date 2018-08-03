@@ -66,6 +66,32 @@ class SubsetTunerTest(unittest.TestCase):
 
         self.assertEqual(passing_is_tuned, True)
 
+    @patch("qtune.solver.Solver")
+    @patch("qtune.evaluator.Evaluator")
+    def test_rescaling_in_get_next_voltage(self, mocked_evaluator, mocked_solver):
+        solver = mocked_solver()
+        solver.suggest_next_position = MagicMock(return_value=(pd.Series(index=['a', 'b', 'c'], data=10)))
+        evaluator = mocked_evaluator()
+        target = make_target(desired=pd.Series(index=["parameter_" + str(i) for i in range(1)],
+                                               data=[i + 1 for i in range(1)]),
+                             tolerance=pd.Series(index=["parameter_" + str(i) for i in range(1)],
+                                                 data=.56))
+        solver.target = target
+        solver.current_position.index = pd.Index(["a", "b", "c"])
+
+        subset_tuner_args = dict(evaluators=[evaluator],
+                                 gates=["a", "b", "c"],
+                                 solver=solver,
+                                 maximal_step_size=3,
+                                 maximal_step_number=4,
+                                 last_voltage=pd.Series(index=['a','b','c'], data=0))
+
+        subset_tuner = SubsetTuner(**subset_tuner_args)
+        next_voltages = subset_tuner.get_next_voltages()
+
+        self.assertAlmostEqual(np.linalg.norm(next_voltages), subset_tuner_args['maximal_step_size'])
+        self.assertEqual(subset_tuner._number_queued_steps, subset_tuner_args['maximal_step_number'] - 1)
+
 
 class SensingDotTunerTest(unittest.TestCase):
     @patch("qtune.solver.ForwardingSolver")
