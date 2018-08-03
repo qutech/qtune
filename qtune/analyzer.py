@@ -376,7 +376,7 @@ class Analyzer:
         return gradient_sequence_pd, covariance_sequence_pd
 
     def plot_concatenate_kalman_tune_run(self, tune_run_numbers, with_covariance=True, with_offset=True,
-                                         recalculate_gradient=True, alpha=1.02, recalculate_parameters=True):
+                                         recalculate_gradient=False, alpha=1.02, recalculate_parameters=False):
         number_runs = len(tune_run_numbers)
         desired_values_pd_concatenated_temp, gate_voltages_sequence_pd_concatenated, parameters_sequence_pd_concatenated, \
         gradient_sequence_pd_concatenated = \
@@ -603,9 +603,9 @@ class Analyzer:
         plt.xlabel("Measurement Number", fontsize=16)
 #        plt.xlim(9.5, 22.5)
         if with_offset:
-            plt.ylabel("Voltage Difference with offset [mV]", fontsize=16)
+            plt.ylabel("Voltage Difference with offset (mV)", fontsize=16)
         else:
-            plt.ylabel("Voltage Difference [mV]", fontsize=16)
+            plt.ylabel("Voltage Difference (mV)", fontsize=16)
         plt.title("Changes in Gate Voltages", fontsize=18)
 
     def recalculate_parameters(self, tune_run_number, start=0, end=None):
