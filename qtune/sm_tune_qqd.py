@@ -240,7 +240,11 @@ class SMQQDPassThru(Evaluator):
                 sum_residuals = np.append(sum_residuals, np.full(len(measurement_result) - 1, measurement_result[-1]))
             if measurement.name == 'resp':
                 return_values = np.append(return_values, measurement_result[0:4])
-                sum_residuals = np.append(sum_residuals, measurement_result[4:])
+                for i in range(4):
+                    if np.isclose(measurement_result[4+i],0) or measurement_result[4+i] != measurement_result[4+i]:
+                        sum_residuals = np.append(sum_residuals, [np.nan])
+                    else:
+                        sum_residuals = np.append(sum_residuals, measurement_result[4+i])
             else:
                 return_values = np.append(return_values, measurement_result)
                 # gof = np.append(gof, np.full(len(return_values),np.nan))

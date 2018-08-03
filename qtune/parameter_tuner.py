@@ -174,7 +174,7 @@ class SubsetTuner(ParameterTuner):
 
     def get_next_voltages(self, tuned_parameters=None):
         solver_voltage = self._solver.suggest_next_position(tuned_parameters)
-        new_voltages = pd.Series(self._last_voltage)
+        new_voltages = pd.Series(self._last_voltage).copy(deep=True)
         new_voltages[solver_voltage.index] = solver_voltage
         step = new_voltages - self._last_voltage
 
