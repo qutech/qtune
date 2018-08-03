@@ -79,7 +79,7 @@ class Solver(metaclass=HDF5Serializable):
             if not changes[category].index.isin(self.target[category].index).all():
                 self.logger.error('The new target %s %s is not consistent with the previous one!'
                                   % (category, changes[category].index.difference(self.target[category].index)))
-            if len(self.target.loc[changes[category].index, category]) != changes[category]:
+            if len(self.target.loc[changes[category].index, category]) != changes[category].size:
                 self.logger.error('The new target %s %s is not consistent with the previous one! It does not have the '
                                   'right number of entries.'
                                   % (category, changes[category].index.difference(self.target[category].index)))

@@ -38,7 +38,7 @@ class ParameterTuner(metaclass=HDF5Serializable):
                                             axis='columns').dropna().index
             self._last_parameters_variances = pd.Series(index=not_na_index)
         else:
-            assert set(self.target.index).issubset(set(last_parameters_variances.index))
+            # assert set(self.target.index).issubset(set(last_parameters_variances.index))
             self._last_parameters_variances = last_parameters_variances
 
         self._evaluators = tuple(evaluators)

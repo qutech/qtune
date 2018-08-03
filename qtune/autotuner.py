@@ -77,8 +77,9 @@ class Autotuner(metaclass=HDF5Serializable):
             solver = par_tuner.solver
             if isinstance(solver, NewtonSolver):
                 for grad_est in solver.gradient_estimators:
-                    if grad_est.require_measurement(solver.current_position.index):
-                        return False
+                    if isinstance(grad_est.require_measurement(solver.current_position.index), pd.Series):
+                        if not grad_est.require_measurement(solver.current_position.index).empty:
+                            return False
         return True
 
     @property
