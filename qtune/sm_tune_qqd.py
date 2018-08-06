@@ -74,8 +74,8 @@ class SMTuneQQD(Experiment):
     def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
 
         current_gate_voltages = self.read_gate_voltages()
-        #current_gate_voltages[new_gate_voltages.index] = new_gate_voltages[new_gate_voltages.index]
-        gate_voltages_to_matlab= new_gate_voltages.to_dict()
+        current_gate_voltages[new_gate_voltages.index] = new_gate_voltages[new_gate_voltages.index]
+        gate_voltages_to_matlab= current_gate_voltages.to_dict()
         for key, value in gate_voltages_to_matlab.items():
             gate_voltages_to_matlab[key] = float(value)
         self._matlab.engine.qtune.set_qqd_gate_voltages(gate_voltages_to_matlab)
@@ -142,7 +142,12 @@ class SMTuneQQD(Experiment):
         self._last_file_name = result['data'].args.fullFile
 
         if measurement.name == 'line':
-            ret = np.array([result['data'].ana.width, result['data'].ana.sumResiduals])
+            width = np.full(len(result['data'].ana), np.nan)
+            residual = np.full(len(result['data'].ana), np.nan)
+            for i in range(len(result['data'].ana)):
+                width[i] = result['data'].ana[i].width
+                residual[i] = result['data'].ana[i].sumResiduals
+            ret = np.array([np.mean(width), np.mean(residual)])
         elif measurement.name == 'lead':
             ret = np.array([result['data'].ana.fitParams[1][3], result['data'].ana.sumResiduals])
         elif measurement.name == 'load':
