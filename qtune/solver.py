@@ -472,10 +472,13 @@ class ForwardingSolver(Solver):
         return self._next_position
 
     def update_after_step(self, position: pd.Series, values: pd.Series, variances: pd.Series):
-        self._current_position[position.index] = position
-        self._next_position[position.index] = position
+        self._current_position[position.index.intersection(self.current_position.index)] = \
+            position[position.index.intersection(self.current_position.index)]
+        self._next_position[position.index.intersection(self._next_position.index)] = \
+            position[position.index.intersection(self.current_position.index)]
         self.descale_values(values, variances)
-        new_position_names = self._values_to_position[values.index].dropna()
+        new_position_names = self._values_to_position[
+            values.index.intersection(self._values_to_position.index)].dropna()
         self._next_position[new_position_names] = values[new_position_names.index]
 
     def state(self):
