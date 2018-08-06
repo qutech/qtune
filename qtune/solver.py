@@ -56,6 +56,11 @@ class Solver(metaclass=HDF5Serializable):
     def current_position(self) -> pd.Series:
         return self._current_position
 
+    @current_position.setter
+    def current_position(self, newPosition: pd.Series):
+        labels = self._current_position.index.intersection(newPosition)
+        self._current_position[labels] = newPosition[labels]
+
     @property
     def logger(self):
         return logging.getLogger(self._logger)

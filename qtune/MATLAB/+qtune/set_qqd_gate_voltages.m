@@ -29,9 +29,9 @@ tune.disp_gate_voltages(gateNames, totalDelta);
 % 	smset(gateNames, newVoltages)
 % end
 
-if any(cellfun(@(x)(strcmp(x, 'IV_ref')), gateNames))
-	error('Do you really want to use IV_ref?');
-end
+% if any(cellfun(@(x)(strcmp(x, 'IV_ref')), gateNames))
+% 	error('Do you really want to use IV_ref?');
+% end
 
 if any(newVoltages > 0)
   error(['The Program tried to detune a gate higher than 0V!'])

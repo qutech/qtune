@@ -157,6 +157,7 @@ class SubsetTuner(ParameterTuner):
         self._last_voltage = voltages
 
         if self._number_queued_steps != 0:
+            self.solver.current_position = voltages
             return False
 
         current_parameters, current_variances = self.evaluate()

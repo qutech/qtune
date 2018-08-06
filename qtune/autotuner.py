@@ -27,7 +27,7 @@ class Autotuner(metaclass=HDF5Serializable):
                 par_tuner._last_voltage = self._experiment.read_gate_voltages()
         self._current_tuner_index = current_tuner_index
         self._current_tuner_status = current_tuner_status
-        self._voltage_to_set = voltage_to_set
+        self._voltages_to_set = voltage_to_set
 
         if hdf5_storage_path:
             if append_time_to_path:
@@ -65,7 +65,7 @@ class Autotuner(metaclass=HDF5Serializable):
 
     @property
     def voltages_to_set(self):
-        return self._voltage_to_set
+        return self._voltages_to_set
 
     @property
     def current_tuner_status(self):
@@ -101,8 +101,8 @@ class Autotuner(metaclass=HDF5Serializable):
     def ready_to_tune(self) -> bool:
         naming_coherent = True
         all_gates = set(self._experiment.read_gate_voltages().index)
-        if self._voltage_to_set is not None:
-            assert set(self._voltage_to_set.index).issubset(all_gates)
+        if self._voltages_to_set is not None:
+            assert set(self._voltages_to_set.index).issubset(all_gates)
         for tuner_number, par_tuner in enumerate(self._tuning_hierarchy):
             solver = par_tuner.solver
             if par_tuner.last_voltages is not None:
@@ -152,6 +152,7 @@ class Autotuner(metaclass=HDF5Serializable):
         for i, target_change in enumerate(target_changes):
             self.tuning_hierarchy[i].target = target_change
         self._current_tuner_index = 0
+        self._voltages_to_set = None
 
     def __getstate__(self):
         """Do not pickle the async writer object"""
@@ -178,21 +179,21 @@ class Autotuner(metaclass=HDF5Serializable):
         if self.is_tuning_complete():
             raise RuntimeError('The tuning is already complete!')
 
-        if self._voltage_to_set is not None:
+        if self._voltages_to_set is not None:
             if self.voltages_to_set.isna().any():
                 raise RuntimeError('A voltage is required to be set to NAN')
 
             voltage_state_change = pd.DataFrame()
-            voltage_state_change['current'] = self._tuning_hierarchy[0].last_voltages[self._voltage_to_set.index]
-            voltage_state_change['target'] = self._voltage_to_set
+            voltage_state_change['current'] = self._tuning_hierarchy[0].last_voltages[self._voltages_to_set.index]
+            voltage_state_change['target'] = self._voltages_to_set
             voltage_state_change['step'] = voltage_state_change['target'] - voltage_state_change['current']
             self.logger.info("The voltages will be changed by:\n{}".format(
                 voltage_state_change
             ))
 
-            self._experiment.set_gate_voltages(self._voltage_to_set)
+            self._experiment.set_gate_voltages(self._voltages_to_set)
             self._current_tuner_index = 0
-            self._voltage_to_set = None
+            self._voltages_to_set = None
         elif not self._current_tuner_status:
             self.logger.info("The parameters of ParameterTuner number " + str(self._current_tuner_index) +
                              " are being evaluated.")
@@ -209,7 +210,7 @@ class Autotuner(metaclass=HDF5Serializable):
                                      self.get_current_tuner().last_parameters_and_variances[0]
                                      [self.get_current_tuner().target.index])
         else:
-            self._voltage_to_set = self.get_current_tuner().get_next_voltages(tuned_parameters=self.tuned_parameters)
+            self._voltages_to_set = self.get_current_tuner().get_next_voltages(tuned_parameters=self.tuned_parameters)
             self._current_tuner_status = False
             self.logger.info("Next voltages are being calculated.")
 
@@ -221,7 +222,7 @@ class Autotuner(metaclass=HDF5Serializable):
             tuning_hierarchy=self._tuning_hierarchy,
             current_tuner_index=self._current_tuner_index,
             current_tuner_status=self._current_tuner_status,
-            voltage_to_set=self._voltage_to_set,
+            voltage_to_set=self._voltages_to_set,
             hdf5_storage_path=self._hdf5_storage_path
         )
 
