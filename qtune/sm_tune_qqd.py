@@ -136,6 +136,9 @@ class SMTuneQQD(Experiment):
         # TODO allow this to create the measurement on the fly when arguments cntrl, index, options are passed
         if measurement.name not in self._measurements.keys():
             raise ValueError(f'Unknown measurement: {measurement}')
+        for key in measurement.options:
+            if isinstance(measurement.options[key], np.generic):
+                measurement.options[key] = self._matlab.to_matlab(measurement.options[key])
 
         result = self.pytune(measurement)
         # check if this is saved correctly
@@ -143,11 +146,10 @@ class SMTuneQQD(Experiment):
 
         if measurement.name == 'line':
             width = np.full(len(result['data'].ana), np.nan)
-            residual = np.full(len(result['data'].ana), np.nan)
             for i in range(len(result['data'].ana)):
                 width[i] = result['data'].ana[i].width
-                residual[i] = result['data'].ana[i].sumResiduals
-            ret = np.array([np.mean(width), np.mean(residual)])
+                # variance[i] = result['data'].ana[i].sumResiduals
+            ret = np.array([np.mean(width), np.var(width) / len(result['data'].ana)])
         elif measurement.name == 'lead':
             ret = np.array([result['data'].ana.fitParams[1][3], result['data'].ana.sumResiduals])
         elif measurement.name == 'load':
@@ -233,17 +235,22 @@ class SMQQDPassThru(Evaluator):
         return_values = np.array([])
         gof = np.array([])
         sum_residuals = np.array([])
+        variances = np.array([])
         self._last_file_names = []
 
         # get all measurement results first
         for measurement in self.measurements:
             measurement_result = self.experiment.measure(measurement)
             self._last_file_names.append(self.experiment.get_last_file_name())
-            if measurement.name in ['lead', 'line']:
+            if measurement.name in ['lead']:
                 return_values = np.append(return_values, measurement_result[0:-1])
                 # gof = np.append(gof, np.full(len(return_values),measurement_result[-1]))
                 sum_residuals = np.append(sum_residuals, np.full(len(measurement_result) - 1, measurement_result[-1]))
-            if measurement.name == 'resp':
+            elif measurement.name == 'line':
+                return_values = np.append(return_values, measurement_result[0])
+                variances = np.append(variances, measurement_result[1])
+                sum_residuals = np.append(sum_residuals, np.full(len(measurement_result), np.nan))
+            elif measurement.name == 'resp':
                 return_values = np.append(return_values, measurement_result[0:4])
                 for i in range(4):
                     if np.isclose(measurement_result[4+i],0) or measurement_result[4+i] != measurement_result[4+i]:
@@ -257,16 +264,21 @@ class SMQQDPassThru(Evaluator):
 
         # deal meas results to parameters
         # one value for each parameter since they have already been evaluated
-        for parameter, value, sum_res in zip(self.parameters, return_values, sum_residuals):
-            result[parameter] = value
-            # The r square error is written to the return values and used to scale the error
-            if sum_res == sum_res:
-                if self._reference_residual_sum[parameter] == self._reference_residual_sum[parameter]:
-                    error[parameter] = self._error[parameter] * sum_res / self._reference_residual_sum[parameter]
+        if measurement.name == 'line':
+            for parameter, value, variance in zip(self.parameters, return_values, variances):
+                result[parameter] = value
+                error[parameter] = variance
+        else:
+            for parameter, value, sum_res in zip(self.parameters, return_values, sum_residuals):
+                result[parameter] = value
+                # The r square error is written to the return values and used to scale the error
+                if sum_res == sum_res:
+                    if self._reference_residual_sum[parameter] == self._reference_residual_sum[parameter]:
+                        error[parameter] = self._error[parameter] * sum_res / self._reference_residual_sum[parameter]
+                    else:
+                        error[parameter] = self._error[parameter]
                 else:
                     error[parameter] = self._error[parameter]
-            else:
-                error[parameter] = self._error[parameter]
 
 
         self._raw_x_data = (next(self._count),)

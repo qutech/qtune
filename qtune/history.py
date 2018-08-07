@@ -245,7 +245,7 @@ class History:
             self._evaluator_data = self._evaluator_data.append(new_evaluator_data, ignore_index=True, sort=True)
 
     def load_directory(self, path):
-        with qtune.storage.ParallelHDF5Reader(reserved={'experiment': self.experiment}, multiprocess=True) as reader:
+        with qtune.storage.ParallelHDF5Reader(reserved={'experiment': self.experiment}, multiprocess=False) as reader:
             directory_content = [os.path.join(path, file)
                                  for file in sorted(os.listdir(path))]
             for loaded_data in reader.read_iter(directory_content):
