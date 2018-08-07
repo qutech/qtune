@@ -130,10 +130,8 @@ class SpecialMeasureMatlab:
             casted = self.engine.reshape(casted, *shape)
 
             return self.engine.transpose(casted)
-        elif isinstance(obj, np.float64):
-            return float(obj)
-        elif isinstance(obj, np.int64):
-            return int(obj)
+        elif isinstance(obj, np.generic):
+            return float(np.asscalar(obj))
         elif isinstance(obj, List):
             return [self.to_matlab(x) for x in obj]
         elif isinstance(obj, Tuple):
