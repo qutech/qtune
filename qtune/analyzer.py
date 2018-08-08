@@ -452,7 +452,7 @@ class Analyzer:
 
             figure_number = 30
             for parameter in self.parameter_names:
-                plt.figure(figure_number)
+                plt.figure(figure_number, figsize=(5, 4))
                 figure_number += 1
                 for gate in self.tunable_gate_names:
                     plt.errorbar(x=list(range(number_steps[number_runs - 1] + 1)),
@@ -466,12 +466,12 @@ class Analyzer:
                     plt.gca().tick_params("y", labelsize=16)
 #                    plt.xlim(9.5, 22.5)
 #                    plt.ylim(-20, 3)
-                    plt.title(
-                        "Recalculated gradient row: " + parameter_plot_name(
-                            parameter.decode("ascii"), with_unit=False) + r"; with $\alpha = $" + str(alpha),
-                        fontsize=18)
-                    plt.title("Gradient row: " + parameter_plot_name(parameter.decode("ascii"), with_unit=False),
-                              fontsize=18)
+                    # plt.title(
+                    #    "Recalculated gradient row: " + parameter_plot_name(
+                    #        parameter.decode("ascii"), with_unit=False) + r"; with $\alpha = $" + str(alpha),
+                    #    fontsize=18)
+                    #plt.title("Gradient row: " + parameter_plot_name(parameter.decode("ascii"), with_unit=False),
+                    #          fontsize=18)
                     for j in range(number_runs - 1):
                         plt.axvline(x=number_steps[j])
                     plt.legend(fontsize=16)
@@ -480,21 +480,21 @@ class Analyzer:
                     fig = plt.gcf()
                     fig.set_size_inches(9.5, 8)
         figure_number = 1
-        plt.figure(figure_number)
+        plt.figure(figure_number, figsize=(5, 4))
 
         number_parameter = len(self.parameter_names)
         for i in range(number_parameter):
             if recalculate_parameters:
-                plt.figure(figure_number + 1)
+                plt.figure(figure_number + 1, figsize=(5, 4))
                 plt.subplot(number_parameter, 1, i + 1)
                 #plt.plot(residuals_pd_concatenated[self.parameter_names[i]], "r")
                 plt.errorbar(x=list(range(number_steps[number_runs - 1] + 1)),
                              y=parameters_sequence_pd_concatenated_recalc[self.parameter_names[i]],
                              yerr=np.sqrt(residuals_pd_concatenated[self.parameter_names[i]]), color="r")
 #                plt.xlim(9.5, 22.5)
-                if i == 0:
-                    #plt.title("Recalculated Parameters with Residuals", fontsize=18)
-                    plt.title("Parameters", fontsize=18)
+                # if i == 0:
+                    # plt.title("Recalculated Parameters with Residuals", fontsize=18)
+                    # plt.title("Parameters", fontsize=18)
                 for j in range(number_runs - 1):
                     plt.axvline(x=number_steps[j])
                 plt.ylabel(parameter_plot_name(self.parameter_names[i].decode("ascii")), fontsize=16)
@@ -514,13 +514,13 @@ class Analyzer:
                     start_desired_val_range = number_steps[run] + 0.01
                 plt.plot(x_des_val, y_des_val, "b")
 
-            plt.figure(figure_number)
+            plt.figure(figure_number, figsize=(5, 4))
             plt.subplot(number_parameter, 1, i + 1)
             plt.plot(parameters_sequence_pd_concatenated[self.parameter_names[i]], "r")
             plt.gca().tick_params("x", labelsize=16)
             plt.gca().tick_params("y", labelsize=16)
-            if i == 0:
-                plt.title("Parameters", fontsize=18)
+            # if i == 0:
+                # plt.title("Parameters", fontsize=18)
             start_desired_val_range = 0.01
             y_des_val = [desired_values_pd_concatenated[self.parameter_names[i]][0],
                          desired_values_pd_concatenated[self.parameter_names[i]][0]]
@@ -544,7 +544,7 @@ class Analyzer:
         figure_number += 2
 
         for parameter in self.parameter_names:
-            plt.figure(figure_number)
+            plt.figure(figure_number, figsize=(5, 4))
             figure_number += 1
             for gate in self.tunable_gate_names:
                 if with_covariance:
@@ -568,16 +568,16 @@ class Analyzer:
                 for j in range(number_runs):
                     plt.axvline(x=number_steps[j])
             plt.legend()
-            plt.title(
-                "Gradient elements in the matrix row: " + parameter_plot_name(parameter.decode("ascii"), with_unit=False),
-                fontsize=18)
+            #plt.title(
+            #    "Gradient elements in the matrix row: " + parameter_plot_name(parameter.decode("ascii"), with_unit=False),
+            #    fontsize=18)
             plt.legend(fontsize=16)
             plt.ylabel(gradient_plot_ylabel(parameter.decode("ascii")), fontsize=16)
             plt.xlabel("Measurement Number", fontsize=16)
             fig = plt.gcf()
             fig.set_size_inches(9.5, 8)
 
-        plt.figure(figure_number)
+        plt.figure(figure_number, figsize=(5, 4))
         figure_number += 1
         offset = 0.
         for gate in self.gate_names:
@@ -606,7 +606,7 @@ class Analyzer:
             plt.ylabel("Voltage Difference with offset (mV)", fontsize=16)
         else:
             plt.ylabel("Voltage Difference (mV)", fontsize=16)
-        plt.title("Changes in Gate Voltages", fontsize=18)
+        # plt.title("Changes in Gate Voltages", fontsize=18)
 
     def recalculate_parameters(self, tune_run_number, start=0, end=None):
         self.load_evaluator_names(tune_run_number=tune_run_number)
@@ -647,6 +647,7 @@ class Analyzer:
 
     def plot_concatenate_kalman_tune_run_long_run(self, tune_run_numbers):
         """"""
+
         number_runs = len(tune_run_numbers)
         desired_values_pd_concatenated_temp, gate_voltages_sequence_pd_concatenated, parameters_sequence_pd_concatenated, \
         gradient_sequence_pd_concatenated = \
@@ -678,7 +679,7 @@ class Analyzer:
                     gradient_sequence_pd_concatenated[gate][parameter] = np.concatenate(
                         [gradient_sequence_pd_concatenated[gate][parameter], gradient_sequence_pd[gate][parameter]],
                         0)
-        plt.figure(1)
+        plt.figure(1, figsize=(5, 4))
         for i in range(1, number_runs):
             number_steps[i] = number_steps[i] + number_steps[i - 1]
 
@@ -686,7 +687,7 @@ class Analyzer:
         for i in range(number_parameter):
             plt.subplot(number_parameter, 1, i + 1)
             plt.plot(parameters_sequence_pd_concatenated[self.parameter_names[i]], "r")
-            plt.title("Parameters")
+            # plt.title("Parameters")
             start_desired_val_range = 0.01
             y_des_val = [desired_values_pd_concatenated[self.parameter_names[i]][0],
                          desired_values_pd_concatenated[self.parameter_names[i]][0]]
@@ -709,7 +710,7 @@ class Analyzer:
         gate_colours = {"BA": 'b', "BB": 'g', "N": 'r', "SA": 'c', "SB": 'm', "T": 'k'}
         tunable_gate_colours = {"N": 'r', "SA": 'c', "SB": 'm', "T": 'y'}
         for parameter in self.parameter_names:
-            plt.figure(figure_number)
+            plt.figure(figure_number, figsize=(5, 4))
             figure_number += 1
             for gate in self.tunable_gate_names:
                 plt.plot(gradient_sequence_pd_concatenated[gate][parameter], gate_colours[gate.decode("ascii")],
@@ -719,9 +720,9 @@ class Analyzer:
                         plt.axvline(x=number_steps[j])
                         #                plt.axvline(x=number_steps[j])
             plt.legend()
-            plt.title("Gradient elements in the line " + parameter.decode("ascii"))
+            # plt.title("Gradient elements in the line " + parameter.decode("ascii"))
 
-        plt.figure(figure_number)
+        plt.figure(figure_number, figsize=(5, 4))
         figure_number += 1
         for gate in self.gate_names:
             for j in range(number_runs):
@@ -731,7 +732,7 @@ class Analyzer:
             plt.plot(gate_voltages_sequence_pd_concatenated[gate] - gate_voltages_sequence_pd_concatenated[gate][0],
                      gate_colours[gate.decode("ascii")], label=gate.decode("ascii"))
         plt.legend()
-        plt.title("Changes in gate voltages")
+        # plt.title("Changes in gate voltages")
 
     def load_raw_measurement_pd(self, step_group):
         raw_measurement_pd = pd.Series()
@@ -1362,8 +1363,10 @@ def plot_raw_measurement(evaluator, raw_data, attribute_info, figure_number):
 def parameter_plot_name(name: str, with_unit: bool=True):
     if with_unit:
         if name == "parameter_time_load":
-            return "Singlet Load Time $(ns)$"
+            # return "Singlet Load Time $(ns)$"
+            return "$t_s (ns)$"
         if name == "parameter_tunnel_coupling":
+            # return "Tunnel Coupling $(\mu V)$"
             return "Tunnel Coupling $(\mu V)$"
     else:
         if name == "parameter_time_load":
