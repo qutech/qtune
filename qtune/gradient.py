@@ -270,18 +270,26 @@ class KalmanGradientEstimator(GradientEstimator):
                 self.logger.debug(self._epsilon[gates] * eigenvectors[:, np.argmax(lengths)])
                 return self._current_position.add(self._epsilon[gates] * eigenvectors[:, np.argmax(lengths)],
                                                   fill_value=0.)
+            # todo: check if it is usefull to take epsilon[gates] instead of epsilon
         else:
             tuned_matrix = sp.Matrix(tuned_jacobian)
             nullvecotors = [vec / vec.norm() for vec in tuned_matrix.nullspace()]
+            filled_nullvectors = []
+            for vec in nullvecotors:
+                full_vector = self.current_position.copy(deep=True)
+                vec_labled = pd.Series(np.squeeze(np.array(vec)), index=tuned_jacobian.columns)
+                full_vector[vec_labled.index] = vec_labled
+                full_vector[full_vector.index.difference(vec_labled.index)] = 0
+                filled_nullvectors.append(sp.Matrix(full_vector))
             max_covariance = self._maximum_covariance.max()
-            directional_covariances = [v.T * self._kalman_gradient.cov * v for v in nullvecotors]
+            directional_covariances = [v.T * self._kalman_gradient.cov * v for v in filled_nullvectors]
             if np.any(np.array(directional_covariances) > max_covariance):
                 self.logger.info('New measurement required by kalman gradient estimator.')
-                self.logger.debug(self._epsilon[gates] * np.squeeze(
-                        np.array(nullvecotors[np.argmax(directional_covariances)]).astype(float)))
+                self.logger.debug(self._epsilon * np.squeeze(
+                        np.array(filled_nullvectors[np.argmax(directional_covariances)]).astype(float)))
                 return self._current_position.add(
-                    self._epsilon[gates] * np.squeeze(
-                        np.array(nullvecotors[np.argmax(directional_covariances)]).astype(float)), fill_value=0.)
+                    self._epsilon * np.squeeze(
+                        np.array(filled_nullvectors[np.argmax(directional_covariances)]).astype(float)), fill_value=0.)
 
     def update(self,
                position: pd.Series,

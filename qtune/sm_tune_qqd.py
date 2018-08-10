@@ -269,7 +269,7 @@ class QQDLine(Evaluator):
         self.logger.info(f'Evaluating {self.parameters}.')
         measurement_result = self.experiment.measure(self.measurements[0])
         value, variance = self.process_raw_data(measurement_result)
-        return pd.Series(data=value, index=[self.parameters[0]]), pd.Series(data=variance, index=[self.parameters[0]])
+        return pd.Series(data=value, index=self.parameters), pd.Series(data=variance, index=self.parameters)
 
     def process_raw_data(self, raw_data):
         """
@@ -303,7 +303,7 @@ class QQDLead(Evaluator):
         self.logger.info(f'Evaluating {self.parameters}.')
         measurement_result = self.experiment.measure(self.measurements[0])
         value, variance = self.process_raw_data(measurement_result)
-        return pd.Series(data=value, index=[self.parameters[0]]), pd.Series(data=variance, index=[self.parameters[0]])
+        return pd.Series(data=value, index=self.parameters), pd.Series(data=variance, index=self.parameters)
 
     def process_raw_data(self, raw_data):
         value = raw_data['data'].ana.fitParams[1][3]
@@ -328,8 +328,8 @@ class QQDSensor1D(Evaluator):
         self.logger.info(f'Evaluating {self.parameters}.')
         measurement_result = self.experiment.measure(self.measurements[0])
         position, slope = self.process_raw_data(measurement_result)
-        return pd.Series(data=[position, slope], index=[self.parameters]), pd.Series(data=[np.nan, np.nan],
-                                                                                     index=[self.parameters])
+        return pd.Series(data=[position, slope], index=self.parameters), pd.Series(data=[np.nan, np.nan],
+                                                                                     index=self.parameters)
 
     def process_raw_data(self, raw_data):
         position = raw_data['data'].ana.xVal
@@ -352,8 +352,8 @@ class QQDSensor2D(Evaluator):
         self.logger.info(f'Evaluating {self.parameters}.')
         measurement_result = self.experiment.measure(self.measurements[0])
         position_x, position_y, slope = self.process_raw_data(measurement_result)
-        return pd.Series(data=[position_x, position_y, slope], index=[self.parameters]), \
-               pd.Series(data=[np.nan, np.nan, np.nan], index=[self.parameters])
+        return pd.Series(data=[position_x, position_y, slope], index=self.parameters), \
+               pd.Series(data=[np.nan, np.nan, np.nan], index=self.parameters)
 
     def process_raw_data(self, raw_data):
         position_x = raw_data['data'].ana.xVal
@@ -436,7 +436,8 @@ class QQDResp(Evaluator):
                pd.Series(data=errors, index=self.parameters)
 
     def process_raw_data(self, raw_data):
-        n = len(raw_data['data'].ana)
+        n = 2
+        # len(raw_data['data'].ana)
         positions = np.full(n, np.nan)
         for i in range(n):
             positions[i] = raw_data['data'].ana[i].position
