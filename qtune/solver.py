@@ -164,6 +164,7 @@ class NewtonSolver(Solver):
             tuned_jacobian = None
         else:
             tuned_jacobian = pd.concat(tuned_gradients, axis=1).T
+            tuned_jacobian = tuned_jacobian[self._current_position.index]
 
         for i, estimator in enumerate(self._gradient_estimators):
             if self.target.iloc[i].desired == self.target.iloc[i].desired:
