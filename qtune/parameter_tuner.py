@@ -19,26 +19,38 @@ class ParameterTuner(metaclass=HDF5Serializable):
                  tuned_voltages=None,
                  last_voltage: Optional[pd.Series]=None,
                  last_parameter_values: Optional[pd.Series]=None,
-                 last_parameters_variances: Optional[pd.Series]=None):
+                 last_parameters_variances: Optional[pd.Series]=None,
+                 last_evaluation_failed: bool=False):
         self._tuned_voltages = tuned_voltages or []
         self._solver = solver
         self._last_voltage = last_voltage
         self._logger = 'qtune'
+        self._last_evaluation_failed = last_evaluation_failed
 
         if last_parameter_values is None:
             not_na_index = self.target.drop([ind for ind in self.target.columns if self.target.isna().all()[ind]],
                                             axis='columns').dropna().index
             self._last_parameter_values = pd.Series(index=not_na_index)
         else:
-            assert set(self.target.dropna().index).issubset(set(last_parameter_values.index))
+            # commented code was used for a debug attempt of the asynchron reader
+            # import pickle
+            # data = pickle.dumps(self.target)
+            # import random
+            # filename = r'D:\debug_%d.txt' % random.randint(0,10000)
+            # with open(filename, 'wb') as file:
+            #     file.write(data)
+            assert set(self.target.dropna(how='all').index).issubset(set(last_parameter_values.index))
             self._last_parameter_values = last_parameter_values
+
+            # import os
+            # os.remove(filename)
 
         if last_parameters_variances is None:
             not_na_index = self.target.drop([ind for ind in self.target.columns if self.target.isna().all()[ind]],
                                             axis='columns').dropna().index
             self._last_parameters_variances = pd.Series(index=not_na_index)
         else:
-            # assert set(self.target.index).issubset(set(last_parameters_variances.index))
+            assert set(self.target.index).issubset(set(last_parameters_variances.index))
             self._last_parameters_variances = last_parameters_variances
 
         self._evaluators = tuple(evaluators)
@@ -90,6 +102,10 @@ class ParameterTuner(metaclass=HDF5Serializable):
         return self._tuned_voltages
 
     @property
+    def last_evaluation_failed(self) -> bool:
+        return self._last_evaluation_failed
+
+    @property
     def evaluators(self) -> Tuple[Evaluator, ]:
         return self._evaluators
 
@@ -125,7 +141,8 @@ class ParameterTuner(metaclass=HDF5Serializable):
                     tuned_voltages=self._tuned_voltages,
                     last_voltage=self._last_voltage,
                     last_parameter_values=self._last_parameter_values,
-                    last_parameters_variances=self._last_parameters_variances)
+                    last_parameters_variances=self._last_parameters_variances,
+                    last_evaluation_failed=self._last_evaluation_failed)
 
 
 class SubsetTuner(ParameterTuner):
@@ -161,9 +178,16 @@ class SubsetTuner(ParameterTuner):
             return False
 
         current_parameters, current_variances = self.evaluate()
+
         self.solver.rescale_values(current_parameters, current_variances)
         self._last_parameter_values = current_parameters[self._last_parameter_values.index]
         self._last_parameters_variances = current_variances[self._last_parameter_values.index]
+
+        # check for an evaluation failure (only relevant parameters)
+        if self._last_parameter_values.isnull().values.any():
+            self._last_evaluation_failed = True
+            return False
+        self._last_evaluation_failed = False
 
         self._solver.update_after_step(voltages, current_parameters, current_variances)
         if ((self.target.desired - current_parameters).abs().fillna(0.) < self.target['tolerance'].fillna(
@@ -174,6 +198,10 @@ class SubsetTuner(ParameterTuner):
             return False
 
     def get_next_voltages(self, tuned_parameters=None):
+
+        if self._last_evaluation_failed:
+            return 0.5 * (self.tuned_voltages[-1] + self._last_voltage)
+
         solver_voltage = self._solver.suggest_next_position(tuned_parameters)
         new_voltages = pd.Series(self._last_voltage).copy(deep=True)
         new_voltages[solver_voltage.index] = solver_voltage
@@ -222,7 +250,7 @@ class SensingDotTuner(ParameterTuner):
         # the parameters can be specified using last_parameter_values and last_parameters_covariances or they will be
         # deducted from the evaluators.
         last_parameter_values_covariances = []
-        for string in ["last_parameter_values", "last_parameter_covariances"]:
+        for string in ["last_parameter_values", "last_parameters_variances"]:
             if string not in kwargs:
                 parameter_names = [name for evaluator_list in [cheap_evaluators, expensive_evaluators]
                                    for evaluator in evaluator_list
@@ -263,6 +291,11 @@ class SensingDotTuner(ParameterTuner):
         self._last_parameter_values[current_parameter.index] = current_parameter[current_parameter.index]
         self._last_parameters_variances[current_parameter.index] = variances[current_parameter.index]
 
+        if self._last_parameter_values[current_parameter.index].isnull().values.any():
+            self._last_evaluation_failed = True
+            return False
+        self._last_evaluation_failed = False
+
         if current_parameter.le(self.target["minimum"]).any():
             self.cheap_evaluation_only = True
             if current_parameter.le(self.target["cost_threshold"]).any():
@@ -281,6 +314,8 @@ class SensingDotTuner(ParameterTuner):
             return True
 
     def get_next_voltages(self, tuned_parameters=None):
+        if self._last_evaluation_failed:
+            return 0.5 * (self.tuned_voltages[-1] + self._last_voltage)
         next_voltages = self._solver.suggest_next_position(tuned_parameters=tuned_parameters)
         return next_voltages
 
