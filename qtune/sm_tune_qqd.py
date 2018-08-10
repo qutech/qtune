@@ -10,6 +10,7 @@ from qtune.sm import SpecialMeasureMatlab
 from qtune import mat2py
 from qtune.history import History
 
+
 # This file bundles everything connected to the QQD
 # Is this the file structure we want?
 
@@ -17,9 +18,9 @@ class QQDMeasurement(Measurement):
     """
     This class saves all necessary information for a measurement.
     """
-    def __init__(self, name, **kwargs):
-        self.data=None
 
+    def __init__(self, name, **kwargs):
+        self.data = None
 
     def to_hdf5(self):
         return dict(self.options,
@@ -52,9 +53,9 @@ class SMTuneQQD(Experiment):
                               'stp': Measurement('stp'),
                               'tl': Measurement('tl')}
 
-        self._n_dqds = 3                                            # TODO property and use this from tunedata
-        self._n_sensors = 2                                         # TODO property and use this from tunedata
-        self._sensor_gates = [{'T': "LT", 'P': "LP", 'B': "LB"},    # TODO property and use this from tunedata
+        self._n_dqds = 3  # TODO property and use this from tunedata
+        self._n_sensors = 2  # TODO property and use this from tunedata
+        self._sensor_gates = [{'T': "LT", 'P': "LP", 'B': "LB"},  # TODO property and use this from tunedata
                               {'T': "RT", 'P': "RP", 'B': "RB"}]
         # are _n_dqds and _n_sensors used anywhere?
         # The specification of sensor gates is meant to be done implicitly by the use of the parameter tuner. Julian
@@ -64,6 +65,7 @@ class SMTuneQQD(Experiment):
 
     def gate_voltage_names(self) -> Tuple:
         return tuple(sorted(self._matlab.engine.qtune.read_qqd_gate_voltages().keys()))  # Why call MATLAB engine here?
+
     # This way the gate names are stored in only one place, which is a matlab file. Julian
 
     def read_gate_voltages(self) -> pd.Series:
@@ -73,13 +75,12 @@ class SMTuneQQD(Experiment):
 
         current_gate_voltages = self.read_gate_voltages()
         current_gate_voltages[new_gate_voltages.index] = new_gate_voltages[new_gate_voltages.index]
-        gate_voltages_to_matlab= current_gate_voltages.to_dict()
+        gate_voltages_to_matlab = current_gate_voltages.to_dict()
         for key, value in gate_voltages_to_matlab.items():
             gate_voltages_to_matlab[key] = float(value)
         self._matlab.engine.qtune.set_qqd_gate_voltages(gate_voltages_to_matlab)
-        
-        return self.read_gate_voltages() # set_qqd_gate_voltages
 
+        return self.read_gate_voltages()  # set_qqd_gate_voltages
 
     def tune(self, measurement_name, index: np.int, **kwargs) -> pd.Series:
         # Tune wrapper using the MATLAB syntax
@@ -162,6 +163,7 @@ class SMQQDPassThru(Evaluator):
     """
     Pass thru Evaluator
     """
+
     def __init__(self, experiment: SMTuneQQD, measurements: List[Measurement],
                  parameters: List[str], name: str, raw_x_data=tuple(), raw_y_data=tuple(), last_file_names=None,
                  error=None, reference_residual_sum=None):
@@ -189,7 +191,6 @@ class SMQQDPassThru(Evaluator):
 
         df = pd.DataFrame(values)
         self._error = df.var(0)
-
 
     def evaluate(self) -> Tuple[pd.Series, pd.Series]:
         self.logger.info(f'Evaluating {self.parameters}.')
@@ -219,10 +220,11 @@ class SMQQDPassThru(Evaluator):
             elif measurement.name == 'resp':
                 return_values = np.append(return_values, measurement_result[0:4])
                 for i in range(4):
-                    if np.isclose(measurement_result[4+i],0) or measurement_result[4+i] != measurement_result[4+i]:
+                    if np.isclose(measurement_result[4 + i], 0) or measurement_result[4 + i] != measurement_result[
+                        4 + i]:
                         sum_residuals = np.append(sum_residuals, [np.nan])
                     else:
-                        sum_residuals = np.append(sum_residuals, measurement_result[4+i])
+                        sum_residuals = np.append(sum_residuals, measurement_result[4 + i])
             else:
                 return_values = np.append(return_values, measurement_result)
                 # gof = np.append(gof, np.full(len(return_values),np.nan))
@@ -246,7 +248,6 @@ class SMQQDPassThru(Evaluator):
                 else:
                     error[parameter] = self._error[parameter]
 
-
         self._raw_x_data = (next(self._count),)
         self._raw_y_data = tuple(result)
         return result, error
@@ -257,10 +258,10 @@ class SMQQDPassThru(Evaluator):
                     error=self._error,
                     reference_residual_sum=self._reference_residual_sum)
 
+
 class QQDLine(Evaluator):
     def __init__(self, experiment: SMTuneQQD, measurements: List[Measurement],
                  parameters: List[str], name: str, raw_x_data=tuple(), raw_y_data=tuple(), last_file_names=None):
-
         super().__init__(experiment, measurements, parameters, raw_x_data, raw_y_data, name=name)
         self._count = count(0)
         self._last_file_names = last_file_names
@@ -289,11 +290,11 @@ class QQDLine(Evaluator):
         return dict(super().to_hdf5(),
                     last_file_names=self._last_file_names)
 
+
 class QQDLead(Evaluator):
     def __init__(self, experiment: SMTuneQQD, measurements: List[Measurement],
                  parameters: List[str], name: str, raw_x_data=tuple(), raw_y_data=tuple(), last_file_names=None,
-                 error: float=1, reference_residual_sum: float=1.):
-
+                 error: float = 1, reference_residual_sum: float = 1.):
         super().__init__(experiment, measurements, parameters, raw_x_data, raw_y_data, name=name)
         self._error = error
         self._reference_residual_sum = reference_residual_sum
@@ -329,7 +330,7 @@ class QQDSensor1D(Evaluator):
         measurement_result = self.experiment.measure(self.measurements[0])
         position, slope = self.process_raw_data(measurement_result)
         return pd.Series(data=[position, slope], index=self.parameters), pd.Series(data=[np.nan, np.nan],
-                                                                                     index=self.parameters)
+                                                                                   index=self.parameters)
 
     def process_raw_data(self, raw_data):
         position = raw_data['data'].ana.xVal
@@ -420,18 +421,35 @@ class QQDDistTP(Evaluator):
                     last_file_names=self._last_file_names,
                     error=self._error)
 
+
 class QQDResp(Evaluator):
     def __init__(self, experiment: SMTuneQQD, measurements: List[Measurement],
                  parameters: List[str], name: str, raw_x_data=tuple(), raw_y_data=tuple(), last_file_names=None,
-                 error=1):
+                 error=1, min_transition_height=-np.inf, min_position=None, max_position=None):
         super().__init__(experiment, measurements, parameters, raw_x_data, raw_y_data, name=name)
         self._last_file_names = last_file_names
         self._error = pd.Series(data=error, index=self.parameters)
+        self._min_transition_height = min_transition_height
+        if min_position is None:
+            self._min_position = pd.Series(index=self.parameters, data=-np.inf)
+        elif isinstance(min_position, pd.Series):
+            self._min_position = min_position
+        else:
+            self._min_position = pd.Series(index=self.parameters, data=min_position)
+        if max_position is None:
+            self._max_position = pd.Series(index=self.parameters, data=-np.inf)
+        elif isinstance(max_position, pd.Series):
+            self._max_position = max_position
+        else:
+            self._max_position = pd.Series(index=self.parameters, data=max_position)
 
     def evaluate(self) -> Tuple[pd.Series, pd.Series]:
         self.logger.info(f'Evaluating {self.parameters}.')
         measurement_result = self.experiment.measure(self.measurements[0])
         positions, errors = self.process_raw_data(measurement_result)
+        for i in range(len(positions)):
+            if positions[i] < self._min_position.iloc[i] or positions[i] > self._max_position.iloc[i]:
+                positions[i] = np.nan
         return pd.Series(data=positions, index=self.parameters), \
                pd.Series(data=errors, index=self.parameters)
 
@@ -441,13 +459,18 @@ class QQDResp(Evaluator):
         positions = np.full(n, np.nan)
         for i in range(n):
             positions[i] = raw_data['data'].ana[i].position
+            if raw_data['data'].ana[i].transitionHeight < self._min_transition_height:
+                positions[i] = np.nan
         self._last_file_names = raw_data['data'].args.fullFile
         return positions, self._error
 
     def to_hdf5(self):
         return dict(super().to_hdf5(),
                     last_file_names=self._last_file_names,
-                    error=self._error)
+                    error=self._error,
+                    min_transition_height=self._min_transition_height,
+                    min_position=self._min_position,
+                    max_position=self._max_position)
 
 
 def reevaluate_data_with_matlab(experiment, history: History, evaluator_name, indices, hold=True):
@@ -462,4 +485,3 @@ def reevaluate_data_with_matlab(experiment, history: History, evaluator_name, in
         if hold:
             _ = input('Type anything to continue.')
     return results
-
