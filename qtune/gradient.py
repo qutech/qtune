@@ -113,29 +113,33 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
         return self._covariance
 
     def require_measurement(self, gates=None, tuned_jacobian=None) -> pd.Series:
+        if gates is None:
+            gates = self._current_position.index
+
         if self._current_position.isnull().all():
             raise RuntimeError("No measurement can be requested before defining the current position.")
 
         if self._current_estimate is None:
             self.logger.info('Gradient is being estimated.')
-            measured_points = [v for v, *_ in self._stored_measurements]
+            measured_points = [v[gates] for v, *_ in self._stored_measurements]
 
             if len(measured_points) == 0:
                 #  start with arbitrary position
                 self.logger.debug('Requiring first measurement in gradient calculation.')
-                first_step = np.zeros_like(self._current_position)
+                first_step = np.zeros_like(self._current_position[gates])
                 first_step[0] += 1
-                self._requested_measurements.append(self._current_position + first_step * self._epsilon)
+                self._requested_measurements.append(self._current_position[gates] + first_step * self._epsilon[gates])
 
             elif self._symmetric_calculation:
                 self.logger.debug('Gradient estimation by symmetric calculation.')
                 if len(measured_points) % 2 == 1:
-                    self._requested_measurements.append(2 * self._current_position - measured_points[-1])
+                    self._requested_measurements.append(2 * self._current_position[gates] - measured_points[-1])
                 else:
                     measured_point_diffs = [v2 - v1 for v2, v1 in zip(measured_points[1::2],
                                                                       measured_points[::2])]
                     self._requested_measurements.append(
-                        self._current_position + get_orthogonal_vector(measured_point_diffs) * self._epsilon)
+                        self._current_position[gates] + get_orthogonal_vector(measured_point_diffs) * self._epsilon[
+                            gates])
 
             else:
                 self.logger.debug('Gradient estimation by asymmetric calculation.')
@@ -147,12 +151,12 @@ class FiniteDifferencesGradientEstimator(GradientEstimator):
                 else:
                     raise RuntimeError("Congratulations! You encountered a bug!")
                 ov = get_orthogonal_vector(measured_point_diffs)
-                self._requested_measurements.append(self._current_position + ov * self._epsilon)
+                self._requested_measurements.append(self._current_position[gates] + ov * self._epsilon[gates])
 
             return self._requested_measurements[-1]
 
     def update(self, position: pd.Series, value: float, variance: float, is_new_position=False):
-        position = position[self._current_position.index]
+        position = position[self._current_position.index.intersection(position.index)]
 
         if self._current_position.isnull().all():
             self.change_position(position)
@@ -270,7 +274,6 @@ class KalmanGradientEstimator(GradientEstimator):
                 self.logger.debug(self._epsilon[gates] * eigenvectors[:, np.argmax(lengths)])
                 return self._current_position.add(self._epsilon[gates] * eigenvectors[:, np.argmax(lengths)],
                                                   fill_value=0.)
-            # todo: check if it is usefull to take epsilon[gates] instead of epsilon
         else:
             tuned_matrix = sp.Matrix(tuned_jacobian)
             nullvecotors = [vec / vec.norm() for vec in tuned_matrix.nullspace()]
@@ -333,6 +336,7 @@ class SelfInitializingKalmanEstimator(GradientEstimator):
         self._kalman_estimator = kalman_estimator
         self._kalman_arguments = kalman_arguments
 
+    # TODO: This implementation is incomplete
     @classmethod
     def from_scratch(cls,
                      current_position: Optional[pd.Series],

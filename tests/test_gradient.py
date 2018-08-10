@@ -5,6 +5,7 @@ import random
 
 import numpy as np
 import pandas as pd
+import sympy as sp
 
 from qtune.storage import serializables, to_hdf5, from_hdf5
 from qtune.gradient import KalmanGradientEstimator
@@ -72,24 +73,25 @@ class FiniteDiffGradientTest(unittest.TestCase):
     def test_require_update_measurement(self):
 
         for symmetric in [True, False]:
-            f_d_args = dict(current_position=pd.Series(data=[1, 2, 3], index=["a", "b", "c"]),
+            f_d_args = dict(current_position=pd.Series(data=[1, 2, 3, 4], index=["a", "b", "c", 'd']),
                             epsilon=.1,
                             symmetric=symmetric)
 
             f_d_grad_estimator = FiniteDifferencesGradientEstimator(**f_d_args)
             if symmetric:
-                n_meas = 2 * f_d_args['current_position'].size
+                n_meas = 2 * f_d_args['current_position'].size - 2
             else:
-                n_meas = f_d_args['current_position'].size
+                n_meas = f_d_args['current_position'].size - 1
 
             requested_measurements = []
 
             if not symmetric:
                 f_d_grad_estimator.update(f_d_args["current_position"], random.random(), 1,
                                           is_new_position=True)
-                requested_measurements.append(f_d_args["current_position"])
+                requested_measurements.append(f_d_args["current_position"].loc[["a", "b", "c"]])
             for i in range(n_meas):
-                requested_measurements.append(f_d_grad_estimator.require_measurement())
+                requested_measurements.append(f_d_grad_estimator.require_measurement(gates=["a", "b", "c"]))
+                pd.testing.assert_index_equal(requested_measurements[-1].index, pd.Index(["a", "b", "c"]))
                 f_d_grad_estimator.update(requested_measurements[-1], random.random(), 1, is_new_position=True)
 
             if symmetric:
@@ -102,6 +104,11 @@ class FiniteDiffGradientTest(unittest.TestCase):
                     self.assertAlmostEqual(2 * f_d_args['epsilon'], np.linalg.norm(diff_vec))
                 else:
                     self.assertAlmostEqual(f_d_args['epsilon'], np.linalg.norm(diff_vec))
+
+            # check the surjectivity
+            voltage_diff = sp.Matrix(voltage_diff)
+            kern = voltage_diff.nullspace()
+            self.assert_(len(kern) == 0)
 
 
 class KalmanGradientTest(unittest.TestCase):
@@ -118,8 +125,8 @@ class KalmanGradientTest(unittest.TestCase):
         self.assertAlmostEqual(0, np.linalg.norm(req_meas - kalman_args["current_position"] - [.1, 0, 0]))
 
         req_meas = kalman_grad_est.require_measurement(gates=["b", "a"])
-        pd.testing.assert_series_equal(req_meas, kalman_args["current_position"] + pd.Series(index=["a", "b", "c"],
-                                                                                             data=[.1, 0, 0]))
+        pd.testing.assert_series_equal(req_meas, kalman_args["current_position"].add(pd.Series(index=["a", "b", "c"],
+                                                                                               data=[.1, 0, 0])))
 
         req_meas = kalman_grad_est.require_measurement(gates=["b", "c"])
         self.assertTrue(req_meas is None)
@@ -140,7 +147,8 @@ class KalmanGradientTest(unittest.TestCase):
 
         kalman_grad_est = KalmanGradientEstimator(**kalman_args)
 
-        tuned_jacobian = np.array([[1, 1, 0], [1, 1, 0], [0, 0, 1]])
+        tuned_jacobian = pd.DataFrame(data=np.array([[1, 1, 0], [1, 1, 0], [0, 0, 1]]), index=["a", "b", "c"],
+                                      columns=["a", "b", "c"])
 
         req_meas = kalman_grad_est.require_measurement(tuned_jacobian=tuned_jacobian)
         expected_diff = pd.Series(index=['a', 'b', 'c'], data=[-1 * kalman_args['epsilon'] / np.sqrt(2),
