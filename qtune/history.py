@@ -190,7 +190,7 @@ class History:
             parameters, variances = extract_parameters_from_hierarchy(autotuner.tuning_hierarchy)
             self._parameter_names = set(parameters.index)
             gradients, grad_covariances = extract_gradients_from_hierarchy(autotuner.tuning_hierarchy)
-            self._gradient_controlled_parameters = {parameter_name: set(gradient.index)
+            self._gradient_controlled_parameters = {parameter_name: set(gradient.index) or set()
                                                     for parameter_name, gradient in gradients.items()}
         else:
             relevant_hierarchy = autotuner.tuning_hierarchy[int(start):end]
@@ -442,8 +442,14 @@ def extract_gradients_from_hierarchy(tuning_hierarchy) -> (Dict[str, pd.Series],
     for tuner in tuning_hierarchy:
         if isinstance(tuner.solver, qtune.solver.NewtonSolver):
             for i, grad_est in enumerate(tuner.solver.gradient_estimators):
-                gradients[tuner.solver.target.index[i]] = grad_est.estimate()
-                covariances[tuner.solver.target.index[i]] = grad_est.covariance()
+                if grad_est.estimate() is None:
+                    gradients[tuner.solver.target.index[i]] = pd.Series
+                else:
+                    gradients[tuner.solver.target.index[i]] = grad_est.estimate()
+                if grad_est.covariance() is None:
+                    covariances[tuner.solver.target.index[i]] = pd.Series
+                else:
+                    covariances[tuner.solver.target.index[i]] = grad_est.covariance()
     return gradients, covariances
 
 

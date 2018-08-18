@@ -261,10 +261,13 @@ class SMQQDPassThru(Evaluator):
 
 class QQDLine(Evaluator):
     def __init__(self, experiment: SMTuneQQD, measurements: List[Measurement],
-                 parameters: List[str], name: str, raw_x_data=tuple(), raw_y_data=tuple(), last_file_names=None):
+                 parameters: List[str], name: str, raw_x_data=tuple(), raw_y_data=tuple(), last_file_names=None,
+                 maximal_value=np.inf, minimal_value=-np.inf):
         super().__init__(experiment, measurements, parameters, raw_x_data, raw_y_data, name=name)
         self._count = count(0)
         self._last_file_names = last_file_names
+        self._maximal_value = maximal_value
+        self._minimal_value = minimal_value
 
     def evaluate(self):
         self.logger.info(f'Evaluating {self.parameters}.')
@@ -284,21 +287,27 @@ class QQDLine(Evaluator):
         value = np.mean(width)
         variance = np.var(width) / len(raw_data['data'].ana)
         self._last_file_names = raw_data['data'].args.fullFile
+        if value < self._minimal_value or value > self._maximal_value:
+            value = np.nan
         return value, variance
 
     def to_hdf5(self):
         return dict(super().to_hdf5(),
-                    last_file_names=self._last_file_names)
+                    last_file_names=self._last_file_names,
+                    maximal_value=self._maximal_value,
+                    minimal_value=self._minimal_value)
 
 
 class QQDLead(Evaluator):
     def __init__(self, experiment: SMTuneQQD, measurements: List[Measurement],
                  parameters: List[str], name: str, raw_x_data=tuple(), raw_y_data=tuple(), last_file_names=None,
-                 error: float = 1, reference_residual_sum: float = 1.):
+                 error: float = 1, reference_residual_sum: float = 1., maximal_value=np.inf, minimal_value=-np.inf):
         super().__init__(experiment, measurements, parameters, raw_x_data, raw_y_data, name=name)
         self._error = error
         self._reference_residual_sum = reference_residual_sum
         self._last_file_names = last_file_names
+        self._maximal_value = maximal_value
+        self._minimal_value = minimal_value
 
     def evaluate(self) -> Tuple[pd.Series, pd.Series]:
         self.logger.info(f'Evaluating {self.parameters}.')
@@ -310,13 +319,17 @@ class QQDLead(Evaluator):
         value = raw_data['data'].ana.fitParams[1][3]
         sum_residuals = raw_data['data'].ana.sumResiduals
         self._last_file_names = raw_data['data'].args.fullFile
+        if value < self._minimal_value or value > self._maximal_value:
+            value = np.nan
         return value, self._error * sum_residuals / self._reference_residual_sum
 
     def to_hdf5(self):
         return dict(super().to_hdf5(),
                     last_file_names=self._last_file_names,
                     error=self._error,
-                    reference_residual_sum=self._reference_residual_sum)
+                    reference_residual_sum=self._reference_residual_sum,
+                    maximal_value=self._maximal_value,
+                    minimal_value=self._minimal_value)
 
 
 class QQDSensor1D(Evaluator):
@@ -459,7 +472,7 @@ class QQDResp(Evaluator):
         positions = np.full(n, np.nan)
         for i in range(n):
             positions[i] = raw_data['data'].ana[i].position
-            if raw_data['data'].ana[i].transitionHeight < self._min_transition_height:
+            if raw_data['data'].ana[i].visiblity < self._min_transition_height:
                 positions[i] = np.nan
         self._last_file_names = raw_data['data'].args.fullFile
         return positions, self._error

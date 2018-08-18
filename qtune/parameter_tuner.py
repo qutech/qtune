@@ -20,12 +20,14 @@ class ParameterTuner(metaclass=HDF5Serializable):
                  last_voltage: Optional[pd.Series]=None,
                  last_parameter_values: Optional[pd.Series]=None,
                  last_parameters_variances: Optional[pd.Series]=None,
-                 last_evaluation_failed: bool=False):
+                 last_evaluation_failed: bool=False,
+                 evaluatable_voltages=None):
         self._tuned_voltages = tuned_voltages or []
         self._solver = solver
         self._last_voltage = last_voltage
         self._logger = 'qtune'
         self._last_evaluation_failed = last_evaluation_failed
+        self._evaluatable_voltages = evaluatable_voltages or []
 
         if last_parameter_values is None:
             not_na_index = self.target.drop([ind for ind in self.target.columns if self.target.isna().all()[ind]],
@@ -142,7 +144,8 @@ class ParameterTuner(metaclass=HDF5Serializable):
                     last_voltage=self._last_voltage,
                     last_parameter_values=self._last_parameter_values,
                     last_parameters_variances=self._last_parameters_variances,
-                    last_evaluation_failed=self._last_evaluation_failed)
+                    last_evaluation_failed=self._last_evaluation_failed,
+                    evaluatable_voltages=self._evaluatable_voltages)
 
 
 class SubsetTuner(ParameterTuner):
@@ -188,6 +191,7 @@ class SubsetTuner(ParameterTuner):
             self._last_evaluation_failed = True
             return False
         self._last_evaluation_failed = False
+        self._evaluatable_voltages.append(voltages)
 
         self._solver.update_after_step(voltages, current_parameters, current_variances)
         if ((self.target.desired - current_parameters).abs().fillna(0.) < self.target['tolerance'].fillna(
@@ -200,7 +204,7 @@ class SubsetTuner(ParameterTuner):
     def get_next_voltages(self, tuned_parameters=None):
 
         if self._last_evaluation_failed:
-            return 0.5 * (self.tuned_voltages[-1] + self._last_voltage)
+            return 0.5 * (self._evaluatable_voltages[-1] + self._last_voltage)
 
         solver_voltage = self._solver.suggest_next_position(tuned_parameters)
         new_voltages = pd.Series(self._last_voltage).copy(deep=True)
