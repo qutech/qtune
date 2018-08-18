@@ -283,22 +283,25 @@ class Analyzer:
 
     def calculate_kalman_gradient(self, gate_voltages_sequence_pd, parameters_sequence_pd, initial_grad, initial_cov,
                                   initial_noise, number_steps, alpha, with_relative_error=False, relative_error=0.0004,
-                                  residuals=None):
+                                  residuals=None, process_noise=None):
 
-        shifting_uncertainty = np.zeros((8, 8))
+        if process_noise is None:
+            process_noise = np.zeros((8, 8))
+
+
         load_uncertainty = 0.15
         inter_dot_uncertainty = 0.6
         for i in range(4):
-            shifting_uncertainty[i, i] = load_uncertainty * load_uncertainty * 1e6
+            process_noise[i, i] = load_uncertainty * load_uncertainty * 1e6
         for i in range(4, 8):
-            shifting_uncertainty[i, i] = inter_dot_uncertainty * inter_dot_uncertainty * 1e6
+            process_noise[i, i] = inter_dot_uncertainty * inter_dot_uncertainty * 1e6
 
         kalman = KalmanGradient(self.tunable_gate_names.size, self.parameter_names.size,
                                 initial_gradient=initial_grad,
                                 initial_covariance_matrix=initial_cov,
                                 measurement_covariance_matrix=initial_noise,
                                 alpha=alpha,
-                                process_noise=shifting_uncertainty)
+                                process_noise=process_noise)
         covariance_index = []
         for parameter in self.parameter_names:
             for gate in self.tunable_gate_names:
@@ -358,7 +361,7 @@ class Analyzer:
 
 
             else:
-                kalman.update(d_voltage_pd.as_matrix(), d_parameters_pd.as_matrix(), hack=False)
+                kalman.update(d_voltage_pd.as_matrix(), d_parameters_pd.as_matrix())
 
         gradient_pd_temp = pd.DataFrame(kalman.grad, index=self.parameter_names,
                                                  columns=self.tunable_gate_names)
@@ -376,7 +379,7 @@ class Analyzer:
         return gradient_sequence_pd, covariance_sequence_pd
 
     def plot_concatenate_kalman_tune_run(self, tune_run_numbers, with_covariance=True, with_offset=True,
-                                         recalculate_gradient=False, alpha=1.02, recalculate_parameters=False):
+                                         recalculate_gradient=False, alpha=1.02, process_noise=None, recalculate_parameters=False):
         number_runs = len(tune_run_numbers)
         desired_values_pd_concatenated_temp, gate_voltages_sequence_pd_concatenated, parameters_sequence_pd_concatenated, \
         gradient_sequence_pd_concatenated = \
@@ -448,7 +451,8 @@ class Analyzer:
                     gate_voltages_sequence_pd_concatenated, parameters_sequence_pd_concatenated,
                     initial_grad=initial_gradient,
                     initial_cov=initial_heuristic_covariance, initial_noise=initial_heuristic_noise,
-                    number_steps=number_steps[number_runs - 1], alpha=alpha)
+                    number_steps=number_steps[number_runs - 1], alpha=alpha,
+                    process_noise=process_noise)
 
             figure_number = 30
             for parameter in self.parameter_names:
@@ -517,6 +521,7 @@ class Analyzer:
             plt.figure(figure_number, figsize=(5, 4))
             plt.subplot(number_parameter, 1, i + 1)
             plt.plot(parameters_sequence_pd_concatenated[self.parameter_names[i]], "r")
+            plt.plot(parameters_sequence_pd_concatenated[self.parameter_names[i]], "k.")
             plt.gca().tick_params("x", labelsize=16)
             plt.gca().tick_params("y", labelsize=16)
             # if i == 0:
@@ -1210,7 +1215,6 @@ class Analyzer:
         plt.title('Load Time')
 
 
-
 def count_steps_in_sequence(sequence_group: h5py.Group):
     counter = 0
     for key in sequence_group.keys():
@@ -1359,15 +1363,14 @@ def plot_raw_measurement(evaluator, raw_data, attribute_info, figure_number):
         return "Stop"
 
 
-
 def parameter_plot_name(name: str, with_unit: bool=True):
     if with_unit:
         if name == "parameter_time_load":
-            # return "Singlet Load Time $(ns)$"
-            return "$t_s (ns)$"
+            return "Singlet Load Time $t_{sr}$ $(ns)$"
+            # return "$t_{sr}$ $(ns)$"
         if name == "parameter_tunnel_coupling":
-            # return "Tunnel Coupling $(\mu V)$"
-            return "Tunnel Coupling $(\mu V)$"
+            return "Transition Width $w$ $(\mu V)$"
+            # return "$w$ $(\mu V)$"
     else:
         if name == "parameter_time_load":
             return "Singlet load time"
@@ -1377,6 +1380,8 @@ def parameter_plot_name(name: str, with_unit: bool=True):
 
 def gradient_plot_ylabel(parameter: str):
     if parameter == "parameter_time_load":
-        return "Gradient Elements $(ns /m V)$"
+        return r"Gradient Elements $\partial t_{sr}/ \partial V_i$ $(ns /m V)$"
+        # return "$ \partial t_{sr}/ \partial V_i$ $(ns /m V)$"
     if parameter == "parameter_tunnel_coupling":
-        return "Gradient Elements $(\mu V /m V)$"
+        return "Gradient Elements $\partial w / \partial V_i$ $(\mu V /m V)$"
+        # return "$\partial w / \partial V_i$ $(\mu V /m V)$"
