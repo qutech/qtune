@@ -2,7 +2,7 @@
 
 The program package contains tools for the setup of a general optimization program. It is specifically designed for the 
 automatic fine-tuning of semiconductor spin qubits based on gate defined quantum dots.  
-The program must be completed by an interface to the physical backend where control 
+An interface to the physical backend must be provided. With this backend, control 
 parameters are set and target parameters are measured.  
 
 ##Interface to the Physical Backend
@@ -13,10 +13,12 @@ Measurement is given to the **Experiment**, which is conducting the actual measu
 
 ##Target Parameter
 
-The **Evaluator** class operates on the **Experiment** to measure a specific parameter. It contains a list of 
+The **Evaluator** class operates on the **Experiment** class to measure a specific parameter. It contains a list of 
 Measurements and 
 an implementation of the analysis software required to extract the parameter from the raw data returned by the 
 experiment. Each **Evaluator** represents the parameter it is evaluating.
+![alt text](C:\Users\teske\Documents\python-atune\EvaluationParameter.png)
+
 
 ###Interdependency
 

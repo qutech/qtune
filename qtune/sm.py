@@ -150,7 +150,7 @@ class SpecialMeasureMatlab:
         return self.engine.util.py.get_from_workspace(var_name)
 
 
-class LegacyDQDRefactored(BasicDQDRefactored):
+class LegacyDQDRefactored(BasicDQD):
     def __init__(self, matlab_instance: SpecialMeasureMatlab):
         super().__init__()
         self._matlab = matlab_instance

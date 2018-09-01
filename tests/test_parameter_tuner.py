@@ -106,7 +106,7 @@ class SubsetTunerTest(unittest.TestCase):
                                  solver=solver,
                                  maximal_step_size=3,
                                  maximal_step_number=1,
-                                 tuned_voltages=[pd.Series(index=['a', 'b', 'c'], data=0)],
+                                 evaluatable_voltages=[pd.Series(index=['a', 'b', 'c'], data=0)],
                                  last_parameter_values=pd.Series(index=['parameter_1']),
                                  last_parameters_variances=pd.Series(index=['parameter_1']))
 
