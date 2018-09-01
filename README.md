@@ -1,3 +1,9 @@
+[evaluation image]: ReadmeImages/EvaluationParameter.png
+[autotuner coordination]: ReadmeImages/AutotunerCoordination.png
+[newton solver gradient]: ReadmeImages/NewtonSolverGradient.png
+[tuner solver]: ReadmeImages/TunerSolver.png
+
+
 #Qtune Readme
 
 The program package contains tools for the setup of a general optimization program. It is specifically designed for the 
@@ -17,8 +23,7 @@ The **Evaluator** class operates on the **Experiment** class to measure a specif
 Measurements and 
 an implementation of the analysis software required to extract the parameter from the raw data returned by the 
 experiment. Each **Evaluator** represents the parameter it is evaluating.
-![alt text](C:\Users\teske\Documents\python-atune\EvaluationParameter.png)
-
+![alt text][evaluation image]
 
 ###Interdependency
 
@@ -29,6 +34,9 @@ The **Autotuner**
 class handles the communication between the control parameters, set on the experiment and the 
 groups of target parameters. It structures the groups of target parameters in an hierarchy, which expresses the physical
 interdependency between the parameter groups.  
+
+![alt text][autotuner coordination]
+
 Consider for example a hierarchy consisting of three **ParameterTuners**:
 1. Contrast in the Sensing Dot Signal
 2. Chemical Potentials / Positions of the Charge Stability Diagram
@@ -52,12 +60,18 @@ The voltage steps of each **ParameterTuner** are calculated by its member instan
 can implement any optimization algorithm e.g. Nealder-Mead or Gauss-Newton algorithm. 
 Gradient based **Solver** like the Gauss-Newton algorithm use the **GradientEstimator** class for calculation of the 
 gradients of target parameters.  
+
+![alt text][tuner solver]
+
 The **GradientEstimator** subclasses implement different types of gradient estimation. The **KalmanGradientEstimator** 
 implements the Kalman filter for gradients. This is an algorithm which calculates updates on the gradient by 
 interpreting each measurement as finite difference measurement with respect to the last voltages. The accuracy of the
 parameter evaluation is then compared to the uncertainty of the estimation of the gradient in order to find the 
 most likely estimation of the gradient. The gradients can be calculated purely by Kalman updates or initially by finite
 differences.
+
+![alt text][newton solver gradient]
+
 
 ##Getting Started
 See example_setup.md for a detailed tutorial 
