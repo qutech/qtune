@@ -55,7 +55,7 @@ class Experiment:
     def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
         """
         Set the gate Voltages and return the voltages which have actually been set. (i.e. when the Voltages are saved
-        in a different format.)
+        in a different format or restrictions in the measurement apply.)
         :param new_gate_voltages:
         :return: actually set voltages.
         """
@@ -63,7 +63,6 @@ class Experiment:
 
     def measure(self, measurement: Measurement) -> np.ndarray:
         """Conduct specified measurement
-
         :param measurement:
         :return data:
         """

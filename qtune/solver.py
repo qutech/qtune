@@ -17,6 +17,19 @@ def make_target(desired: pd.Series = np.nan,
                 tolerance: pd.Series = np.nan,
                 cost_threshold: pd.Series = np.nan,
                 rescaling_factor: pd.Series = np.nan):
+    """
+    The function is designed to bring the target values into a standardised form. The solver rescales any values it
+    receives. The target must therefore contain rescaled value.
+    Parameters which should always be left invariant are appended with the desired value NaN.
+    :param desired: the target values / set points (rescaled)
+    :param maximum: the maximal values (rescaled)
+    :param minimum: the minimal values (rescaled)
+    :param tolerance: the tolerance to the target values (should be approximately the accuracy of the measurements.) (rescaled)
+    :param cost_threshold: used in the sensing dot tuner to decide if the measurement must be repeated with a longer
+    measurement. (rescaled)
+    :param rescaling_factor: Factor to rescale the parameters
+    :return: DataFrame containing the target.
+    """
     for ser in (desired, maximum, minimum, tolerance):
         if isinstance(ser, pd.Series):
             names = ser.index
@@ -45,7 +58,7 @@ def make_target(desired: pd.Series = np.nan,
 
 class Solver(metaclass=HDF5Serializable):
     """
-    The solver class implements an algorithm to minimise the difference of the values to the target values.
+    The solver class implements an optimization algorithm to minimise the difference of the values to the target values.
     """
     _current_position = None
     _current_values = None
@@ -95,16 +108,24 @@ class Solver(metaclass=HDF5Serializable):
         raise NotImplementedError()
 
     def rescale_values(self, values: pd.Series, variances: pd.Series):
-        """The values are rescaling right after they have been given to the Solver. The target must therefore hold
-        rescaled value."""
+        """
+        Rescales the values in place.
+        :param values: unscaled values
+        :param variances: unscaled variances
+        :return: None
+        """
         rescaling_factor = self.target['rescaling_factor'].append(
             pd.Series(index=values.index.difference(self.target['rescaling_factor'].index), data=1))
         values /= rescaling_factor[values.index]
         variances /= rescaling_factor[values.index] ** 2
 
     def descale_values(self, values: pd.Series, variances: pd.Series):
-        """The values are rescaling right after they have been given to the Solver. The target must therefore hold
-        rescaled value."""
+        """
+        Descale the values to their original scale in place.
+        :param values: scaled values
+        :param variances: scaled variances
+        :return: None
+        """
         rescaling_factor = self.target['rescaling_factor'].append(
             pd.Series(index=values.index.difference(self.target['rescaling_factor'].index), data=1))
         values *= rescaling_factor[values.index]
@@ -112,17 +133,21 @@ class Solver(metaclass=HDF5Serializable):
 
 
 class NewtonSolver(Solver):
-    """This solver uses (an estimate of) the jacobian and solves by inverting it.(Newton's method)
-
-    The jacobian is put together from the given gradient estimators
-
-    TODO: The jacobian is not automatically in the correct basis
+    """
+    This solver implements the Gauss-Newton algorithm.
     """
 
     def __init__(self, target: pd.DataFrame,
                  gradient_estimators: Sequence[GradientEstimator],
                  current_position: pd.Series,
                  current_values: pd.Series = None):
+        """
+        Initialize the NewtonSolver.
+        :param target: DataFrame containing the target. Should be build with the static make_target functionl
+        :param gradient_estimators: Estimator for the gradient of each position being tuned.
+        :param current_position: Initial positions
+        :param current_values: Initial values
+        """
         self._target = target
         self._gradient_estimators = list(gradient_estimators)
         assert (len(self._target.index) == len(self._gradient_estimators))
@@ -155,6 +180,12 @@ class NewtonSolver(Solver):
         return pd.Series(jacobian.values.ravel(), index=index)
 
     def suggest_next_position(self, tuned_parameters=None) -> pd.Series:
+        """
+        This function checks first if any gradient estimator requires a measurement, which is returned if this is the
+        case. Otherwise the Gauss-Newton method is applied to find the next voltages.
+        :param tuned_parameters: The gradients of these parameters is given to the
+        :return:
+        """
         tuned_parameters = set() if tuned_parameters is None else tuned_parameters
         tuned_estimators = [gradient
                             for i, gradient in enumerate(self._gradient_estimators)

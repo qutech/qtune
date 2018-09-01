@@ -13,13 +13,38 @@ import logging
 
 class Autotuner(metaclass=HDF5Serializable):
     """
-    The auto tuner class combines the evaluator and solver classes to tune an experiment.
+    The Autotuner class manages the communication between the ParameterTuner classes and communicates with the
+    experiment by setting and getting voltages for the ParameterTuner classes. The ParameterTuner classes are structured
+    in a hierarchy to take their dependencies into account.
     """
 
     def __init__(self, experiment: Experiment, tuning_hierarchy: List[ParameterTuner] = None,
                  current_tuner_index: int = 0, current_tuner_status: bool = False,
                  voltage_to_set: Optional[pd.Series] = None, hdf5_storage_path: Optional[str] = None,
                  append_time_to_path: bool = True):
+        """
+        Initialize the AutoTuner.
+
+        :param experiment: The experiment which shall be tuned(e.g. gate-defined quantum dots. ).
+
+        :param tuning_hierarchy: The tuning_hierarchy takes the interdependency of parameter groups into account. Each
+        ParameterTuner represents a group of parameters. The Hierarchy is saved in a list where the first element in the
+        list is on the lowest position of the hierarchy. The ParameterTuner in the hierarchy are tuned from bottom to
+        the top. Each ParameterTuner can be given information about the ParameterTuner which come below in the
+        hierarchy. The Autotuner works in solving iterations where each iteration ends when new voltages are calculated.
+        The Autotuner starts at the bottom of the hierarchy in each iteration, going upwards when a parameter is
+        evaluated until a ParameterTuner suggest new voltages. The Autotuner is always at a specific position in the
+        hierarchy.
+
+        :param current_tuner_index: True if the ParameterTuner at the current position in the hierarchy has evaluated
+        its parameters in the current iteration.
+
+        :param current_tuner_status:
+
+        :param voltage_to_set:
+        :param hdf5_storage_path:
+        :param append_time_to_path:
+        """
         self._experiment = experiment
         self._tuning_hierarchy = tuning_hierarchy
         for par_tuner in tuning_hierarchy:
@@ -41,6 +66,10 @@ class Autotuner(metaclass=HDF5Serializable):
 
     @property
     def asynchrone_writer(self):
+        """
+        The asynchrone writer is only initialized on demand.
+        :return:
+        """
         if self._asynchrone_writer is None:
             self._asynchrone_writer = AsynchronousHDF5Writer(reserved={"experiment": self._experiment},
                                                              multiprocess=False)
@@ -48,6 +77,10 @@ class Autotuner(metaclass=HDF5Serializable):
 
     @property
     def logger(self):
+        """
+        The Autotuner saves only the name of the logger. The AutoTuner gets the actual object on demand.
+        :return:
+        """
         return logging.getLogger(self._logger)
 
     @logger.setter

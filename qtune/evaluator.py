@@ -53,9 +53,13 @@ class Evaluator(metaclass=HDF5Serializable):
         return self._raw_x_data, self._raw_y_data
 
     def evaluate(self) -> (pd.Series, pd.Series):
+        """ This function is necessary. It is designed to conduct the measurements on the experiment. """
         raise NotImplementedError()
 
     def process_raw_data(self, raw_data):
+        """ This function is optional. It can be used to separate the scan (typically applying a pulse to the
+        experiment) from the calculation on the raw data (e.g. fitting). This sepration facilitates the recalculation
+        of parameters from stored data."""
         raise NotImplementedError()
 
     def to_hdf5(self):
@@ -71,6 +75,7 @@ class Evaluator(metaclass=HDF5Serializable):
 
 
 class FittingEvaluator(Evaluator):
+    """ This evaluator is designed for the evaluation of data by fits. """
     def __init__(self,
                  experiment: Experiment,
                  measurements: Sequence[Measurement],
@@ -107,7 +112,7 @@ class FittingEvaluator(Evaluator):
                     initial_fit_arguments=self.initial_fit_arguments)
 
 
-class NewLeadTunnelTimeByLeadScan(FittingEvaluator):
+class LeadTunnelTimeByLeadScan(FittingEvaluator):
     """
     RF gates pulse over the transition between the (2,0) and the (1,0) region. Then exponential functions are fitted
     to calculate the time required for an electron to tunnel through the lead.
@@ -220,7 +225,9 @@ def func_lead_times_v2(x, height: float, t_fall: float, t_rise: float, begin_ris
     return y
 
 
-class NewInterDotTCByLineScan(FittingEvaluator):
+class InterDotTCByLineScan(FittingEvaluator):
+    """ Measurement of an inter dot tunnel coupling by the broadening of the transition line. The width of the
+    transition is extracted by fitting an s-curve (hyperbolic tangent) to the signal from the avoided crossing. """
     def __init__(self, experiment: Experiment, parameters: Sequence[str]=('parameter_tunnel_coupling', ),
                  measurements: Tuple[Measurement] = None, raw_x_data: Tuple[Optional[np.ndarray]]=None,
                  raw_y_data: Tuple[Optional[np.ndarray]]=None, fit_results: Optional[pd.Series]=None,
@@ -308,7 +315,10 @@ def func_inter_dot_coupling(xdata, offset: float, slope: float, height: float, p
 
 class NewLoadTime(FittingEvaluator):
     """
-    Measures the time required to reload a (2,0) singlet state. Fits an exponential function.
+    Measures the time required to reload a (2,0) singlet state, by pulsing close to the (2,0)-(1,0) transition. The
+    (2,0) triplet decays via the (1,0) state into a (2,0) singlet state. The wait time is varied at the decay point and
+    the resulting occupation probability is fit to an exponential decay. The life time of the decay is returned as
+    singlet reload time.
     """
     def __init__(self, experiment: Experiment, parameters: Sequence[str]=('parameter_time_load',),
                  measurements: Measurement = None, raw_x_data: Tuple[Optional[np.ndarray]]=None,
@@ -364,7 +374,7 @@ def func_load_time(xdata, offset: float, height: float, curvature: float):
 
 class LeadTransition(Evaluator):
     """
-    Finds the transition on the edge of the charge diagram
+    Finds the transition on the edge of the charge diagram. The transition is detected as point of largest slope.
     """
 
     def __init__(self,
@@ -435,7 +445,8 @@ class LeadTransition(Evaluator):
 
 class SensingDot1D(Evaluator):
     """
-    Sweep one gate of the sensing dot to find the point of steepest slope on the current
+    Sweep one gate of the sensing dot to find the point of steepest slope on the current coulomb peak. The slope is
+    returned to quantify the signal strength.
     """
 
     def __init__(self,
@@ -514,7 +525,8 @@ class SensingDot1D(Evaluator):
 
 class SensingDot2D(Evaluator):
     """
-    Two dimensional sensing dot scan. Coulomb peak might be changed
+    Two dimensional sensing dot scan. Returns the point of higest slope. The slope is returned to quantify the signal
+    strength. The coulomb peak might be changed.
     """
 
     def __init__(self, experiment: Experiment,
