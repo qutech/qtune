@@ -22,6 +22,18 @@ class ParameterTuner(metaclass=HDF5Serializable):
                  last_parameters_variances: Optional[pd.Series]=None,
                  last_evaluation_failed: bool=False,
                  evaluatable_voltages=None):
+        """
+        Initialize the ParamterTuner
+        :param evaluators: List of evaluators representing the parameters to be tuned.
+        :param solver: Optimization algorithm.
+        :param tuned_voltages: List of voltages at which the parameters agreed with their set points.
+        :param last_voltage:
+        :param last_parameter_values:
+        :param last_parameters_variances:
+        :param last_evaluation_failed: True if the last evaluation has failed.
+        :param evaluatable_voltages: Voltages where the evaluation of the parameters has not failed. Important for
+        recovery mechanisms.
+        """
         self._tuned_voltages = tuned_voltages or []
         self._solver = solver
         self._last_voltage = last_voltage
@@ -112,7 +124,10 @@ class ParameterTuner(metaclass=HDF5Serializable):
         return self._evaluators
 
     def evaluate(self) -> Tuple[pd.Series, pd.Series]:
-        #  no list comprehension for easier debugging
+        """
+        Evaluates the parameters.
+        :return: Values as pandas Series, Variances as pandas Series.
+        """
         parameters = []
         variances = []
         for evaluator in self._evaluators:
@@ -154,6 +169,7 @@ class SubsetTuner(ParameterTuner):
     def __init__(self, evaluators: Sequence[Evaluator], gates: Sequence[str], maximal_step_size: float=np.nan,
                  maximal_step_number: int=1, number_queued_steps: int=0, **kwargs):
         """
+        Initializes the SubsetTuner. Verifies that the gates correspond to the current positions.
         :param evaluators:
         :param gates: Gates which are used to tune the parameters
         :param tuned_voltages:
@@ -174,6 +190,11 @@ class SubsetTuner(ParameterTuner):
         return self._tunable_gates
 
     def is_tuned(self, voltages: pd.Series) -> bool:
+        """
+        Checks if the parameters agree with the target within the tolarance.
+        :param voltages: Voltages of the Evaluation.
+        :return: True if the parameters agree with the target.
+        """
         self._last_voltage = voltages
 
         if self._number_queued_steps != 0:
@@ -202,7 +223,11 @@ class SubsetTuner(ParameterTuner):
             return False
 
     def get_next_voltages(self, tuned_parameters=None):
-
+        """
+        Slices the update step given by the solver into the maximal step size.
+        :param tuned_parameters: Parameters which are below in the tuning hierarchy.
+        :return: New voltages.
+        """
         if self._last_evaluation_failed:
             return 0.5 * (self._evaluatable_voltages[-1] + self._last_voltage)
 
@@ -238,21 +263,20 @@ class SensingDotTuner(ParameterTuner):
     def __init__(self, cheap_evaluators: Sequence[Evaluator], expensive_evaluators: Sequence[Evaluator],
                  gates: Sequence[str], cheap_evaluation_only=True, **kwargs):
         """
-
+        Designed for the sensing dot which requires no solver but allows cheap and expensive measurements.
         :param cheap_evaluators: An evaluator with little measurement costs. (i.e. one dimensional sweep of gates
         defining the sensing dot.) This evaluator needs to detect at least if the parameter already meets the
         conditions defined in the target. It can also detect additional information (i.e. voltages with higher contrast
         in the sensing dot.)
         :param expensive_evaluators: An evaluator which finds the optimal position of the sensing dot, or information
-        leading to its position. (i.e. two dimensional sensing dot scan.)
+        leading to its position(i.e. two dimensional sensing dot scan.). The parameters can be specified using
+        last_parameter_values and last_parameters_covariances or they will be deduced from the evaluators.
         :param gates: The gates which will be used to tune the parameters
         :param min_threshhold: If the parameters are below this threshold, the experiment is not tuned. This doesnt
         regard the optimal signal found but only the current one.
         :param cost_threshhold: If the parameters are below this threshold, the expensive evaluation will be used.
         :param kwargs: Must contain the argument 'solver' for the init function of the ParameterTuner parent class.
         """
-        # the parameters can be specified using last_parameter_values and last_parameters_covariances or they will be
-        # deducted from the evaluators.
         last_parameter_values_covariances = []
         for string in ["last_parameter_values", "last_parameters_variances"]:
             if string not in kwargs:

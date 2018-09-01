@@ -25,6 +25,9 @@ class Measurement(metaclass=HDF5Serializable):
         return self._name
 
     def get_file_name(self):
+        """
+        :return: The current time as string.
+        """
         return time_string()
 
     def to_hdf5(self):

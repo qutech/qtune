@@ -41,8 +41,17 @@ class Simulator:
 
 
 class TestExperiment(Experiment):
+    """
+    Experiment designed for integration tests. Uses the Simulator class to simulate generic experiments.
+    """
     def __init__(self, initial_voltages: pd.Series, measurements: Sequence[Measurement],
                  simulator_dict: dict):
+        """
+
+        :param initial_voltages: Voltages set before the tuning started.
+        :param measurements: Measurements known to the Experiment.
+        :param simulator_dict: Maps Measurements by their id to Simulators.
+        """
         self._gate_voltages = initial_voltages
 
         self._measurements = measurements

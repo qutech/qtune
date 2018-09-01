@@ -487,8 +487,8 @@ class ForwardingSolver(Solver):
                  current_position: pd.Series,
                  next_position: pd.Series = None):
         """
-
-        :param values_to_position: A series of strings
+        Initializes the ForwardingSolver
+        :param values_to_position: A series of strings mapping the evaluation results to the parameters.
         :param next_position:
         """
         self._target = target
@@ -504,6 +504,13 @@ class ForwardingSolver(Solver):
         return self._next_position
 
     def update_after_step(self, position: pd.Series, values: pd.Series, variances: pd.Series):
+        """
+        Writes the correct values into the next_position.
+        :param position: Position of evaluation.
+        :param values:
+        :param variances: Errors on the values.
+        :return: None
+        """
         self._current_position[position.index.intersection(self.current_position.index)] = \
             position[position.index.intersection(self.current_position.index)]
         self._next_position[position.index.intersection(self._next_position.index)] = \

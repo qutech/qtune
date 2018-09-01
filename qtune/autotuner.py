@@ -15,7 +15,7 @@ class Autotuner(metaclass=HDF5Serializable):
     """
     The Autotuner class manages the communication between the ParameterTuner classes and communicates with the
     experiment by setting and getting voltages for the ParameterTuner classes. The ParameterTuner classes are structured
-    in a hierarchy to take their dependencies into account.
+    in a hierarchy to take their interdependency into account.
     """
 
     def __init__(self, experiment: Experiment, tuning_hierarchy: List[ParameterTuner] = None,
@@ -36,14 +36,16 @@ class Autotuner(metaclass=HDF5Serializable):
         evaluated until a ParameterTuner suggest new voltages. The Autotuner is always at a specific position in the
         hierarchy.
 
-        :param current_tuner_index: True if the ParameterTuner at the current position in the hierarchy has evaluated
+        :param current_tuner_index: Hierarchy number of the parameter currently tuned.
+
+        :param current_tuner_status: True if the ParameterTuner at the current position in the hierarchy has evaluated
         its parameters in the current iteration.
 
-        :param current_tuner_status:
+        :param voltage_to_set: Voltages to be set in the next iteration.
 
-        :param voltage_to_set:
-        :param hdf5_storage_path:
-        :param append_time_to_path:
+        :param hdf5_storage_path: Path to the HDF5 library where the autotuner is saved.
+
+        :param append_time_to_path: True if the current time is to be appended to the saving path.
         """
         self._experiment = experiment
         self._tuning_hierarchy = tuning_hierarchy
@@ -106,6 +108,10 @@ class Autotuner(metaclass=HDF5Serializable):
 
     @property
     def all_estimators_ready(self):
+        """
+        Checks if any gradient estimator requires a measurement for the gradient estimation.
+        :return: True if no GradientEstimator needs a measurement to determine its gradient.
+        """
         for par_tuner in self.tuning_hierarchy:
             solver = par_tuner.solver
             if isinstance(solver, NewtonSolver):
@@ -132,6 +138,10 @@ class Autotuner(metaclass=HDF5Serializable):
             return False
 
     def ready_to_tune(self) -> bool:
+        """
+        Verifies that gates/voltages and parameters are named coherently.
+        :return: True if the naming is coherent.
+        """
         naming_coherent = True
         all_gates = set(self._experiment.read_gate_voltages().index)
         if self._voltages_to_set is not None:
@@ -179,7 +189,7 @@ class Autotuner(metaclass=HDF5Serializable):
         This function changes the targets to continue the tuning towards a new goal.
         :param target_changes: A list corresponding to the tuning hierarchy. The list elements contain dicts
         corresponding to the categories of the target like 'desired' or 'tolerance'.
-        :return:
+        :return: None
         """
         assert (len(target_changes) <= len(self.tuning_hierarchy))
         for i, target_change in enumerate(target_changes):
@@ -194,6 +204,10 @@ class Autotuner(metaclass=HDF5Serializable):
         return state
 
     def save_current_status(self):
+        """
+        Writes the current state to the HDF5 library.
+        :return: None
+        """
         if self._hdf5_storage_path:
             if not os.path.isdir(self._hdf5_storage_path):
                 os.makedirs(self._hdf5_storage_path)
@@ -206,6 +220,12 @@ class Autotuner(metaclass=HDF5Serializable):
         return self._tuning_hierarchy[self._current_tuner_index]
 
     def iterate(self):
+        """
+        Execute one iteration. This can either be a measurement and the subsequent extraction of a parameter, the
+        calculation of the next voltages or setting the next voltages.
+        Afterwards the state is written to the HDF5 library.
+        :return: None
+        """
         if not self.ready_to_tune():
             raise RuntimeError('The setup of the Autotuner class is incomplete!')
 
@@ -264,6 +284,12 @@ class Autotuner(metaclass=HDF5Serializable):
 
 
 def load_auto_tuner(file, reserved) -> Autotuner:
+    """
+    Loads an Autotuner class out of the HDF5 library.
+    :param file: File containing the HDF5 library.
+    :param reserved: Reserved objects.
+    :return: The reloaded Autotuner.
+    """
     assert "experiment" in reserved
     hdf5_handle = h5py.File(file, mode="r")
     loaded_data = from_hdf5(hdf5_handle, reserved=reserved)

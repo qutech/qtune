@@ -17,7 +17,7 @@ __all__ = ['nth', 'get_orthogonal_vector', 'time_string', 'calculate_gradient_no
 
 
 class EvaluationError(RuntimeError):
-    """This exception is raised if a fit or evaluation fails. It should be catched at the right position"""
+    """This exception is raised if a fit or evaluation fails. It should be catched by the ParameterTuner class."""
 
 
 def nth(iterable: Iterable[Any], n: int) -> Any:
@@ -78,7 +78,13 @@ def find_lead_transition(data: np.ndarray, center: float, scan_range: float, npo
     return x[max_index]
 
 
-def nth_diff(data:np.ndarray, n: int):
+def nth_diff(data: np.ndarray, n: int):
+    """
+    Calculates the difference of the ith element to the i+nth element.
+    :param data:
+    :param n:
+    :return: Differences
+    """
     data_diff = np.ndarray((len(data) - n, ))
     for i in range(0, len(data) - n):
         data_diff[i] = data[i] - data[i+n]
@@ -109,12 +115,11 @@ def find_stepes_point_sensing_dot(data: np.ndarray, scan_range=5e-3, npoints=128
 
 # def gradient_min_evaluations(parameters: List(np.ndarray, ...), voltage_points: List(np.ndarray, ...)):
 def gradient_min_evaluations(parameters, voltage_points):
-
     """
     Uses finite differences and basis transformations to compute the gradient.
     :param parameters: A list of paramters belonging to the voltages
     :param voltage_points: List of voltage points. Either
-    :return:
+    :return: gradient
     """
     n_points = len(voltage_points)
     assert(len(voltage_points) == len(parameters))
@@ -139,6 +144,13 @@ def gradient_min_evaluations(parameters, voltage_points):
 def calculate_gradient_non_orthogonal(positions: Sequence[np.ndarray],
                                       values: Sequence[float],
                                       variances: Sequence[float]=None):
+    """
+    Calculates the gradient from a set of positions and corresponding values.
+    :param positions:
+    :param values:
+    :param variances: Errors on the values. They are propagated to estimate the variance of the gradient estimation.
+    :return:
+    """
     n_points = len(values)
     assert len(values) == len(positions)
     n_dim = positions[0].size
@@ -184,6 +196,16 @@ def plot_raw_data_fit(y_data: np.ndarray, x_data: Optional[np.ndarray], fit_func
                       function_args: Optional[Dict[str, numbers.Number]]=None,
                       initial_arguments: Optional[Dict[str, numbers.Number]]=None,
                       ax: Optional[matplotlib.axes.Axes]=None):
+    """
+    Plots data fits.
+    :param y_data:
+    :param x_data:
+    :param fit_function:
+    :param function_args: Arguments of the fitting function.
+    :param initial_arguments: Initial guess of the arguments.
+    :param ax: Instance of matplotlib.axes.Axes. Essentially the plot.
+    :return: The Axes instance.
+    """
     if ax is None:
         ax = plt.gca()
     if y_data is None:
@@ -212,6 +234,14 @@ def plot_raw_data_fit(y_data: np.ndarray, x_data: Optional[np.ndarray], fit_func
 
 
 def plot_raw_data_vertical_marks(y_data, x_data, marking_position, ax):
+    """
+    Draws a vertical line through data to mark e.g. a transition
+    :param y_data:
+    :param x_data:
+    :param marking_position:
+    :param ax: Axes for the plot.
+    :return: Axes instance.
+    """
     if ax is None:
         ax = plt.gca()
     if y_data is None:

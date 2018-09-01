@@ -104,11 +104,21 @@ def read_files(file_or_files, reserved=None):
 
 
 class History:
+    """
+    Saves all relevant information of the Autotuner.
+    """
     _parameter_variance_name = '{parameter_name}#var'
     _gradient_name = '{parameter_name}#{gate_name}#grad'
     _gradient_covariance_name = '{parameter_name}#{gate_name_1}#{gate_name_2}#cov'
 
     def __init__(self, directory_or_file: Optional[str], experiment: Optional=None):
+        """
+        Initialize the history by loading an HDF5 library or a single entry from a library or starting a new history.
+        :param directory_or_file: Directory of the HDF5 library if the whole library shall be reloaded. Single
+        file of the library if only one entry in the library shall be loaded. None if a new history shall be
+        initialized.
+        :param experiment: Experiment corresponding to the Autotuner. Can be None.
+        """
         self._data_frame = pd.DataFrame()
         self._gate_names = set()
         self._parameter_names = set()
@@ -157,11 +167,21 @@ class History:
         return self._data_frame[gate_name]
 
     def get_gradients(self, parameter_name: str) -> pd.DataFrame:
+        """
+        History of a gradient.
+        :param parameter_name: Parameter of the gradient of interest.
+        :return: Gradient history.
+        """
         regex = re.compile(self._gradient_name.format(parameter_name=parameter_name,
                                                       gate_name=r'([\w\s\d]+)'))
         return self._data_frame.filter(regex=regex).rename(lambda name: regex.findall(name)[0], axis='columns')
 
     def get_gradient_covariances(self, parameter_name) -> pd.DataFrame:
+        """
+        History of a gradients covariance.
+        :param parameter_name: Parameter of the gradient's covariance of interest.
+        :return: Gradient covariance history.
+        """
         regex = re.compile(self._gradient_covariance_name.format(parameter_name=parameter_name,
                                                                  gate_name_1=r'([\w\s\d]+)',
                                                                  gate_name_2=r'([\w\s\d]+)'))
@@ -171,6 +191,11 @@ class History:
         return pd.DataFrame(df, columns=pd.MultiIndex.from_tuples(map(regex.findall, df.columns)))
 
     def get_gradient_variances(self, parameter_name) -> pd.DataFrame:
+        """
+        History of the diagonal of a gradient's covariance.
+        :param parameter_name: Parameter of the gradient's covariance of interest.
+        :return: History of the diagonal of the covariance matrix.
+        """
         regex = re.compile(self._gradient_covariance_name.format(parameter_name=parameter_name,
                                                                  gate_name_1=r'(?P<gatename>[\w\s\d]+)',
                                                                  gate_name_2=r'(?P=gatename)'))
@@ -178,6 +203,13 @@ class History:
 
     def read_autotuner_to_data_frame(self, autotuner: qtune.autotuner.Autotuner, start: int = 0,
                                      end: Optional[int] = None) -> pd.DataFrame:
+        """
+        Reads all relevant information of an Autotuner instance into a pandas DataFrame.
+        :param autotuner:
+        :param start: Start of the index in the History.
+        :param end:  End of the index in the History.
+        :return: Dataframe of the voltages, parameters, variances, gradients, gradient's covariances and the tuner index
+        """
         if end is None:
             end = len(autotuner.tuning_hierarchy)
         elif end == 0:
@@ -216,6 +248,11 @@ class History:
                              **tuner_index}, index=[0, ], dtype=float)
 
     def append_autotuner(self, autotuner: qtune.autotuner.Autotuner):
+        """
+        Appends an Autotuner instance to the History.
+        :param autotuner:
+        :return: None
+        """
         voltages = extract_voltages_from_hierarchy(autotuner.tuning_hierarchy).sort_index()
         evaluated_tuner_index = autotuner.current_tuner_index
         if autotuner.voltages_to_set is not None or autotuner.current_tuner_status:
@@ -245,6 +282,11 @@ class History:
             self._evaluator_data = self._evaluator_data.append(new_evaluator_data, ignore_index=True, sort=True)
 
     def load_directory(self, path):
+        """
+        Loads an HDF5 library.
+        :param path: Path of the library.
+        :return: None
+        """
         with qtune.storage.ParallelHDF5Reader(reserved={'experiment': self.experiment}, multiprocess=False) as reader:
             directory_content = [os.path.join(path, file)
                                  for file in sorted(os.listdir(path))]
@@ -253,12 +295,30 @@ class History:
                 self.append_autotuner(autotuner)
 
     def load_file(self, path):
+        """
+        Loads an entry of an HDF5 library.
+        :param path: Path of the library.
+        :return: None
+        """
         hdf5_handle = h5py.File(path, mode="r")
         loaded_data = qtune.storage.from_hdf5(hdf5_handle, reserved={"experiment": self.experiment})
         autotuner = loaded_data["autotuner"]
         self.append_autotuner(autotuner=autotuner)
 
     def plot_tuning(self, voltage_indices=None, parameter_names=None, gradient_parameter_names=None, mode=""):
+        """
+        Plots the History
+        :param voltage_indices: Indices of the voltages to be plotted.
+        :param parameter_names: Names of the parameters to be plotted.
+        :param gradient_parameter_names: Names of the parameters who's gradients shall be plotted.
+        :param mode: Possible modes are:
+        all_voltages: plot all voltages
+        all_parameters: plot all parameters
+        all_gradients: plot all gradients
+        with_grad_covariances: plot the diagonal elements of the covariance matrix as error bars on the gradients.
+        with_par_variences: plot the errors on the parameters.
+        :return: List of figures, List of Axes
+        """
         if "all_voltages" in mode:
             voltage_indices = sorted(self.gate_names)
         if "all_parameters" in mode:
@@ -307,6 +367,13 @@ class History:
         return [voltage_fig, parameter_fig, gradient_fig], [voltage_ax, parameter_ax, gradient_ax]
 
     def plot_evaluator_data(self, start: int=0, end: Optional[int]=None, evaluator_names: Sequence[str]=None):
+        """
+        Plots the raw data of evaluators.
+        :param start: Start index in the History.
+        :param end: End index in the History.
+        :param evaluator_names: Names of the evaluator to be plotted.
+        :return: Figure, Axes
+        """
         for name in evaluator_names:
             if name not in self._evaluator_data.columns:
                 self.logger.warning(name + ' is not in the evaluation data.')

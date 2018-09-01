@@ -108,3 +108,4 @@ are the abstraction of parameters in the Gradient and Solver classes.
 
 ###Options
 describe the measurements in the Measurement class.
+

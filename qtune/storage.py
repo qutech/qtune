@@ -38,6 +38,9 @@ def _import_all():
 
 
 class HDF5Serializable(type):
+    """
+    Metaclass for all serializable object. Serializable means that the class can be reloaded from memory.
+    """
     def __new__(mcs, name, bases, attrs):
         if name in serializables:
             warnings.warn("Overwriting known serializable {}".format(name))
@@ -53,6 +56,14 @@ class HDF5Serializable(type):
 
 
 def _to_hdf5(hdf5_parent_group: h5py.Group, name, obj, serialized):
+    """
+    Serializes a class instance
+    :param hdf5_parent_group: Storage group in the HDF5 library.
+    :param name:
+    :param obj:
+    :param serialized: Serialized objects. Required to verify that the object has not been saved yet.
+    :return: None
+    """
     if id(obj) in serialized:
         hdf5_parent_group.create_dataset(name, data=serialized[id(obj)].ref)
         return
@@ -150,6 +161,13 @@ def to_hdf5(filename_or_handle: Union[str, h5py.Group], name: str, obj,
 
 
 def _from_hdf5(root: h5py.File, hdf5_obj: h5py.HLObject, deserialized=None):
+    """
+    Reloads a saved object.
+    :param root: Root file of the HDF5 library
+    :param hdf5_obj: Object to be reloaded
+    :param deserialized: Already loaded objects.
+    :return: The reloaded object.
+    """
     if isinstance(hdf5_obj, h5py.Reference):
         hdf5_obj = root[hdf5_obj]
 
@@ -238,6 +256,12 @@ def _from_hdf5(root: h5py.File, hdf5_obj: h5py.HLObject, deserialized=None):
 
 
 def from_hdf5(filename_or_handle, reserved):
+    """
+    Reload an HDF5 file.
+    :param filename_or_handle:
+    :param reserved: Reserved elements are those which are already reloaded or have to be created during the run time.
+    :return: Loaded object.
+    """
     _import_all()
 
     if isinstance(filename_or_handle, h5py.Group):
@@ -273,6 +297,9 @@ def _writer_target(write_queue: Union[multiprocessing.JoinableQueue, queue.Queue
 
 
 class AsynchronousHDF5Writer:
+    """
+    The asynchronous writer can improve the performance by writing in separate threads.
+    """
     def __init__(self, reserved, multiprocess=True):
         reserved = reserved.copy()
 
@@ -327,6 +354,9 @@ class AsynchronousHDF5Writer:
 
 
 class ParallelHDF5Reader:
+    """
+    The parallel reader can improve the performance by reading in separate threads.
+    """
     def __init__(self, reserved, multiprocess=True, max_workers=None):
         import concurrent.futures
         if multiprocess:

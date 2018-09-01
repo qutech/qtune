@@ -14,7 +14,7 @@ __all__ = ["GradientEstimator", "FiniteDifferencesGradientEstimator", "KalmanGra
 
 
 class GradientEstimator(metaclass=HDF5Serializable):
-    """Estimate the gradient of a scalar function"""
+    """Implements different ways to calculate and track the gradient of a scalar function."""
     _current_position = None
     _logger = 'qtune'
 
@@ -248,7 +248,15 @@ class KalmanGradientEstimator(GradientEstimator):
                             columns=self._current_position.index)
 
     def require_measurement(self, gates: Sequence[str]=None, tuned_jacobian=None):
-        """I do not think this is good math. Julian to the rescue!"""
+        """
+        Calculates an updates step in the direction of the larges covariance, if the covariance in this region exceeds
+        a threshold.
+        :param gates: Gates used to tune the parameter.
+        :param tuned_jacobian: Jacobian of the parameters, which are lower in the tuning hierarchy and also optimized
+        by a gradient based method.
+        :return: None if the covariance is below the threshold in every direction. Else: Update step in the direction
+        of largest covariance.
+        """
         if gates is None:
             gates = self._current_position.index
 
@@ -299,6 +307,14 @@ class KalmanGradientEstimator(GradientEstimator):
                value: float,
                covariance: float,
                is_new_position=False):
+        """
+        Uses the Kalman filter to update the gradient.
+        :param position: New position.
+        :param value: New value.
+        :param covariance: Covariance of the values's estimation
+        :param is_new_position: True if the position has changed.
+        :return:
+        """
         position = position[self._current_position.index]
         diff_position = (position - self._current_position).dropna(0)
 
