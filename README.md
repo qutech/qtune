@@ -1,15 +1,18 @@
-[evaluation image]: ReadmeImages/EvaluationParameter.png
-[autotuner coordination]: ReadmeImages/AutotunerCoordination.png
-[newton solver gradient]: ReadmeImages/NewtonSolverGradient.png
-[tuner solver]: ReadmeImages/TunerSolver.png
+[evaluation image]: docs/_static/resources/EvaluationParameter.png
+[autotuner coordination]: docs/_static/resources/AutotunerCoordination.png
+[newton solver gradient]: docs/_static/resources/NewtonSolverGradient.png
+[tuner solver]: docs/_static/resources/TunerSolver.png
+[autotuner flow] : docs/_static/resources/AutotunerFlow.svg
 
 
-#Qtune Readme
+#qtune Readme
 
 The program package contains tools for the setup of a general optimization program. It is specifically designed for the 
 automatic fine-tuning of semiconductor spin qubits based on gate defined quantum dots.  
 An interface to the physical backend must be provided. With this backend, control 
 parameters are set and target parameters are measured.  
+Class names are written bold throughout the readme. The package abbreviations are pd for pandas and np for numpy.
+
 
 ##Interface to the Physical Backend
 
@@ -32,7 +35,7 @@ The class **ParameterTuner** represents a group of target parameters, which is t
 to restrict the step size so that the algorithm is less vulnerable to the non-linearity of target parameters.  
 The **Autotuner** 
 class handles the communication between the control parameters, set on the experiment and the 
-groups of target parameters. It structures the groups of target parameters in an hierarchy, which expresses the physical
+groups of target parameters. It structures the ParameterTuners in an hierarchy, which expresses the physical
 interdependency between the parameter groups.  
 
 ![alt text][autotuner coordination]
@@ -44,8 +47,8 @@ Consider for example a hierarchy consisting of three **ParameterTuners**:
 
 All scans require a good contrast in the sensing dot for an accurate evaluation of the parameters. Therefore the 
 contrast in the sensing dot signal is the lowest element in the hierarchy. The measurement of tunnel couplings requires
-the knowledge of the positions of transitions in the charge diagram. If the chemical potentials change, the charge 
-diagram is shifted, therefore the position of the charge diagram or the chemical potentials must be tuned before the 
+the positions of transitions in the charge diagram. If the chemical potentials change, the charge 
+diagram is shifted, therefore the position of the charge diagram i.e. the chemical potentials must be tuned before the 
 tunnel couplings.  
 
 The **Autotuner** works in iterations. In one iteration the **Autotuner** either measures target parameters, orders
@@ -54,16 +57,20 @@ the **Autotuner** goes one level up in the hierarchy and any time new control pa
 starts at the bottom of the tuning hierarchy. The **Autotuner** also controls the communication between the 
 **ParameterTuners** by transmitting which parameters are already tuned. 
 
+![alt text][autotuner flow]
+
 ###Optimization
 
 The voltage steps of each **ParameterTuner** are calculated by its member instance of the **Solver** class. This class 
 can implement any optimization algorithm e.g. Nealder-Mead or Gauss-Newton algorithm. 
-Gradient based **Solver** like the Gauss-Newton algorithm use the **GradientEstimator** class for calculation of the 
+Gradient based **Solvers** like the Gauss-Newton algorithm use a instance of the **GradientEstimator** class for the
+calculation of the 
 gradients of target parameters.  
 
 ![alt text][tuner solver]
 
-The **GradientEstimator** subclasses implement different types of gradient estimation. The **KalmanGradientEstimator** 
+The **GradientEstimator** subclasses implement different types of gradient estimation. One example is the 
+**KalmanGradientEstimator** which
 implements the Kalman filter for gradients. This is an algorithm which calculates updates on the gradient by 
 interpreting each measurement as finite difference measurement with respect to the last voltages. The accuracy of the
 parameter evaluation is then compared to the uncertainty of the estimation of the gradient in order to find the 
@@ -76,13 +83,16 @@ differences.
 ##Getting Started
 See example_setup.md for a detailed tutorial 
 
-##Deployment
+##Features
 
-All classes except for the experiment are serialized and stored in an HDF5 library. They can be reinitialized at any 
-point during the tuning. This way, the program can be set back to any point during the tuning. The **History** class 
+###Storage
+After each iteration of the Autotuner, the full state of all classes except for the experiment is serialized and stored 
+in an HDF5 library. The full state of the program can be reinitialized from any iteration. This way, 
+the program can be set back to any point during the tuning. The **History** class 
 additionally saves all relevant information for the evaluation of the performance. The **History** class can plot the
 gradients, last fits, control and target parameters.
 
+###Logging
 The program is logging its activity and the user can chose how detailed the logging describes the current activity by 
 setting the log level. For realtime plotting of parameters and gradients, the user can  couple the **History** and the 
 **Autotuner** to the GUI. The GUI automatically stores the program data in the HDF5 library and lets the user
