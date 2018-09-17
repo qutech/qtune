@@ -2,7 +2,7 @@
 [autotuner coordination]: docs/_static/resources/AutotunerCoordination.png
 [newton solver gradient]: docs/_static/resources/NewtonSolverGradient.png
 [tuner solver]: docs/_static/resources/TunerSolver.png
-[autotuner flow] : docs/_static/resources/AutotunerFlow.svg
+[autotuner flow]: docs/_static/resources/AutotunerFlow.png
 
 
 #qtune Readme
@@ -10,8 +10,10 @@
 The program package contains tools for the setup of a general optimization program. It is specifically designed for the 
 automatic fine-tuning of semiconductor spin qubits based on gate defined quantum dots.  
 An interface to the physical backend must be provided. With this backend, control 
-parameters are set and target parameters are measured.  
-Class names are written bold throughout the readme. The package abbreviations are pd for pandas and np for numpy.
+parameters are set and target parameters are measured.   
+Class names are written bold throughout the readme. UML class diagrams are inserted to show the dependencies of the
+classes, and UML activity diagrams visualize function calls.
+The package abbreviations are pd for pandas and np for numpy.
 
 
 ##Interface to the Physical Backend
@@ -25,8 +27,11 @@ Measurement is given to the **Experiment**, which is conducting the actual measu
 The **Evaluator** class operates on the **Experiment** class to measure a specific parameter. It contains a list of 
 Measurements and 
 an implementation of the analysis software required to extract the parameter from the raw data returned by the 
-experiment. Each **Evaluator** represents the parameter it is evaluating.
+experiment. Each **Evaluator** represents the parameter it is evaluating. The **Evaluator** has acces to the 
+**Experiment** to conduct scans saved in the Measurements.
+
 ![alt text][evaluation image]
+
 
 ###Interdependency
 
@@ -75,13 +80,35 @@ implements the Kalman filter for gradients. This is an algorithm which calculate
 interpreting each measurement as finite difference measurement with respect to the last voltages. The accuracy of the
 parameter evaluation is then compared to the uncertainty of the estimation of the gradient in order to find the 
 most likely estimation of the gradient. The gradients can be calculated purely by Kalman updates or initially by finite
-differences.
+differences. If a **GradientEstimator** can not estimate the gradient in a certain direction with sufficient accuracy,
+then he also suggests measurements in this direction. 
 
 ![alt text][newton solver gradient]
 
+The crucial point in the optimization of non orthogonal systems is the ability to tune certain parameters without
+changing the other ones. This requires communication between the **Solver** instances. Different **Solvers** can 
+therefore share the same instances of the **GradientEstimators** so that they know the dependency of these parameters
+on the gate voltages.  
+
+Furthermore, the **Autotuner** communicates to the **ParameterTuners** which parameters are already tuned. A 
+**ParameterTuner** can share this information with it's **Solver**. A **Solver** then calculates only update steps
+in the nullspace of the gradients belonging to parameters which are tuned by another **ParameterTuner**. The 
+**GradientEstimators** only determine their gradients in direction in which the tuned parameters are constant, since
+only steps in these directions are executed for the tuning.
+
 
 ##Getting Started
-See example_setup.md for a detailed tutorial 
+The IPython notebook "setup_tutorial.ipynb" gives a detailed
+tutorial for the setup of an automated fine-tuning program. The physical backend is replaced by a simulation to enable
+the tutorial to be executed before the connection to an experiment. 
+In this simulated experiment, a double quantum dot an a sensing dot are tuned. The tuning hierarchy is given by 1. the
+sensing dot, 2. the positions of the charge diagram and 3. two parameters, being the inter dot tunnel coupling and the
+singlet reload time. 
+
+The gates of the sensing dot are assumed to have only an negligible effect on the positions and 
+parameters. Therefore the **Solver** of the sensing dot is independet of the others. The other gates are simultaneously
+tuning the positions and parameters. The **Solver** instances of the positions and parameters share all 
+**GradientEstimators**.
 
 ##Features
 
@@ -93,11 +120,10 @@ additionally saves all relevant information for the evaluation of the performanc
 gradients, last fits, control and target parameters.
 
 ###Logging
-The program is logging its activity and the user can chose how detailed the logging describes the current activity by 
-setting the log level. For realtime plotting of parameters and gradients, the user can  couple the **History** and the 
-**Autotuner** to the GUI. The GUI automatically stores the program data in the HDF5 library and lets the user
- start and stop the program conveniently. The program can also be ordered to execute only one iteration at a time. 
-
+The program is logging its activity and the user can chose how detailed the logging describes the current activity by
+setting the log level. For realtime plotting of parameters and gradients, the user can  couple the **History** and the
+**Autotuner** to the GUI. The GUI automatically stores the program data in the HDF5 library and lets the user start and
+stop the program conveniently. The program can also be ordered to execute only one iteration at a time.
 
 ##Naming Convention
 
