@@ -50,14 +50,14 @@ class ParameterTuner(metaclass=HDF5Serializable):
             # import pickle
             # data = pickle.dumps(self.target)
             # import random
-            # filename = r'D:\debug_%d.txt' % random.randint(0,10000)
-            # with open(filename, 'wb') as file:
+            # storage_path = r'D:\debug_%d.txt' % random.randint(0,10000)
+            # with open(storage_path, 'wb') as file:
             #     file.write(data)
             assert set(self.target.dropna(how='all').index).issubset(set(last_parameter_values.index))
             self._last_parameter_values = last_parameter_values
 
             # import os
-            # os.remove(filename)
+            # os.remove(storage_path)
 
         if last_parameters_variances is None:
             not_na_index = self.target.drop([ind for ind in self.target.columns if self.target.isna().all()[ind]],

@@ -213,7 +213,7 @@ class Autotuner(metaclass=HDF5Serializable):
                 os.makedirs(self._hdf5_storage_path)
             filename = os.path.join(self._hdf5_storage_path, time_string() + ".hdf5")
             self.asynchrone_writer.write(self, file_name=filename, name='autotuner')
-            # hdf5_file = h5py.File(filename, 'w-')
+            # hdf5_file = h5py.File(storage_path, 'w-')
             # to_hdf5(hdf5_file, name="autotuner", obj=self, reserved={"experiment": self._experiment})
 
     def get_current_tuner(self):
