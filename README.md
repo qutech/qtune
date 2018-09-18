@@ -1,12 +1,4 @@
-[evaluation image]: docs/_static/resources/EvaluationParameter.png
-[autotuner coordination]: docs/_static/resources/AutotunerCoordination.png
-[newton solver gradient]: docs/_static/resources/NewtonSolverGradient.png
-[tuner solver]: docs/_static/resources/TunerSolver.png
-[autotuner flow]: docs/_static/resources/AutotunerFlow.png
-
-
 #qtune Readme
-
 The program package contains tools for the setup of a general optimization program. It is specifically designed for the 
 automatic fine-tuning of semiconductor spin qubits based on gate defined quantum dots.  
 An interface to the physical backend must be provided. With this backend, control 
@@ -14,25 +6,24 @@ parameters are set and target parameters are measured.
 Class names are written bold throughout the readme. UML class diagrams are inserted to show the dependencies of the
 classes, and UML activity diagrams visualize function calls.
 The package abbreviations are pd for pandas and np for numpy.
-
-
 ##Interface to the Physical Backend
-
 The interface is given by an **Experiment** class which can set voltage (or other control parameters) and conduct 
 measurements. The definition of a specific measurement is stored in the **Measurement** class. An instance of
 Measurement is given to the **Experiment**, which is conducting the actual measurement and returns the raw data.
-
 ##Target Parameter
-
 The **Evaluator** class operates on the **Experiment** class to measure a specific parameter. It contains a list of 
 Measurements and 
 an implementation of the analysis software required to extract the parameter from the raw data returned by the 
 experiment. Each **Evaluator** represents the parameter it is evaluating. The **Evaluator** has acces to the 
 **Experiment** to conduct scans saved in the Measurements.
 
-![alt text][evaluation image]
+[evaluation image]: docs/_static/resources/EvaluationParameter.png
+[autotuner coordination]: docs/_static/resources/AutotunerCoordination.png
+[newton solver gradient]: docs/_static/resources/NewtonSolverGradient.png
+[tuner solver]: docs/_static/resources/TunerSolver.png
+[autotuner flow]: docs/_static/resources/AutotunerFlow.png
 
-
+![alt text][evaluation image =300x300]
 ###Interdependency
 
 The class **ParameterTuner** represents a group of target parameters, which is tuned simultaneously. The 
@@ -63,7 +54,6 @@ starts at the bottom of the tuning hierarchy. The **Autotuner** also controls th
 **ParameterTuners** by transmitting which parameters are already tuned. 
 
 ![alt text][autotuner flow]
-
 ###Optimization
 
 The voltage steps of each **ParameterTuner** are calculated by its member instance of the **Solver** class. This class 
@@ -95,8 +85,6 @@ Furthermore, the **Autotuner** communicates to the **ParameterTuners** which par
 in the nullspace of the gradients belonging to parameters which are tuned by another **ParameterTuner**. The 
 **GradientEstimators** only determine their gradients in direction in which the tuned parameters are constant, since
 only steps in these directions are executed for the tuning.
-
-
 ##Getting Started
 The IPython notebook "setup_tutorial.ipynb" gives a detailed
 tutorial for the setup of an automated fine-tuning program. The physical backend is replaced by a simulation to enable
@@ -109,39 +97,29 @@ The gates of the sensing dot are assumed to have only an negligible effect on th
 parameters. Therefore the **Solver** of the sensing dot is independet of the others. The other gates are simultaneously
 tuning the positions and parameters. The **Solver** instances of the positions and parameters share all 
 **GradientEstimators**.
-
 ##Features
-
 ###Storage
 After each iteration of the Autotuner, the full state of all classes except for the experiment is serialized and stored 
 in an HDF5 library. The full state of the program can be reinitialized from any iteration. This way, 
 the program can be set back to any point during the tuning. The **History** class 
 additionally saves all relevant information for the evaluation of the performance. The **History** class can plot the
 gradients, last fits, control and target parameters.
-
 ###Logging
 The program is logging its activity and the user can chose how detailed the logging describes the current activity by
 setting the log level. For realtime plotting of parameters and gradients, the user can  couple the **History** and the
 **Autotuner** to the GUI. The GUI automatically stores the program data in the HDF5 library and lets the user start and
 stop the program conveniently. The program can also be ordered to execute only one iteration at a time.
-
 ##Naming Convention
-
 ###Voltages
 are used in the Evaluator class to describe the voltages on the gates in the experiment.
-
 ###Positions
 are an abstraction of gate voltages in the Gradient and Solver classes. These classes
 could not only be used for the tuning algorithm but they could be reused in any gradient 
 based solving algorithm.
-
 ###Parameters
 correspond to properties of the physical experiment. They are extracted from the measurement data 
 by the Evaluator class and handed over to the ParameterTuner class.
-
 ###Values
 are the abstraction of parameters in the Gradient and Solver classes.
-
 ###Options
 describe the measurements in the Measurement class.
-
