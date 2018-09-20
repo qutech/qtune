@@ -383,8 +383,16 @@ class Analyzer:
                                          reduced_for_paper=False):
         if reduced_for_paper:
             standard_font_size = 14
+            fig_size_inches_par = []
+            fig_size_inches_grad = []
+            fig_size_inches_volt = []
+            x_limits = []
         else:
-            standard_font_size = 16
+            standard_font_size = 9
+            fig_size_inches_par = [7, 3.5]
+            fig_size_inches_grad = [7, 2.5]
+            fig_size_inches_volt = [7, 3]
+            x_limits = [-2, 190]
 
         number_runs = len(tune_run_numbers)
         desired_values_pd_concatenated_temp, gate_voltages_sequence_pd_concatenated, parameters_sequence_pd_concatenated, \
@@ -474,7 +482,7 @@ class Analyzer:
                                  label=gate.decode("ascii"), color=tunable_gate_colours[gate.decode("ascii")])
                     plt.gca().tick_params("x", labelsize=standard_font_size)
                     plt.gca().tick_params("y", labelsize=standard_font_size)
-#                    plt.xlim(9.5, 22.5)
+                    plt.xlim(x_limits)
 #                    plt.ylim(-20, 3)
                     # plt.title(
                     #    "Recalculated gradient row: " + parameter_plot_name(
@@ -488,7 +496,8 @@ class Analyzer:
                     plt.ylabel(gradient_plot_ylabel(parameter.decode("ascii")), fontsize=standard_font_size)
                     plt.xlabel("Iteration Number", fontsize=standard_font_size)
                     fig = plt.gcf()
-                    fig.set_size_inches(9.5, 8)
+                    fig.set_size_inches(fig_size_inches_grad)
+
         figure_number = 1
         plt.figure(figure_number, figsize=(5, 4))
 
@@ -529,7 +538,7 @@ class Analyzer:
             plt.subplot(number_parameter, 1, i + 1)
             plt.plot(parameters_sequence_pd_concatenated[self.parameter_names[i]], "r")
             plt.plot(parameters_sequence_pd_concatenated[self.parameter_names[i]], "k.")
-            # plt.gca().set_xlim(-1, 105)
+            plt.xlim(x_limits)
             # plt.locator_params(nbins=5)
             plt.gca().tick_params("x", labelsize=standard_font_size)
             plt.gca().tick_params("y", labelsize=standard_font_size)
@@ -554,10 +563,7 @@ class Analyzer:
 
         plt.xlabel("Iteration Number", fontsize=standard_font_size)
         fig = plt.gcf()
-        if reduced_for_paper:
-            fig.set_size_inches(6, 4) # for paper
-        else:
-            fig.set_size_inches(8.5, 6)
+        fig.set_size_inches(fig_size_inches_par)
         plt.tight_layout()
         plt.draw()
 
@@ -584,7 +590,7 @@ class Analyzer:
                         plt.gca().tick_params("x", labelsize=standard_font_size)
                         plt.gca().tick_params("y", labelsize=standard_font_size)
 
-#                    plt.xlim(9.5, 22.5)
+                    plt.xlim(x_limits)
 #                    plt.ylim(-20, 3)
 
                 else:
@@ -603,14 +609,18 @@ class Analyzer:
             plt.ylabel(gradient_plot_ylabel(parameter.decode("ascii")), fontsize=standard_font_size)
             plt.xlabel("Iteration Number", fontsize=standard_font_size)
             fig = plt.gcf()
+            fig.set_size_inches(fig_size_inches_grad)
+            plt.gca().set_ylim([-12, -20][k], [4, 12][k])
+            """
+       
             if reduced_for_paper:
                 fig.set_size_inches(6, 4) # for paper with fontsize 13
-                plt.gca().set_ylim([-13, -23][k], [2, 7][k])
+                
                 plt.locator_params(axis='y', nbins=5)
             else:
                 fig.set_size_inches(8.5, 6)
                 # plt.gca().set_ylim([-13, -20][k], [2, 12][k])
-
+     """
             plt.tight_layout()
 
         if reduced_for_paper:
@@ -629,8 +639,6 @@ class Analyzer:
                 plt.gca().tick_params("x", labelsize=standard_font_size)
                 plt.gca().tick_params("y", labelsize=standard_font_size)
                 offset += 20e-3
-                plt.gca().set_xlim(-1, 105)
-                plt.gca().set_ylim(-20, 125)
             else:
                 plt.plot(
                     1000. * (
@@ -640,16 +648,14 @@ class Analyzer:
                 plt.gca().tick_params("y", labelsize=standard_font_size)
         plt.legend(fontsize=standard_font_size, ncol=6)
         plt.xlabel("Iteration Number", fontsize=standard_font_size)
-#        plt.xlim(9.5, 22.5)
+        plt.xlim(x_limits)
+        plt.ylim(-45, 120)
         if with_offset:
-            plt.ylabel("Voltage Difference with Offset (mV)", fontsize=standard_font_size)
+            plt.ylabel("Voltages (mV) (Offset changed)", fontsize=standard_font_size)
         else:
             plt.ylabel("Voltage Difference (mV)", fontsize=standard_font_size)
         fig = plt.gcf()
-        if reduced_for_paper:
-            fig.set_size_inches(6, 4)
-        else:
-            fig.set_size_inches(8.5, 6)
+        fig.set_size_inches(fig_size_inches_volt)
         plt.tight_layout()
         # plt.title("Changes in Gate Voltages", fontsize=18)
 
@@ -962,7 +968,6 @@ class Analyzer:
                                      attribute_info=attribute_info_sequence_pd[i][evaluator],
                                      figure_number=figure_numer) == "Stop":
                     return
-
 
     def load_noise_estimation(self, noise_estimation_group: h5py.Group, n_noise_measurements: int):
         gate_voltages = noise_estimation_group["gate_voltages"][:]
@@ -1420,8 +1425,8 @@ def parameter_plot_name(name: str, with_unit: bool=True):
 
 def gradient_plot_ylabel(parameter: str):
     if parameter == "parameter_time_load":
-        return r"Gradient Elements $\partial t_{sr}/ \partial V_i$ $(ns /m V)$"
-        # return "$ \partial t_{sr}/ \partial V_i$ $(ns /m V)$"
+        # return r"Gradient Elements $\partial t_{sr}/ \partial V_i$ $(ns /m V)$"
+        return "$ \partial t_{sr}/ \partial V_i$ $(ns /m V)$"
     if parameter == "parameter_tunnel_coupling":
-        return "Gradient Elements $\partial w / \partial V_i$ $(\mu V /m V)$"
-        # return "$\partial w / \partial V_i$ $(\mu V /m V)$"
+        # return "Gradient Elements $\partial w / \partial V_i$ $(\mu V /m V)$"
+        return "$\partial w / \partial V_i$ $(\mu V /m V)$"
