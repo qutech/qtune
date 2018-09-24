@@ -8,11 +8,9 @@ Class names are written **bold** and functions *cursive* throughout the readme. 
 the heritage and dependencies, and UML activity diagrams visualize function calls.
 The package abbreviations are pd for pandas and np for numpy.
 #Installation
-qtune is compatible with Python 3.5+. qtune can be istalled as pip package:
-
-    pip install qtune
-
-The source code can downloaded from git and developed by:
+qtune is compatible with Python 3.5+. 
+For development we recommend cloning the git repository
+[git.rwth-aachen.de/qutech/python-atune](https://git.rwth-aachen.de/qutech/python-atune) and installing by:
 
     python setup.py develop
 
@@ -25,7 +23,7 @@ parameters with two functions called *read_gate_voltages*() and *set_gate_voltag
 hardware connected to the physical experiment uses a different floating point accuracy, or the **Experiment** is 
 ordered to set voltages exceeding physical or safety limits.
 
-The **Evaluator** class provides the function *evluate*() which returns a fixed number of parameters and a measurement
+The **Evaluator** class provides the function *evaluate*() which returns a fixed number of parameters and a measurement
 error, which is interpreted as the variance of the evaluation.
 
 #Proposed Measurement and Evaluation Structure
@@ -57,6 +55,7 @@ depends on the same set of distinct parameters. The dependencies are assumed alw
 
 Consider the following example from the tuning of a quantum dot array.
 Imagine the following hierarchy consisting of three groups of parameters i.e. three **ParameterTuners**:
+
 1. Contrast in the Sensing Dot Signal
 2. Chemical Potentials / Positions of the Charge Stability Diagram
 3. Tunnel Couplings
@@ -101,56 +100,63 @@ calculation of the gradient of target parameter.
 update the **Solver** with the measured values. When *get_next_voltages*() is called on the **ParameterTuner**, it calls
 *suggest_next_position()* on the Solver.][tuner solver]
 
-The **GradientEstimator** subclasses implement different types of gradient estimation. One example is the 
-**KalmanGradientEstimator** which
-implements the Kalman filter for gradients. This is an algorithm which calculates updates on the gradient by 
+The **GradientEstimator** subclasses implement different methods for the gradient estimation. One example is the 
+Kalman filter in the **KalmanGradientEstimator**. This is an algorithm which calculates updates on the gradient by 
 interpreting each measurement as finite difference measurement with respect to the last voltages. The accuracy of the
 parameter evaluation is then compared to the uncertainty of the estimation of the gradient in order to find the 
-most likely estimation of the gradient. The gradients can be calculated purely by Kalman updates or initially by finite
-differences. If a **GradientEstimator** can not estimate the gradient in a certain direction with sufficient accuracy,
-then he also suggests measurements in this direction. 
+most likely gradient estimation. Thereby, the gradient estimation is described as multidimensional normal distribution,
+defined by a mean and a covariance matrix. If the covariance becomes to large in a certain direction, the 
+**KalmanGradientEstimator** suggests a tuning step in the direction of the maximal covariance. This tuning step does not
+optimize any parameter but should be understood as finite difference measurement.
 
 ![UML class diagram depicting the dependencies between the **NewtonSolver** and various **GradientEstimator** 
 subclasses. The subclasses **FiniteDifferenceGradientEstimator** and **KalmanGradientEstimator** implement the 
 estimation of the gradient by finite difference measurements and updates with the Kalman filter respectively.
-The class**SelfInitializingKalmanEstimator** combines the two approaches by initially using finite differences and 
-subsequently the Kalman filter for updates.][newton solver gradient]
+The class**SelfInitializingKalmanEstimator** combines the two approaches by calculating the initial gradient using 
+finite differences and subsequently the Kalman filter for updates.][newton solver gradient]
 
 The crucial point in the optimization of non orthogonal systems is the ability to tune certain parameters without
 changing the other ones. This requires communication between the **Solver** instances. Different **Solvers** can 
 therefore share the same instances of the **GradientEstimators** so that they know the dependency of these parameters
 on the gate voltages.  
 
-Furthermore, the **Autotuner** communicates to the **ParameterTuners** which parameters are already tuned. A 
-**ParameterTuner** can share this information with it's **Solver**, which then calculates only update steps
-in the null space of the gradients belonging to parameters which are tuned by another **ParameterTuners**. This means
-that the 
-**GradientEstimators** determine only their gradients in direction in which the tuned parameters are constant, since
-only steps in these directions are executed for the tuning.
+Furthermore, the **Autotuner** communicates which parameters are already tuned to the **ParameterTuners**. A 
+**ParameterTuner** can share this information with it's **Solver**, which then calculates update steps
+in the null space of the gradients belonging to parameters which are tuned by another **ParameterTuners**. 
+A **Solver** also passes this information on to it's **GradientEstimators**, which calculate the gradients only in the 
+mentioned null space.
 
 #Getting Started
 The IPython notebook "setup_tutorial.ipynb" gives a detailed
 tutorial for the setup of an automated fine-tuning program. The physical backend is replaced by a simulation to enable
 the tutorial to be executed before the connection to an experiment. 
-In this simulated experiment, a double quantum dot an a sensing dot are tuned. The tuning hierarchy is given by 1. the
-sensing dot, 2. the positions of the charge diagram and 3. two parameters, being the inter dot tunnel coupling and the
-singlet reload time. 
+In this simulated experiment, a double quantum dot and a sensing dot are tuned. The tuning hierarchy is given by 
+
+The **ParameterTuners** and **Solvers** which are used in the setup serve as an illustrative example.
+They are structured in the tuning hierarchy:
+
+1. the sensing dot 
+2. the x and y position of the charge diagram
+3. two parameters, being the inter dot tunnel coupling and the singlet reload time 
 
 The gates of the sensing dot are assumed to have only an negligible effect on the positions and 
 parameters. Therefore the **Solver** of the sensing dot is independent of the others. The other gates are simultaneously
-tuning the positions and parameters. The **Solver** instances of the positions and parameters share all 
-**GradientEstimators**.
+tuning the positions and parameters. The positions and parameters are tuned by **ParameterTuners** restricted to the
+same gates and their **Solver** instances share all **GradientEstimators**. The **GradientEstimators** belonging to the 
+parameters estimate the gradients only in the null space of the gradients belonging to the positions.
+
 #Features
 ##Storage
-After each iteration of the Autotuner, the full state of all classes except for the experiment is serialized and stored 
-in an HDF5 library. The full state of the program can be reinitialized from any iteration. This way, 
+After each evaluation of parameters, change in voltages or estimation of gradients, 
+the full state of all classes except for the experiment is serialized and stored 
+in an HDF5 file. The full state of the program can be reinitialized from any library file. This way, 
 the program can be set back to any point during the tuning. The **History** class 
 additionally saves all relevant information for the evaluation of the performance. The **History** class can plot the
 gradients, last fits, control and target parameters.
 ##GUI
 For real-time plotting of parameters and gradients, the user can couple the **History** and the
 **Autotuner** to the GUI. The GUI automatically stores the program data in the HDF5 library and lets the user start and
-stop the program conveniently. The program can also be ordered to execute only one iteration at a time. The program is 
+stop the program conveniently. The program can also be ordered to execute only one step at a time. The program is 
 logging its activity and the user can chose how detailed the logging describes the current activity by
 setting the log level. 
 #Naming Convention
