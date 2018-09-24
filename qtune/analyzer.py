@@ -381,18 +381,101 @@ class Analyzer:
     def plot_concatenate_kalman_tune_run(self, tune_run_numbers, with_covariance=True, with_offset=True,
                                          recalculate_gradient=False, alpha=1.02, process_noise=None, recalculate_parameters=False,
                                          reduced_for_paper=False):
+        """
+        First data half 22.09.2018 11:38
+         standard_font_size = 9
+            fig_size_inches_par = [3.6, 2.6]
+            fig_size_inches_grad = [3.6, 2.3]
+            fig_size_inches_volt = [4, 3.5]
+            columnspacing = 1
+            par_linewidth = 1
+            par_markersize = 1.5
+            grad_elinewidth = 1
+            grad_linewidth = 1
+            set_point_change_linewidth = 1
+            set_point_linewidth = .8
+            par_labelpad = [0, 0] # y labels
+            grad_labelpad = [0, 0]
+            grad_ylim = [[-18, 9], [-25, 14]]
+            par_markeredgewidth = .1
+            par_y_ticklabelpad = 1.5
+            grad_y_ticklabelpad = 1.5
+            x_limits = [-2, 106]
+            x_shift = 0
+            volt_ylim = [-40, 120]
+        """
+
+
+        """
+        second data half
+        standard_font_size = 9
+            fig_size_inches_par = [3.6, 2.6]
+            fig_size_inches_grad = [3.6, 2.3]
+            fig_size_inches_volt = [4, 3.5]
+            columnspacing = 1
+            par_linewidth = 1
+            par_markersize = 1.5
+            grad_elinewidth = 1
+            grad_linewidth = 1
+            set_point_change_linewidth = 1
+            set_point_linewidth = .8
+            par_labelpad = [0, 0] # y labels
+            grad_labelpad = [0, 0]
+            grad_ylim = [[-16, 9], [-25, 14]]
+            par_markeredgewidth = .1
+            par_y_ticklabelpad = 1.5
+            grad_y_ticklabelpad = 1.5
+            x_limits = [102, 102 + 3 * 21 + 4]
+            par_x = np.arange(105, 105 + 3 * 21)
+        
+        """
+
+
         if reduced_for_paper:
-            standard_font_size = 14
-            fig_size_inches_par = []
-            fig_size_inches_grad = []
-            fig_size_inches_volt = []
-            x_limits = []
+            standard_font_size = 9
+            fig_size_inches_par = [3.6, 2.6]
+            fig_size_inches_grad = [3.6, 2.3]
+            fig_size_inches_volt = [4, 3.5]
+            columnspacing = 1
+            par_linewidth = 1
+            par_markersize = 1.5
+            grad_elinewidth = 1
+            grad_linewidth = 1
+            set_point_change_linewidth = 1
+            set_point_linewidth = .8
+            par_labelpad = [0, 0]  # y labels
+            grad_labelpad = [0, 0]
+            grad_ylim = [[-18, 9], [-25, 14]]
+            par_markeredgewidth = .1
+            par_y_ticklabelpad = 1.5
+            grad_y_ticklabelpad = 1.5
+            x_limits = [-2, 106]
+            x_shift = 0
+            volt_ylim = [-40, 120]
         else:
             standard_font_size = 9
-            fig_size_inches_par = [7, 3.5]
-            fig_size_inches_grad = [7, 2.5]
-            fig_size_inches_volt = [7, 3]
-            x_limits = [-2, 190]
+            fig_size_inches_par = [3.6, 2.6]
+            fig_size_inches_grad = [3.6, 2.3]
+            fig_size_inches_volt = [6.8, 3.2]
+            columnspacing = 1
+            par_linewidth = 1
+            par_markersize = 1.5
+            grad_elinewidth = 1
+            grad_linewidth = 1
+            set_point_change_linewidth = 1
+            set_point_linewidth = .8
+            par_labelpad = [0, 0]  # y labels
+            grad_labelpad = [0, 0]
+            grad_ylim = [[-16, 9], [-25, 14]]
+            par_markeredgewidth = .1
+            par_y_ticklabelpad = 1.5
+            grad_y_ticklabelpad = 1.5
+            x_limits = [-2, 102 + 3 * 21 + 4]
+            volt_ylim = [-40, 120]
+            par_x = None
+            x_shift = 0
+
+        gate_renaming = {"BA": "PA", "BB": "PB", "N": "N", "SA": "SA", "SB": "SB", "T": "T"}
 
         number_runs = len(tune_run_numbers)
         desired_values_pd_concatenated_temp, gate_voltages_sequence_pd_concatenated, parameters_sequence_pd_concatenated, \
@@ -491,10 +574,11 @@ class Analyzer:
                     #plt.title("Gradient row: " + parameter_plot_name(parameter.decode("ascii"), with_unit=False),
                     #          fontsize=18)
                     for j in range(number_runs - 1):
-                        plt.axvline(x=number_steps[j])
+                        plt.axvline(x=number_steps[j] + x_shift, linewidth=set_point_change_linewidth)
                     plt.legend(fontsize=standard_font_size)
                     plt.ylabel(gradient_plot_ylabel(parameter.decode("ascii")), fontsize=standard_font_size)
-                    plt.xlabel("Iteration Number", fontsize=standard_font_size)
+                    plt.xlabel("Iteration Number", fontsize=standard_font_size,
+                       labelpad=par_labelpad[0])
                     fig = plt.gcf()
                     fig.set_size_inches(fig_size_inches_grad)
 
@@ -516,10 +600,11 @@ class Analyzer:
                     # plt.title("Recalculated Parameters with Residuals", fontsize=18)
                     # plt.title("Parameters", fontsize=18)
                 for j in range(number_runs - 1):
-                    plt.axvline(x=number_steps[j])
+                    plt.axvline(x=number_steps[j] + x_shift, linewidth=set_point_change_linewidth)
                 plt.ylabel(parameter_plot_name(self.parameter_names[i].decode("ascii")), fontsize=standard_font_size)
                 if i == number_parameter - 1:
-                    plt.xlabel("Iteration Number", fontsize=standard_font_size)
+                    plt.xlabel("Iteration Number", fontsize=standard_font_size,
+                       labelpad=par_labelpad[0])
                 y_des_val = [desired_values_pd_concatenated[self.parameter_names[i]][0],
                              desired_values_pd_concatenated[self.parameter_names[i]][0]]
 
@@ -532,12 +617,23 @@ class Analyzer:
                                                  desired_values_pd_concatenated[self.parameter_names[i]][run]]], 0)
                     x_des_val = np.concatenate([x_des_val, [start_desired_val_range, number_steps[run]]], 0)
                     start_desired_val_range = number_steps[run] + 0.01
-                plt.plot(x_des_val, y_des_val, "b")
+                plt.plot(x_des_val, y_des_val, "b", linewidth=set_point_linewidth)
 
             plt.figure(figure_number)
             plt.subplot(number_parameter, 1, i + 1)
-            plt.plot(parameters_sequence_pd_concatenated[self.parameter_names[i]], "r")
-            plt.plot(parameters_sequence_pd_concatenated[self.parameter_names[i]], "k.")
+            plt.plot(np.arange(x_shift, parameters_sequence_pd_concatenated[self.parameter_names[i]].size + x_shift),
+                     parameters_sequence_pd_concatenated[self.parameter_names[i]], "r",
+                     linewidth=par_linewidth,
+                     markersize=par_markersize)
+            plt.plot(np.arange(x_shift, parameters_sequence_pd_concatenated[self.parameter_names[i]].size + x_shift),
+                     parameters_sequence_pd_concatenated[self.parameter_names[i]], "k.",
+                     linewidth=par_linewidth,
+                     markersize=par_markersize)
+
+            ax = plt.gca()
+            ax.tick_params(axis='y', which='major', pad=par_y_ticklabelpad)
+            ax = plt.gca()
+            ax.tick_params(axis='x', which='major', pad=par_y_ticklabelpad)
             plt.xlim(x_limits)
             # plt.locator_params(nbins=5)
             plt.gca().tick_params("x", labelsize=standard_font_size)
@@ -555,13 +651,15 @@ class Analyzer:
                                              desired_values_pd_concatenated[self.parameter_names[i]][run]]], 0)
                 x_des_val = np.concatenate([x_des_val, [start_desired_val_range, number_steps[run]]], 0)
                 start_desired_val_range = number_steps[run] + 0.01
-            plt.plot(x_des_val, y_des_val, "b")
+            plt.plot(x_des_val + x_shift, y_des_val, "b", linewidth=set_point_linewidth)
             for j in range(number_runs - 1):
-                plt.axvline(x=number_steps[j])
+                plt.axvline(x=number_steps[j] + x_shift, linewidth=set_point_change_linewidth)
 
-            plt.ylabel(parameter_plot_name(self.parameter_names[i].decode("ascii")), fontsize=standard_font_size)
+            plt.ylabel(parameter_plot_name(self.parameter_names[i].decode("ascii")), fontsize=standard_font_size,
+                       labelpad=par_labelpad[i])
 
-        plt.xlabel("Iteration Number", fontsize=standard_font_size)
+        plt.xlabel("Iteration Number", fontsize=standard_font_size,
+                       labelpad=par_labelpad[0])
         fig = plt.gcf()
         fig.set_size_inches(fig_size_inches_par)
         plt.tight_layout()
@@ -577,19 +675,27 @@ class Analyzer:
             figure_number += 1
             for gate in self.tunable_gate_names:
                 if with_covariance:
-                    plt.errorbar(x=list(range(number_steps[number_runs - 1] + 1)), y=1e-3 * gradient_sequence_pd_concatenated[gate][parameter],
+                    #plt.errorbar(x=list(range(number_steps[number_runs - 1] + 1) + x_shift),
+                    plt.errorbar(x=np.arange(x_shift, x_shift + gradient_sequence_pd_concatenated[gate][parameter].size),
+                                 y=1e-3 * gradient_sequence_pd_concatenated[gate][parameter],
                                  yerr=1e-3 * np.sqrt(
                                      covariance_sequence_pd_concatenated[parameter.decode("ascii") + "_" + gate.decode("ascii")][
                                          parameter.decode("ascii") + "_" + gate.decode("ascii")]),
-                                label=gate.decode("ascii"), color=tunable_gate_colours[gate.decode("ascii")])
+                                label=gate.decode("ascii"), color=tunable_gate_colours[gate.decode("ascii")],
+                                 linewidth=grad_linewidth,
+                                 elinewidth=grad_elinewidth,
+                                 )
+
                     if reduced_for_paper:
                         plt.gca().tick_params("x", labelsize=standard_font_size)
                         plt.gca().tick_params("y", labelsize=standard_font_size)
-                        plt.gca().set_xlim(-1, 105)
                     else:
                         plt.gca().tick_params("x", labelsize=standard_font_size)
                         plt.gca().tick_params("y", labelsize=standard_font_size)
-
+                    ax = plt.gca()
+                    ax.tick_params(axis='y', which='major', pad=grad_y_ticklabelpad)
+                    ax = plt.gca()
+                    ax.tick_params(axis='x', which='major', pad=par_y_ticklabelpad)
                     plt.xlim(x_limits)
 #                    plt.ylim(-20, 3)
 
@@ -599,18 +705,20 @@ class Analyzer:
                     plt.gca().tick_params("x", labelsize=standard_font_size)
                     plt.gca().tick_params("y", labelsize=standard_font_size)
                     # plt.gca().set_xlim(-1, 105)
-                for j in range(number_runs-1):
-                    plt.axvline(x=number_steps[j])
+            for j in range(number_runs-1):
+                plt.axvline(x=number_steps[j] + x_shift, linewidth=set_point_change_linewidth)
             plt.legend(ncol=4)
             #plt.title(
             #    "Gradient elements in the matrix row: " + parameter_plot_name(parameter.decode("ascii"), with_unit=False),
             #    fontsize=18)
-            plt.legend(ncol=4, fontsize=standard_font_size, loc='best', fancybox=True, framealpha=0.5)
-            plt.ylabel(gradient_plot_ylabel(parameter.decode("ascii")), fontsize=standard_font_size)
-            plt.xlabel("Iteration Number", fontsize=standard_font_size)
+            plt.legend(ncol=4, fontsize=standard_font_size, loc='best', fancybox=True, columnspacing=columnspacing)
+            plt.ylabel(gradient_plot_ylabel(parameter.decode("ascii")), fontsize=standard_font_size,
+                       labelpad=grad_labelpad[k])
+            plt.xlabel("Iteration Number", fontsize=standard_font_size,
+                       labelpad=par_labelpad[0])
             fig = plt.gcf()
             fig.set_size_inches(fig_size_inches_grad)
-            plt.gca().set_ylim([-12, -20][k], [4, 12][k])
+            plt.gca().set_ylim(grad_ylim[k])
             """
        
             if reduced_for_paper:
@@ -631,11 +739,11 @@ class Analyzer:
         offset = 0.
         for gate in self.gate_names:
             for j in range(number_runs-1):
-                plt.axvline(x=number_steps[j])
+                plt.axvline(x=number_steps[j] + x_shift, linewidth=set_point_change_linewidth)
             if with_offset:
                 plt.plot(1000. * (
                 gate_voltages_sequence_pd_concatenated[gate] - gate_voltages_sequence_pd_concatenated[gate][0] +
-                offset), gate_colours[gate.decode("ascii")], label=gate.decode("ascii"))
+                offset), gate_colours[gate.decode("ascii")], label=gate_renaming[gate.decode("ascii")])
                 plt.gca().tick_params("x", labelsize=standard_font_size)
                 plt.gca().tick_params("y", labelsize=standard_font_size)
                 offset += 20e-3
@@ -647,15 +755,21 @@ class Analyzer:
                 plt.gca().tick_params("x", labelsize=standard_font_size)
                 plt.gca().tick_params("y", labelsize=standard_font_size)
         plt.legend(fontsize=standard_font_size, ncol=6)
-        plt.xlabel("Iteration Number", fontsize=standard_font_size)
+        plt.xlabel("Iteration Number", fontsize=standard_font_size,
+                       labelpad=par_labelpad[0])
         plt.xlim(x_limits)
-        plt.ylim(-45, 120)
+        plt.ylim(volt_ylim)
         if with_offset:
-            plt.ylabel("Voltages (mV) (Offset changed)", fontsize=standard_font_size)
+            plt.ylabel("Voltages (mV) (Offset changed)", fontsize=standard_font_size,
+                       labelpad=par_labelpad[0])
         else:
             plt.ylabel("Voltage Difference (mV)", fontsize=standard_font_size)
         fig = plt.gcf()
         fig.set_size_inches(fig_size_inches_volt)
+        ax = plt.gca()
+        ax.tick_params(axis='y', which='major', pad=par_y_ticklabelpad)
+        ax = plt.gca()
+        ax.tick_params(axis='x', which='major', pad=par_y_ticklabelpad)
         plt.tight_layout()
         # plt.title("Changes in Gate Voltages", fontsize=18)
 
