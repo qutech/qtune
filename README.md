@@ -2,7 +2,7 @@
 The qtune package contains tools for the setup of a general optimization program. It is originally designed for the 
 automatic fine-tuning of semiconductor spin qubits based on gate defined quantum dots, but applicable to general 
 optimization problems with dependent target parameters. 
-An interface to the physical backend must be provided. With this backend, control 
+An interface to the physical back-end must be provided. With this back-end, control 
 parameters (here assumed to be voltages) are set and target parameters are measured.   
 Class names are written **bold** and functions *cursive* throughout the readme. UML class diagrams are inserted to show 
 the heritage and dependencies, and UML activity diagrams visualize function calls.
@@ -14,9 +14,9 @@ For development we recommend cloning the git repository
 
     python setup.py develop
 
-#Interface of the Physical Backend
+#Interface of the Physical Back-End
 The core features of this program package do not require a specific structure of the measurement software. This section 
-concerns only the required interface of the physical backend.
+concerns only the required interface of the physical back-end.
 The **Experiment** class serves as abstraction of the physical experiment. It provides an interface to the control 
 parameters with two functions called *read_gate_voltages*() and *set_gate_voltages*(new_voltages). The function
 *set_gate_voltages*(new_voltages) returns the voltages it has actually set to the experiment, which is useful if the
@@ -27,7 +27,7 @@ The **Evaluator** class provides the function *evaluate*() which returns a fixed
 error, which is interpreted as the variance of the evaluation.
 
 #Proposed Measurement and Evaluation Structure
-The implementation of a physical backend, as contained in the qtune package, should be regarded as proposal.
+The implementation of a physical back-end, as contained in the qtune package, should be regarded as proposal.
 
 The **Experiment** provides the function *measure*(**Measurement**), which receives an instance of the **Measurement** 
 class and returns the raw data.
@@ -128,7 +128,7 @@ mentioned null space.
 
 #Getting Started
 The IPython notebook "setup_tutorial.ipynb" gives a detailed
-tutorial for the setup of an automated fine-tuning program. The physical backend is replaced by a simulation to enable
+tutorial for the setup of an automated fine-tuning program. The physical back-end is replaced by a simulation to enable
 the tutorial to be executed before the connection to an experiment. 
 In this simulated experiment, a double quantum dot and a sensing dot are tuned. The tuning hierarchy is given by 
 
