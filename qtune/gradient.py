@@ -232,6 +232,7 @@ class KalmanGradientEstimator(GradientEstimator):
         else:
             assert set(epsilon.index) == set(self._current_position.index)
         self._epsilon = epsilon[current_position.index]
+        assert current_position.size == kalman_gradient.grad.size
 
     @property
     def epsilon(self) -> pd.Series:

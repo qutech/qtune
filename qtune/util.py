@@ -211,8 +211,8 @@ def plot_raw_data_fit(y_data: np.ndarray, x_data: Optional[np.ndarray], fit_func
     if y_data is None:
         return ax
     y_data = y_data.squeeze()
-    if len(y_data) == 2:
-        y_data = np.nanmean(y_data)
+    if len(y_data.shape) == 2:
+        y_data = np.nanmean(y_data, 0)
     if x_data is None:
         x_data = np.arange(0, y_data.shape[0])
     if isinstance(function_args, pd.Series):
@@ -233,7 +233,7 @@ def plot_raw_data_fit(y_data: np.ndarray, x_data: Optional[np.ndarray], fit_func
     return ax
 
 
-def plot_raw_data_vertical_marks(y_data, x_data, marking_position, ax):
+def plot_raw_data_vertical_marks(y_data, x_data, marking_position, ax=None):
     """
     Draws a vertical line through data to mark e.g. a transition
     :param y_data:
@@ -258,7 +258,7 @@ def plot_raw_data_vertical_marks(y_data, x_data, marking_position, ax):
     return ax
 
 
-def plot_raw_data_2_dim_marks(y_data, x_data, ax, marking_position):
+def plot_raw_data_2_dim_marks(y_data, x_data, marking_position, ax=None):
     if ax is None:
         ax = plt.gca()
     if y_data is None:

@@ -7,7 +7,7 @@ else
     rng = [-args.range args.range];
 end
 
-scan = makePythonQPCScan2D(rng);
+scan = qtune.makePythonQPCScan2D(rng, args.n_points);
 data = smrun(scan, args.file_name);
 data = data{1};
 end

@@ -105,7 +105,12 @@ class SpecialMeasureMatlab:
             raise RuntimeError('Could not add +qtune to MATLAB path') from e
 
     def to_matlab(self, obj):
-        if isinstance(obj, np.ndarray):
+        no_conversion_required = {float}
+        if type(obj) in no_conversion_required:
+            return obj
+        elif isinstance(obj, pd.Series):
+            return self.to_matlab(dict(obj))
+        elif isinstance(obj, np.ndarray):
             raw = bytes(obj)
             obj_type_str = str(obj.dtype)
             conversions = {'float64': 'double',
@@ -165,7 +170,7 @@ class LegacyDQDRefactored(BasicDQD):
     def set_gate_voltages(self, new_gate_voltages: pd.Series) -> pd.Series:
         current_gate_voltages = self.read_gate_voltages()
         current_gate_voltages[new_gate_voltages.index] = new_gate_voltages[new_gate_voltages.index]
-        current_gate_voltages.applymap(self._matlab.to_matlab, convert_dtype=False)
+        current_gate_voltages = self._matlab.to_matlab(current_gate_voltages)
         return pd.Series(self._matlab.engine.qtune.set_gates_v_pretuned(current_gate_voltages))
 
     def measure(self, measurement: Measurement) -> np.ndarray:
@@ -192,7 +197,8 @@ class LegacyDQDRefactored(BasicDQD):
             parameters["file_name"] = "load_scan" + measurement.get_file_name()
             return np.asarray(self._matlab.engine.qtune.LoadScan(parameters))
         elif measurement.name == "2d_scan":
-            qpc_2d_tune_input = {"range": measurement.options["range"], "file_name": time_string()}
+            qpc_2d_tune_input = {"range": measurement.options["range"], "file_name": time_string(),
+                                 'n_points': measurement.options['n_points']}
             return np.asarray(self._matlab.engine.qtune.PythonQPCScan2D(qpc_2d_tune_input))
         else:
             raise ValueError('Unknown measurement: {}'.format(measurement))

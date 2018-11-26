@@ -62,9 +62,9 @@ scan.loops(2).prefn(1).fn = @smaconfigwrap;
 scan.loops(2).prefn(1).args = {smdata.inst(inst_index).cntrlfn,[inst_index 0 4]};
 elseif strcmp(AWGorDecaDAC,'AWG')
 
-    tunedata.line.fastscan.loops(1).prefn(1).args{1} = awgseqind('new_line');
-    scan = tunedata.line.fastscan;
-		disp('You are using another scan')
+%     tunedata.line.fastscan.loops(1).prefn(1).args{1} = awgseqind('new_line');
+%     scan = tunedata.line.fastscan;
+    scan = confSeqPython('new_line', 1280, nrepetitions, 'dsmask', [5 95], 'T', 1, 'operations', {'DS'});
     
 else
     warning('the variable AWGorDecaDAC must be AWG or DecaDAC! You will recieve a DecaDAC scan!!!')

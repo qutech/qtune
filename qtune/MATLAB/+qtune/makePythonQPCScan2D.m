@@ -1,4 +1,4 @@
-function scan = makePythonQPCScan2D(rng)
+function scan = makePythonQPCScan2D(rng, npoints)
 global tunedata
 global smdata
 
@@ -23,7 +23,7 @@ operations{1}.mask = 1;
 
 config.masks = masks;
 config.operations = operations;
-config.total_record_size = masks{1}.period * 104; % npoints from loop 1, also has to be a multiple of 256;
+config.total_record_size = masks{1}.period * 208; % npoints from loop 1, also has to be a multiple of 256;
 
 scan.consts.setchan = 'PulseLine';
 scan.consts.val = 1;
@@ -49,7 +49,7 @@ scan.cleanupfn(3).args = {@smset, {'SDB2'}, center{1}};
 
 scan.loops(1).setchan = 'SDB2';
 scan.loops(1).ramptime = -0.005;
-scan.loops(1).npoints = 104;
+scan.loops(1).npoints = 208;
 scan.loops(1).rng = center{1} + rng;
 scan.loops(1).trigfn.fn = @smatrigAWG;
 scan.loops(1).trigfn.args = {sminstlookup('AWG5000')};

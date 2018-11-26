@@ -8,6 +8,6 @@ smset(args.gate, voltage_on_sweeping_gate{1});
 %data=mean(data{1});
 data = data{1};
 figure(3668)
-plot(data)
+plot(mean(data))
 end
 
