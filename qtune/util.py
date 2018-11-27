@@ -268,7 +268,7 @@ def plot_raw_data_2_dim_marks(y_data, x_data, marking_position, ax=None):
     image = ax.pcolormesh(x, y, y_data)
     ax.hlines(y=marking_position.iloc[0], xmin=min(x_data[1]), xmax=max(x_data[1]))
     ax.vlines(x=marking_position.iloc[1], ymin=min(x_data[0]), ymax=max(x_data[0]))
-    # plt.colorbar()
+    plt.colorbar(image, ax=ax)
     return ax
 
 
