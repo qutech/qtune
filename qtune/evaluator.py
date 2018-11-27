@@ -20,13 +20,15 @@ class Evaluator(metaclass=HDF5Serializable):
                  parameters: Sequence[str],
                  raw_x_data: Tuple[Optional[np.ndarray]],
                  raw_y_data: Tuple[Optional[np.ndarray]],
-                 name: str):
+                 name: str,
+                 n_measurement_repetitions: Optional[int]=1):
         self._experiment = experiment
         self._measurements = tuple(measurements)  # Is this the behaviour that was intended?
         self._parameters = tuple(parameters)
         self._raw_x_data = raw_x_data
         self._raw_y_data = raw_y_data
         self._name = name
+        self._n_measurement_repetitions = n_measurement_repetitions
 
     @property
     def logger(self):
@@ -52,6 +54,10 @@ class Evaluator(metaclass=HDF5Serializable):
     def raw_data(self):
         return self._raw_x_data, self._raw_y_data
 
+    @property
+    def n_measurement_repetitions(self):
+        return self._n_measurement_repetitions
+
     def evaluate(self) -> (pd.Series, pd.Series):
         """ This function is necessary. It is designed to conduct the measurements on the experiment. """
         raise NotImplementedError()
@@ -68,7 +74,8 @@ class Evaluator(metaclass=HDF5Serializable):
                     parameters=self.parameters,
                     raw_x_data=self._raw_x_data,
                     raw_y_data=self._raw_y_data,
-                    name=self.name)
+                    name=self.name,
+                    n_measurement_repetitions=self.n_measurement_repetitions)
 
     def __repr__(self):
         return "{type}({data})".format(type=type(self).__name__, data=self.to_hdf5())
@@ -84,12 +91,13 @@ class FittingEvaluator(Evaluator):
                  raw_y_data: Tuple[Optional[np.ndarray]],
                  fit_results: Optional[pd.Series],
                  initial_fit_arguments: Optional,
-                 name: str):
+                 name: str,
+                 **kwargs):
 
         self._fit_results = fit_results
         self._initial_fit_arguments = initial_fit_arguments
         super().__init__(experiment=experiment, measurements=measurements, parameters=parameters,
-                         raw_x_data=raw_x_data, raw_y_data=raw_y_data, name=name)
+                         raw_x_data=raw_x_data, raw_y_data=raw_y_data, name=name, **kwargs)
 
     @property
     def fit_results(self) -> Optional[pd.Series]:
@@ -112,6 +120,107 @@ class FittingEvaluator(Evaluator):
                     initial_fit_arguments=self.initial_fit_arguments)
 
 
+class LeadTunnelTimePrefitVersion(FittingEvaluator):
+    def __init__(self, experiment: Experiment,
+                 parameters: Sequence[str]=('parameter_time_rise', 'parameter_time_fall'),
+                 measurements: Tuple[Measurement] = None,
+                 sample_rate: float=1e8,
+                 raw_x_data: Tuple[Optional[np.ndarray]]=None,
+                 raw_y_data: Tuple[Optional[np.ndarray]]=None,
+                 fit_results: Optional[pd.Series]=None,
+                 evaluation_arguments=None,
+                 initial_fit_args=None,
+                 name='LeadTunnelTimeByLeadScan',
+                 **kwargs):
+        if measurements is None:
+            measurements = (Measurement('lead_scan', gate='B', AWGorDecaDAC='DecaDAC'), )
+        if evaluation_arguments is None:
+            evaluation_arguments = {'t_fall': 50e-9, 't_rise': 50e-9, 'begin_rise': 70e-9, 'begin_fall': 2070e-9}
+
+        self.evaluation_arguments = evaluation_arguments
+        self.sample_rate = sample_rate
+        super().__init__(experiment=experiment, measurements=measurements, parameters=parameters,
+                         raw_x_data=raw_x_data, raw_y_data=raw_y_data, fit_results=fit_results,
+                         initial_fit_arguments=initial_fit_args, name=name, **kwargs)
+
+    def evaluate(self) -> (pd.Series, pd.Series):
+        t_rise = []
+        t_fall = []
+        self._raw_y_data = []
+        self._raw_x_data = []
+        for i in range(self.n_measurement_repetitions):
+            raw_data = self.experiment.measure(self.measurements[0])
+            self._fit_results, residual = self.process_raw_data(raw_data)
+            t_rise.append(self._fit_results['t_rise'])
+            t_fall.append(self._fit_results['t_fall'])
+        t_rise = np.nanmean(t_rise)
+        t_fall = np.nanmean(t_fall)
+        error_t_rise = t_rise / 5. / np.sqrt(self.n_measurement_repetitions)
+        error_t_fall = t_fall / 5. / np.sqrt(self.n_measurement_repetitions)
+        return pd.Series([t_rise, t_fall], ['parameter_time_rise', 'parameter_time_fall']), pd.Series(
+            [error_t_rise, error_t_fall], ['parameter_time_rise', 'parameter_time_fall'])
+
+    def process_raw_data(self, raw_data=None):
+        if raw_data is None:
+            raw_data = self.raw_data[0]
+        y_data = raw_data[1, :] - raw_data[0, :]
+        self._raw_y_data.append(y_data)
+        n_points = len(y_data)
+        x_data = np.arange(start=0, stop=n_points) / self.sample_rate
+        self._raw_x_data.append(x_data)
+        p0 = [y_data[round(.25 * n_points)] - y_data[round(.75 * n_points)],
+              self.evaluation_arguments['t_fall'], self.evaluation_arguments['t_rise'],
+              self.evaluation_arguments['begin_rise'], self.evaluation_arguments['begin_fall'], np.mean(y_data)]
+        bounds = ([-np.inf, 0., 0., -np.inf, -np.inf, -np.inf],
+                  [np.inf, np.inf, np.inf, np.inf, np.inf, np.inf])
+        # prefit
+        self._initial_fit_arguments = pd.Series(data=p0, index=['height', 't_fall', 't_rise', 'begin_rise',
+                                                                'begin_fall', 'offset'])
+        popt, pcov = optimize.curve_fit(f=func_lead_times_v1, p0=p0, bounds=bounds, xdata=x_data, ydata=y_data)
+
+        # weighted fit
+        sigma = np.ones(n_points)
+        significant_lenght = int(.35 * n_points)
+        start_rise = round(popt[3] / 4e-6) + 3
+        start_fall = round(popt[4] / 4e-6) + 3
+        sigma[start_rise:start_rise + significant_lenght] = .1
+        sigma[start_fall:start_fall + significant_lenght] = .1
+        popt, pcov = optimize.curve_fit(f=func_lead_times_v1, p0=popt, sigma=sigma, bounds=bounds, xdata=x_data,
+                                        ydata=y_data)
+        self._fit_results = pd.Series(data=popt, index=['height', 't_fall', 't_rise', 'begin_rise', 'begin_fall',
+                                                        'offset'])
+        self.evaluation_arguments = self._fit_results
+        residuals = y_data - func_lead_times_v1(x_data, **dict(self._fit_results))
+        scaled_residual = np.nanmean(residuals) / self._fit_results['height']
+        return self._fit_results, scaled_residual
+
+
+def func_lead_times_v1(x, height: float, t_fall: float, t_rise: float, begin_rise: float, begin_fall: float,
+                       offset: float):
+    half_time = 2e-6
+    x = np.squeeze(x)
+    n_points = len(x)
+    y = np.zeros((n_points, ))
+    c_rise = np.cosh(.5 * half_time / t_rise)
+    s_rise = np.sinh(.5 * half_time / t_rise)
+    c_fall = np.cosh(.5 * half_time / t_fall)
+    s_fall = np.sinh(.5 * half_time / t_fall)
+    for i in range(n_points):
+        if x[i] < begin_rise:
+            e = np.exp(.5*(1. * begin_fall - 2. * (x[i] + x[n_points - 1] - (begin_fall - half_time))) / t_fall)
+            signed_height = -1. * height
+            y[i] = offset + .5 * signed_height * (c_fall - e) / s_fall
+        elif begin_rise <= x[i] < begin_fall:
+            e = np.exp(.5*(begin_fall - 2. * (x[i] - begin_rise)) / t_rise)
+            signed_height = height
+            y[i] = offset + .5 * signed_height * (c_rise - e) / s_rise
+        else:
+            e = np.exp(.5*(3 * half_time - 2. * (x[i] - (begin_fall - half_time))) / t_fall)
+            signed_height = -1. * height
+            y[i] = offset + .5 * signed_height * (c_fall - e) / s_fall
+    return y
+
+
 class LeadTunnelTimeByLeadScan(FittingEvaluator):
     """
     RF gates pulse over the transition between the (2,0) and the (1,0) region. Then exponential functions are fitted
@@ -124,14 +233,12 @@ class LeadTunnelTimeByLeadScan(FittingEvaluator):
                  raw_x_data: Tuple[Optional[np.ndarray]]=None,
                  raw_y_data: Tuple[Optional[np.ndarray]]=None,
                  fit_results: Optional[pd.Series]=None,
-                 fit_function: Optional=None,
                  evaluation_arguments=None,
                  initial_fit_args=None,
-                 name = 'LeadTunnelTimeByLeadScan'):
+                 name='LeadTunnelTimeByLeadScan',
+                 **kwargs):
         if measurements is None:
             measurements = (Measurement('lead_scan', gate='B', AWGorDecaDAC='DecaDAC'), )
-        if fit_function is None:
-            fit_function = func_lead_times_v2
         if evaluation_arguments is None:
             evaluation_arguments = {'t_fall': 50e-9, 't_rise': 50e-9, 'begin_rise': 70e-9, 'begin_fall': 2070e-9}
 
@@ -139,7 +246,7 @@ class LeadTunnelTimeByLeadScan(FittingEvaluator):
         self.sample_rate = sample_rate
         super().__init__(experiment=experiment, measurements=measurements, parameters=parameters,
                          raw_x_data=raw_x_data, raw_y_data=raw_y_data, fit_results=fit_results,
-                         initial_fit_arguments=initial_fit_args, name=name)
+                         initial_fit_arguments=initial_fit_args, name=name, **kwargs)
 
     def evaluate(self) -> (pd.Series, pd.Series):
         raw_data = self.experiment.measure(self.measurements[0])
@@ -153,6 +260,8 @@ class LeadTunnelTimeByLeadScan(FittingEvaluator):
             [error_t_rise, error_t_fall], ['parameter_time_rise', 'parameter_time_fall'])
 
     def process_raw_data(self, raw_data=None):
+        if self.n_measurement_repetitions != 1:
+            raise ValueError('This evlaution is only implemented for n=1!')
         if raw_data is None:
             raw_data = self.raw_data
         y_data = raw_data[1, :] - raw_data[0, :]
@@ -566,7 +675,7 @@ class SensingDot2D(Evaluator):
                                         range=scan_range,
                                         gate1=sweeping_gates[0],
                                         gate2=sweeping_gates[1], ramptime=.0005, n_lines=20,
-                                        n_points=312, N_average=1, AWGorDecaDAC='DecaDAC'),)
+                                        n_points=104, N_average=1, AWGorDecaDAC='DecaDAC'),)
         super().__init__(experiment, measurements, parameters=parameters, raw_x_data=raw_x_data,
                          raw_y_data=raw_y_data, name=name)
 
@@ -592,6 +701,8 @@ class SensingDot2D(Evaluator):
 
     def process_raw_data(self, raw_data):
         raw_data *= -1
+        n_lines, n_points = raw_data.shape
+
         # invert sign to get rising flank
         # data_filtered = scipy.ndimage.filters.gaussian_filter1d(input=raw_data, sigma=.5, axis=0, order=0,
         #                                                        mode="nearest",
@@ -602,14 +713,14 @@ class SensingDot2D(Evaluator):
                                                                 sigma=20, axis=0,
                                                                 order=0,
                                                                 mode="nearest",
-                                                                truncate=.2)
+                                                                truncate=.1)
         data_diff = np.diff(data_filtered[:, ::2], n=1)
         mins_in_lines = data_diff.min(1)
         min_line = np.argmin(mins_in_lines)
         min_point = np.argmin(data_diff[min_line])
-        gate_1_pos = float(min_line) / float(self.measurements[0].options["n_lines"]) / 2 * 2 * \
+        gate_1_pos = float(min_line) / n_lines * 2 * \
             self.measurements[0].options["range"] - self.measurements[0].options["range"]
-        gate_2_pos = float(min_point) / float(self.measurements[0].options["n_points"]) / 2 * 2 * \
+        gate_2_pos = float(min_point) / (n_points / 2) * 2 * \
             self.measurements[0].options["range"] - self.measurements[0].options["range"]
         new_voltages = pd.Series([gate_1_pos, gate_2_pos], ["position_" + self.measurements[0].options["gate1"],
                                                             "position_" + self.measurements[0].options["gate2"]])
