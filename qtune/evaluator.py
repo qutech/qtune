@@ -766,3 +766,18 @@ class AveragingEvaluator(Evaluator):
                     raw_x_data=self._raw_x_data,
                     raw_y_data=self._raw_y_data,
                     name=self.name)
+
+
+class MatlabEvaluator(Evaluator):
+    def __init__(self, experiment: qtune.sm.LegacyDQDRefactored, **kwargs):
+        super().__init__(experiment, **kwargs)
+
+    def evaluate(self):
+        raise NotImplementedError
+        # return self.experiment._matlab.engine.
+
+    def process_raw_data(self, raw_data):
+        raise NotImplementedError
+
+    def to_hdf5(self):
+        return super().to_hdf5()
