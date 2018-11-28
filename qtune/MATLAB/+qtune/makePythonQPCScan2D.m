@@ -7,8 +7,20 @@ if nargin < 1
 end
 center = smget({'SDB2', 'SDB1'});
 
+
+chan_index = smchanlookup('SDB2');
 inst_index = sminstlookup('ATS9440Python');
 config = AlazarDefaultSettings(inst_index);
+
+dv = abs(rng(2) - rng(1));
+rampspeed = smdata.channels(chan_index).rangeramp(3);
+npoints = (dv / rampspeed) / 0.005;
+n256 = floor(npoints / 256);
+rem256 = mod(npoints, 256);
+if rem256 > 0
+    npoints = (n256 + 1) * 256;
+end
+
 
 masks = {};
 masks{1}.type = 'Periodic Mask';
@@ -49,7 +61,8 @@ scan.cleanupfn(3).args = {@smset, {'SDB2'}, center{1}};
 
 scan.loops(1).setchan = 'SDB2';
 scan.loops(1).ramptime = -0.005;
-scan.loops(1).npoints = 208;
+% scan.loops(1).npoints = 208;
+scan.loops(1).npoints = npoints;
 scan.loops(1).rng = center{1} + rng;
 scan.loops(1).trigfn.fn = @smatrigAWG;
 scan.loops(1).trigfn.args = {sminstlookup('AWG5000')};

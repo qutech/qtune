@@ -363,7 +363,8 @@ class NewLoadTime(FittingEvaluator):
         x_data = raw_data[1, :]
         y_data = raw_data[0, :]
         initial_curvature = self.initial_curvature
-        p0 = [np.nanmin(y_data), np.nanmax(y_data) - np.nanmin(y_data), initial_curvature]
+        # p0 = [np.nanmin(y_data), np.nanmax(y_data) - np.nanmin(y_data), initial_curvature]
+        p0 = [np.nanmin(y_data), y_data[0] - y_data[-1], initial_curvature]
         bounds = ([-np.inf, -np.inf, 2.],
                   [np.inf, np.inf, 300.])
         popt, pcov = optimize.curve_fit(f=func_load_time, p0=p0, bounds=bounds, xdata=x_data, ydata=y_data)
