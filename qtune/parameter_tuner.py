@@ -373,5 +373,5 @@ class SensingDotTuner(ParameterTuner):
                     solver=self.solver,
                     last_voltage=self._last_voltage,
                     last_parameter_values=self._last_parameter_values,
-                    last_parameter_covariances=self._last_parameters_variances,
+                    last_parameters_variances=self._last_parameters_variances,
                     cheap_evaluation_only=self.cheap_evaluation_only)
