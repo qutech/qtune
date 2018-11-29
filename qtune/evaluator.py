@@ -338,7 +338,7 @@ class InterDotTCByLineScan(FittingEvaluator):
                  raw_y_data: Tuple[Optional[np.ndarray]]=None, fit_results: Optional[pd.Series]=None,
                  initial_fit_arguments=None, intermediate_fit_arguments=None, name='InterDotTCByLineScan'):
         if measurements is None:
-            measurements = (Measurement('detune_scan', center=0., range=2e-3, N_points=100, ramptime=.02, N_average=10,
+            measurements = (Measurement('detune_scan', center=0., range=2e-3, N_points=100, ramptime=.02, N_average=5,
                                         AWGorDecaDAC='AWG'), )
 
         if initial_fit_arguments is None:
@@ -404,7 +404,12 @@ class InterDotTCByLineScan(FittingEvaluator):
         position_point = int((popt[3] + np.ptp(x_data)) / 2. / np.ptp(x_data) * n_points)
         weights = np.ones(n_points)
         heavy_range = round(2 * popt[4] / np.ptp(x_data) * n_points)
-        weights[max(0, int(position_point - heavy_range)):min(n_points - 1, int(position_point + heavy_range))] = .1
+        # weights[max(0, int(position_point - heavy_range)):min(n_points - 1, int(position_point + heavy_range))] = .1
+        # mouse bite fix
+        weights[max(0, position_point-15):min(position_point - 5, n_points - 1)] = 10
+        weights[max(0, position_point - 4):min(position_point + 5, n_points - 1)] = .1
+        popt[4] = 130e-6
+
         self.intermediate_fit_arguments.iloc[:] = popt
         popt, pcov = optimize.curve_fit(f=func_inter_dot_coupling, p0=popt, sigma=weights, xdata=x_data, ydata=y_data)
         residuals = y_data[int(0.3 * n_points):n_points] - \
