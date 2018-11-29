@@ -87,8 +87,11 @@ class ParameterTuner(metaclass=HDF5Serializable):
 
     @last_voltages.setter
     def last_voltages(self, new_voltages: pd.Series):
-        index_intersection = self.last_voltages.index.intersection(new_voltages)
-        self._last_voltage[index_intersection] = new_voltages[index_intersection]
+        if self.last_voltages is None:
+            self._last_voltage = new_voltages
+        else:
+            index_intersection = self.last_voltages.index.intersection(new_voltages)
+            self._last_voltage[index_intersection] = new_voltages[index_intersection]
 
     @property
     def solver(self) -> Solver:

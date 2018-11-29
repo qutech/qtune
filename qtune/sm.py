@@ -105,7 +105,7 @@ class SpecialMeasureMatlab:
             raise RuntimeError('Could not add +qtune to MATLAB path') from e
 
     def to_matlab(self, obj):
-        no_conversion_required = {float}
+        no_conversion_required = {float, int}
         if type(obj) in no_conversion_required:
             return obj
         elif isinstance(obj, pd.Series):
@@ -178,15 +178,16 @@ class LegacyDQDRefactored(BasicDQD):
         if measurement.name == 'line_scan':
             parameters = measurement.options.copy()
             parameters['file_name'] = "line_scan" + measurement.get_file_name()
-            parameters['N_points'] = float(parameters['N_points'])
-            parameters['N_average'] = float(parameters['N_average'])
-            parameters['center'] = float(parameters['center'])
+            for name in ['N_points', 'N_average', 'center', 'range', 'ramptime']:
+                if name in parameters:
+                    parameters[name] = self._matlab.to_matlab(parameters[name])
             return np.asarray(self._matlab.engine.qtune.PythonChargeLineScan(parameters))
         elif measurement.name == 'detune_scan':
             parameters = measurement.options.copy()
             parameters['file_name'] = "detune_scan_" + measurement.get_file_name()
-            parameters['N_points'] = float(parameters['N_points'])
-            parameters['N_average'] = float(parameters['N_average'])
+            for name in ['N_points', 'N_average', 'center', 'range', 'ramptime']:
+                if name in parameters:
+                    parameters[name] = self._matlab.to_matlab(parameters[name])
             return np.asarray(self._matlab.engine.qtune.PythonLineScan(parameters))
         elif measurement.name == 'lead_scan':
             parameters = measurement.options.copy()
