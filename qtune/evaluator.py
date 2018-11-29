@@ -378,7 +378,7 @@ class InterDotTCByLineScan(FittingEvaluator):
             return pd.Series([np.nan], ["parameter_tunnel_coupling"]), pd.Series([np.nan],
                                                                                  ["parameter_tunnel_coupling"])
         self._fit_results = fitresult
-        tc_in_mus = fitresult['width'] * 1e6
+        tc_in_mus = fitresult['width']
         return pd.Series([tc_in_mus], ["parameter_tunnel_coupling"]), \
             pd.Series([residual], ["parameter_tunnel_coupling"])
 
@@ -433,7 +433,7 @@ class NewLoadTime(FittingEvaluator):
     def __init__(self, experiment: Experiment, parameters: Sequence[str]=('parameter_time_load',),
                  measurements: Measurement = None, raw_x_data: Tuple[Optional[np.ndarray]]=None,
                  raw_y_data: Tuple[Optional[np.ndarray]]=None, fit_results: Optional[pd.Series]=None,
-                 initial_fit_arguments=None, initial_curvature=10, name='LoadTime'):
+                 initial_fit_arguments=None, initial_curvature=30, name='LoadTime'):
         if measurements is None:
             measurements = (Measurement("load_scan"), )
         if initial_fit_arguments is None:
@@ -753,8 +753,9 @@ class AveragingEvaluator(Evaluator):
         averaged_parameters = pd.Series()
         outer_error = pd.Series()
         for parameter in self.parameters:
-            averaged_parameters[parameter] = np.nanmean([el[parameter] for el in parameter_list])
-            outer_error[parameter] = np.nanvar([el[parameter] for el in parameter_list])
+            par_list = [el[parameter] for el in parameter_list]
+            averaged_parameters[parameter] = np.nanmean(par_list)
+            outer_error[parameter] = np.nanvar(par_list) / np.count_nonzero(~np.isnan(par_list))
 
         return averaged_parameters, outer_error
 
