@@ -37,6 +37,7 @@ class ParameterTuner(metaclass=HDF5Serializable):
         self._tuned_voltages = tuned_voltages or []
         self._solver = solver
         self._last_voltage = last_voltage
+        self.last_voltages = last_voltage
         self._logger = 'qtune'
         self._last_evaluation_failed = last_evaluation_failed
         self._evaluatable_voltages = evaluatable_voltages or []
@@ -83,6 +84,11 @@ class ParameterTuner(metaclass=HDF5Serializable):
     @property
     def last_voltages(self) -> pd.Series:
         return self._last_voltage
+
+    @last_voltages.setter
+    def last_voltages(self, new_voltages: pd.Series):
+        index_intersection = self.last_voltages.index.intersection(new_voltages)
+        self._last_voltage[index_intersection] = new_voltages[index_intersection]
 
     @property
     def solver(self) -> Solver:
@@ -151,6 +157,10 @@ class ParameterTuner(metaclass=HDF5Serializable):
         :return: next_voltages
         """
         raise NotImplementedError()
+
+    def restart(self, new_voltages):
+        self.last_voltages = new_voltages
+        self.solver.restart(new_voltages)
 
     def to_hdf5(self) -> dict:
         return dict(evaluators=self._evaluators,

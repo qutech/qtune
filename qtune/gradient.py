@@ -26,6 +26,11 @@ class GradientEstimator(metaclass=HDF5Serializable):
     def current_position(self):
         return self._current_position
 
+    @current_position.setter
+    def current_position(self, new_positions: pd.Series):
+        index_intersection = new_positions.index.intersection(self.current_position)
+        self._current_position[index_intersection] = new_positions[index_intersection]
+
     def change_position(self, new_position: pd.Series):
         raise NotImplementedError()
 
@@ -43,6 +48,9 @@ class GradientEstimator(metaclass=HDF5Serializable):
 
     def to_hdf5(self):
         raise NotImplementedError()
+
+    def restart(self, new_position):
+        self.current_position = new_position
 
     def __repr__(self):
         return "{type}({data})".format(type=type(self), data=self.to_hdf5())
@@ -342,6 +350,10 @@ class KalmanGradientEstimator(GradientEstimator):
                     maximum_covariance=self._maximum_covariance,
                     epsilon=self._epsilon)
 
+    def restart(self, new_position):
+        self._current_value = None
+        super().restart(new_position)
+
 
 class SelfInitializingKalmanEstimator(GradientEstimator):
     """A kalman gradient estimator that initializes itself with finite differences"""
@@ -385,6 +397,12 @@ class SelfInitializingKalmanEstimator(GradientEstimator):
     @property
     def current_position(self):
         return self.active_estimator.current_position
+
+    @current_position.setter
+    def current_position(self, new_positions: pd.Series):
+        self._finite_difference_estimator.current_position = new_positions
+        if self.kalman_estimator:
+            self.kalman_estimator.current_position = new_positions
 
     def change_position(self, new_position: pd.Series):
         self._finite_difference_estimator.change_position(new_position)

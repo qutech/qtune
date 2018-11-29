@@ -70,9 +70,9 @@ class Solver(metaclass=HDF5Serializable):
         return self._current_position
 
     @current_position.setter
-    def current_position(self, newPosition: pd.Series):
-        labels = self._current_position.index.intersection(newPosition)
-        self._current_position[labels] = newPosition[labels]
+    def current_position(self, new_position: pd.Series):
+        labels = self._current_position.index.intersection(new_position.index)
+        self._current_position[labels] = new_position[labels]
 
     @property
     def logger(self):
@@ -86,6 +86,9 @@ class Solver(metaclass=HDF5Serializable):
 
     def to_hdf5(self):
         raise NotImplementedError()
+
+    def restart(self, new_position):
+        self.current_position = new_position
 
     @property
     def target(self) -> pd.DataFrame:
@@ -234,6 +237,11 @@ class NewtonSolver(Solver):
                     gradient_estimators=self._gradient_estimators,
                     current_position=self._current_position,
                     current_values=self._current_values)
+
+    def restart(self, new_position):
+        for grad_est in self.gradient_estimators:
+            grad_est.restart(new_position)
+        super().restart(new_position)
 
     def __repr__(self):
         return "{type}({data})".format(type=type(self), data=self.to_hdf5())

@@ -269,6 +269,15 @@ class Autotuner(metaclass=HDF5Serializable):
 
         self.save_current_status()
 
+    def restart(self):
+        """ Reads new voltages and communicates them to the member classes. This function can be called when the
+        experiment has been configured manually."""
+        self._current_tuner_index = 0
+        self._voltages_to_set = None
+        current_voltages = self._experiment.read_gate_voltages()
+        for par_tuner in self.tuning_hierarchy:
+            par_tuner.restart(current_voltages)
+
     def to_hdf5(self):
         return dict(
             experiment=self._experiment,
