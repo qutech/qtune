@@ -15,6 +15,7 @@ import numpy as np
 from qtune.experiment import *
 from qtune.util import time_string
 from qtune.basic_dqd import BasicDQD
+from qtune.evaluator import Evaluator
 
 
 def redirect_output(func):
@@ -205,3 +206,18 @@ class LegacyDQDRefactored(BasicDQD):
             return np.asarray(self._matlab.engine.qtune.PythonQPCScan2D(qpc_2d_tune_input))
         else:
             raise ValueError('Unknown measurement: {}'.format(measurement))
+
+
+class MatlabEvaluator(Evaluator):
+    def __init__(self, experiment: qtune.sm.LegacyDQDRefactored, **kwargs):
+        super().__init__(experiment, **kwargs)
+
+    def evaluate(self):
+        raise NotImplementedError
+        # return self.experiment._matlab.engine.
+
+    def process_raw_data(self, raw_data):
+        raise NotImplementedError
+
+    def to_hdf5(self):
+        return super().to_hdf5()
