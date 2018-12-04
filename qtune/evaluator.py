@@ -577,11 +577,17 @@ class SensingDot1D(Evaluator):
                  current_signal=None,
                  optimal_signal=None,
                  optimal_position=None,
-                 name='SensingDot1D'):
+                 name='SensingDot1D',
+                 rising_flank=Optional[bool]):
         self._sweeping_gate = sweeping_gate
         self.current_signal = current_signal
         self.optimal_signal = optimal_signal
         self.optimal_position = optimal_position
+        if rising_flank is None:
+            self._rising_flank = True
+        else:
+            self._rising_flank = bool(rising_flank)
+
         if measurements is None:
             measurements = (Measurement('line_scan',
                                         center=None, range=4e-3, gate="SDB2",
@@ -599,7 +605,6 @@ class SensingDot1D(Evaluator):
         sensing_dot_measurement.options["center"] = self.experiment.read_gate_voltages()[gate]
 
         data = self.experiment.measure(sensing_dot_measurement)
-        current_signal, optimal_signal, optimal_position = self.process_raw_data(raw_data=data)
 
         self._raw_y_data = data
         self._raw_x_data = np.linspace(
@@ -607,8 +612,9 @@ class SensingDot1D(Evaluator):
             stop=self._measurements[0].options['center'] + self.measurements[0].options['range'],
             num=self.measurements[0].options['N_points'])
 
-        self.optimal_position = sensing_dot_measurement.options["center"] + optimal_position
-        values["position_" + gate] = sensing_dot_measurement.options["center"] + optimal_position
+        current_signal, optimal_signal, optimal_position = self.process_raw_data(raw_data=(self._raw_x_data,
+                                                                                           self._raw_y_data))
+        values["position_" + gate] = optimal_position
         error["position_" + gate] = 0.1e-3
         values["current_signal"] = current_signal
         error["current_signal"] = current_signal / 5
@@ -617,26 +623,21 @@ class SensingDot1D(Evaluator):
         return values, error
 
     def process_raw_data(self, raw_data):
-        raw_data *= -1
-        raw_data = np.squeeze(raw_data)
-        # invert the sign to get rising flank
-        data_filterd = scipy.ndimage.filters.gaussian_filter1d(input=raw_data, sigma=raw_data.size/64, axis=0, order=0,
-                                                               mode="nearest", truncate=.2)
-        data_filtered_diff = np.diff(data_filterd, n=1)
-        # data_filtered_diff_smoothed = scipy.ndimage.filters.gaussian_filter1d(input=data_filtered_diff,
-        #                                                                      sigma=raw_data.size/100,
-        #                                                                      axis=0, order=0,
-        #                                                                      mode="nearest",
-        #                                                                      truncate=4.)
-        # data_filtered_diff_smoothed = np.squeeze(data_filtered_diff_smoothed)
-        # self.current_signal = abs(data_filtered_diff_smoothed[int(self.measurements[0].options["N_points"] / 2)])
-        self.current_signal = 0.5 * abs(
-            data_filtered_diff[int(.5 * self.measurements[0].options["N_points"])] +
-            data_filtered_diff[int(.5 * self.measurements[0].options["N_points"]) + 1])
-        self.optimal_signal = abs(data_filtered_diff.min())
-        self.optimal_position = data_filtered_diff.argmin()
-        self.optimal_position = float(self.optimal_position) / float(self.measurements[0].options["N_points"]) * \
-            2 * self.measurements[0].options["range"] - self.measurements[0].options["range"]
+        raw_x_data = np.squeeze(raw_data[0])
+        raw_y_data = np.squeeze(raw_data[1])
+        coef = np.polynomial.polynomial.polyfit(raw_x_data, raw_y_data, deg=10)
+        polynomial_approximation = np.polynomial.poly1d(coef[::-1])
+        derivative_approximation = np.diff(polynomial_approximation(raw_x_data))
+        cutoff = len(raw_x_data) // 16
+        if self._rising_flank:
+            steepest_point = np.argmax(derivative_approximation[cutoff:-cutoff])
+            self.optimal_signal = np.max(derivative_approximation)
+        else:
+            steepest_point = np.argmin(derivative_approximation[cutoff:-cutoff])
+            self.optimal_signal = np.min(derivative_approximation)
+        self.optimal_position = raw_x_data[steepest_point + cutoff]
+        self.current_signal = derivative_approximation[0.5 * self.measurements[0].options['N_points']]
+
         return self.current_signal, self.optimal_signal, self.optimal_position
 
     def to_hdf5(self):
@@ -661,10 +662,15 @@ class SensingDot2D(Evaluator):
                  raw_x_data: Tuple[Optional[np.ndarray]]=None,
                  raw_y_data: Tuple[Optional[np.ndarray]] = None,
                  name='SensingDot2D',
-                 new_voltages=pd.Series()):
+                 new_voltages=pd.Series(),
+                 rising_flank: Optional[bool]=None):
         self._sweeping_gates = sweeping_gates
         self._scan_range = scan_range
         self._new_voltages = new_voltages
+        if rising_flank is None:
+            self._rising_flank = True
+        else:
+            self._rising_flank = bool(rising_flank)
         if measurements is None:
             measurements = (Measurement('2d_scan', center=[None, None],
                                         range=scan_range,
@@ -678,47 +684,63 @@ class SensingDot2D(Evaluator):
         self.measurements[0].options["center"] = [
             self.experiment.read_gate_voltages()[self.measurements[0].options["gate1"]],
             self.experiment.read_gate_voltages()[self.measurements[0].options["gate2"]]]
-        data = self.experiment.measure(self.measurements[0])
-        self._raw_y_data = data
+        self._raw_y_data = self.experiment.measure(self.measurements[0])
         self._raw_x_data = []
         for i in range(2):
             self._raw_x_data.append(np.linspace(self.measurements[0].options['center'][i] -
                                                 self.measurements[0].options['range'],
                                                 self.measurements[0].options['center'][i] +
                                                 self.measurements[0].options['range'],
-                                                data.shape[i]))
-        self._new_voltages, error = self.process_raw_data(data)
-        self._new_voltages["position_" + self.measurements[0].options["gate1"]] += \
-            self.measurements[0].options['center'][0]
-        self._new_voltages["position_" + self.measurements[0].options["gate2"]] += \
-            self.measurements[0].options['center'][1]
+                                                self._raw_y_data.shape[i]))
+        # self._new_voltages, error = self.process_raw_data(data)
+        self._new_voltages, error = self.process_raw_data((self._raw_x_data, np.squeeze(self._raw_y_data)))
+        # self._new_voltages["position_" + self.measurements[0].options["gate1"]] += \
+        #     self.measurements[0].options['center'][0]
+        # self._new_voltages["position_" + self.measurements[0].options["gate2"]] += \
+        #     self.measurements[0].options['center'][1]
         return self._new_voltages, error
 
     def process_raw_data(self, raw_data):
-        raw_data *= -1
-        n_lines, n_points = raw_data.shape
+        # old code
+        # raw_data *= -1
+        # n_lines, n_points = raw_data.shape
+        # data_filtered = scipy.ndimage.filters.gaussian_filter1d(input=raw_data,
+        #                                                         sigma=20, axis=0,
+        #                                                        order=0,
+        #                                                         mode="nearest",
+        #                                                        truncate=.1)
+        # data_diff = np.diff(data_filtered[:, ::2], n=1)
+        # mins_in_lines = data_diff.min(1)
+        # min_line = np.argmin(mins_in_lines)
+        # min_point = np.argmin(data_diff[min_line])
+        # gate_1_pos = float(min_line) / n_lines * 2 * \
+        #     self.measurements[0].options["range"] - self.measurements[0].options["range"]
+        # gate_2_pos = float(min_point) / (n_points / 2) * 2 * \
+        #     self.measurements[0].options["range"] - self.measurements[0].options["range"]
+        # new_voltages = pd.Series([gate_1_pos, gate_2_pos], ["position_" + self.measurements[0].options["gate1"],
+        #                                                    "position_" + self.measurements[0].options["gate2"]])
+        # error = pd.Series([.1e-3, .1e-3], ["position_" + self.measurements[0].options["gate1"],
+        #                                   "position_" + self.measurements[0].options["gate2"]])
 
-        # invert sign to get rising flank
-        # data_filtered = scipy.ndimage.filters.gaussian_filter1d(input=raw_data, sigma=.5, axis=0, order=0,
-        #                                                        mode="nearest",
-        #                                                        truncate=4.)
-        # data_diff = np.diff(data_filtered, n=1)
-        # change like in the 1 d case
-        data_filtered = scipy.ndimage.filters.gaussian_filter1d(input=raw_data,
-                                                                sigma=20, axis=0,
-                                                                order=0,
-                                                                mode="nearest",
-                                                                truncate=.1)
-        data_diff = np.diff(data_filtered[:, ::2], n=1)
-        mins_in_lines = data_diff.min(1)
-        min_line = np.argmin(mins_in_lines)
-        min_point = np.argmin(data_diff[min_line])
-        gate_1_pos = float(min_line) / n_lines * 2 * \
-            self.measurements[0].options["range"] - self.measurements[0].options["range"]
-        gate_2_pos = float(min_point) / (n_points / 2) * 2 * \
-            self.measurements[0].options["range"] - self.measurements[0].options["range"]
-        new_voltages = pd.Series([gate_1_pos, gate_2_pos], ["position_" + self.measurements[0].options["gate1"],
-                                                            "position_" + self.measurements[0].options["gate2"]])
+        raw_x_data = raw_data[0]
+        raw_y_data = raw_data[1]
+
+        differentiated_approximation = np.zeros(shape=(raw_y_data.shape[0], raw_y_data.shape[1] - 1))
+        for i, data_line in enumerate(raw_y_data):
+            coef = np.polynomial.polynomial.polyfit(raw_x_data[1], data_line, deg=40)
+            poly = np.poly1d(coef[::-1])
+            differentiated_approximation[i] = np.diff(poly(raw_x_data[1]))
+        cutoff = raw_x_data[1].size // 25
+        if self._rising_flank:
+            steepest_point = np.unravel_index(np.argmin(differentiated_approximation[:, cutoff:-cutoff], axis=None),
+                                              differentiated_approximation[:,cutoff:-cutoff].shape)
+        else:
+            steepest_point = np.unravel_index(np.argmax(differentiated_approximation[:,cutoff:-cutoff], axis=None),
+                                              differentiated_approximation[:,cutoff:-cutoff].shape)
+
+        new_voltages = pd.Series([raw_x_data[0][steepest_point[0]], raw_x_data[1][steepest_point[1] + cutoff]],
+                                 ["position_" + self.measurements[0].options["gate1"],
+                                  "position_" + self.measurements[0].options["gate2"]])
         error = pd.Series([.1e-3, .1e-3], ["position_" + self.measurements[0].options["gate1"],
                                            "position_" + self.measurements[0].options["gate2"]])
         return new_voltages, error
