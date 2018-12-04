@@ -154,6 +154,10 @@ class History:
         return self._gradient_controlled_parameters
 
     @property
+    def evaluator_names(self):
+        return self._evaluator_data.columns
+
+    @property
     def mode_options(self):
         return ["all_voltages", "all_parameters", "all_gradients", "with_grad_covariances", "with_par_variances"]
 

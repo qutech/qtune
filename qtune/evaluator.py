@@ -121,7 +121,7 @@ class LeadTunnelTimePrefitVersion(FittingEvaluator):
                  raw_y_data: Tuple[Optional[np.ndarray]]=None,
                  fit_results: Optional[pd.Series]=None,
                  evaluation_arguments=None,
-                 initial_fit_args=None,
+                 initial_fit_arguments=None,
                  name='LeadTunnelTimeByLeadScan'):
         if measurements is None:
             measurements = (Measurement('lead_scan', gate='B', AWGorDecaDAC='DecaDAC'), )
@@ -132,7 +132,7 @@ class LeadTunnelTimePrefitVersion(FittingEvaluator):
         self.sample_rate = sample_rate
         super().__init__(experiment=experiment, measurements=measurements, parameters=parameters,
                          raw_x_data=raw_x_data, raw_y_data=raw_y_data, fit_results=fit_results,
-                         initial_fit_arguments=initial_fit_args, name=name)
+                         initial_fit_arguments=initial_fit_arguments, name=name)
 
     def evaluate(self) -> (pd.Series, pd.Series):
         self._raw_y_data = []
@@ -225,7 +225,7 @@ class LeadTunnelTimeByLeadScan(FittingEvaluator):
                  raw_y_data: Tuple[Optional[np.ndarray]]=None,
                  fit_results: Optional[pd.Series]=None,
                  evaluation_arguments=None,
-                 initial_fit_args=None,
+                 initial_fit_arguments=None,
                  name='LeadTunnelTimeByLeadScan'):
         if measurements is None:
             measurements = (Measurement('lead_scan', gate='B', AWGorDecaDAC='DecaDAC'), )
@@ -236,7 +236,7 @@ class LeadTunnelTimeByLeadScan(FittingEvaluator):
         self.sample_rate = sample_rate
         super().__init__(experiment=experiment, measurements=measurements, parameters=parameters,
                          raw_x_data=raw_x_data, raw_y_data=raw_y_data, fit_results=fit_results,
-                         initial_fit_arguments=initial_fit_args, name=name)
+                         initial_fit_arguments=initial_fit_arguments, name=name)
 
     def evaluate(self) -> (pd.Series, pd.Series):
         raw_data = self.experiment.measure(self.measurements[0])
