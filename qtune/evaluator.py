@@ -733,10 +733,10 @@ class SensingDot2D(Evaluator):
         cutoff = raw_x_data[1].size // 25
         if self._rising_flank:
             steepest_point = np.unravel_index(np.argmin(differentiated_approximation[:, cutoff:-cutoff], axis=None),
-                                              differentiated_approximation[:,cutoff:-cutoff].shape)
+                                              differentiated_approximation[:, cutoff:-cutoff].shape)
         else:
-            steepest_point = np.unravel_index(np.argmax(differentiated_approximation[:,cutoff:-cutoff], axis=None),
-                                              differentiated_approximation[:,cutoff:-cutoff].shape)
+            steepest_point = np.unravel_index(np.argmax(differentiated_approximation[:, cutoff:-cutoff], axis=None),
+                                              differentiated_approximation[:, cutoff:-cutoff].shape)
 
         new_voltages = pd.Series([raw_x_data[0][steepest_point[0]], raw_x_data[1][steepest_point[1] + cutoff]],
                                  ["position_" + self.measurements[0].options["gate1"],

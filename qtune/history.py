@@ -1,7 +1,7 @@
 import os
 import operator
 import re
-from typing import Optional, Set, Dict, Sequence
+from typing import Optional, Set, Dict, Sequence, Tuple, List
 
 import h5py
 import pandas as pd
@@ -160,6 +160,16 @@ class History:
     @property
     def mode_options(self):
         return ["all_voltages", "all_parameters", "all_gradients", "with_grad_covariances", "with_par_variances"]
+
+    @property
+    def evaluator_data(self, evaluator_names: Optional[Tuple]=None):
+        if evaluator_names is None:
+            evaluator_names = self.evaluator_names
+        return self._evaluator_data[list(evaluator_names)]
+
+    @property
+    def number_of_stored_iterations(self):
+        return self._data_frame.index.size
 
     def get_parameter_values(self, parameter_name) -> pd.Series:
         return self._data_frame[parameter_name]
@@ -416,6 +426,13 @@ class History:
             eval_data_fig.tight_layout()
         return eval_data_figs, eval_data_axs
 
+    def plot_single_evaluator_data(self, ax, evaluator_name, tune_run_number=0):
+        if evaluator_name not in self.evaluator_names:
+            self.logger.warning(evaluator_name + ' is not in the evaluation data.')
+            return
+        plot_data = self._evaluator_data.loc[self._evaluator_data.index[tune_run_number], evaluator_name]
+        plot_function_matching[evaluator_name](ax=ax, evaluator_hdf5=plot_data, evaluator=evaluator_name)
+
     @classmethod
     def _unravel_gradient_covariance_matrix(cls, parameter_name, covariance_matrix: pd.DataFrame):
         return {
@@ -562,11 +579,31 @@ def plot_load_time(ax, evaluator_hdf5, **_):
 
 
 def plot_inter_dot_tc(ax, evaluator_hdf5: dict, **_):
+    if isinstance(ax, List) or isinstance(ax, Tuple) or isinstance(ax, np.ndarray):
+        axi = ax[0]
+    else:
+        axi = ax
+    if isinstance(axi, List) or isinstance(axi, Tuple) or isinstance(axi, np.ndarray):
+        axi = axi[0]
     qtune.util.plot_raw_data_fit(y_data=evaluator_hdf5['raw_y_data'], x_data=evaluator_hdf5['raw_x_data'],
                                  fit_function=qtune.evaluator.func_inter_dot_coupling,
                                  function_args=evaluator_hdf5['fit_results'],
-                                 initial_arguments=evaluator_hdf5['initial_fit_arguments'], ax=ax[0])
-    ax[0].legend(['Data', 'Fit', 'Initial_parameters'])
+                                 initial_arguments=evaluator_hdf5['initial_fit_arguments'], ax=axi)
+    axi.legend(['Data', 'Fit', 'Initial_parameters'])
+
+
+def plot_lead_time(ax, evaluator_hdf5: dict, **_):
+    if isinstance(ax, List) or isinstance(ax, Tuple) or isinstance(ax, np.ndarray):
+        axi = ax[0]
+    else:
+        axi = ax
+    if isinstance(axi, List) or isinstance(axi, Tuple) or isinstance(axi, np.ndarray):
+        axi = axi[0]
+    qtune.util.plot_raw_data_fit(y_data=evaluator_hdf5['raw_y_data'], x_data=evaluator_hdf5['raw_x_data'],
+                                 fit_function=qtune.evaluator.func_lead_times_v1,
+                                 function_args=evaluator_hdf5['fit_results'],
+                                 initial_arguments=evaluator_hdf5['initial_fit_arguments'], ax=axi)
+    axi.legend(['Data', 'Fit', 'Initial_parameters'])
 
 
 def plot_transition(ax, evaluator_hdf5: dict, **_):
@@ -579,10 +616,12 @@ def plot_transition(ax, evaluator_hdf5: dict, **_):
 
 
 def plot_1dim_sensing_dot_scan(ax, evaluator_hdf5: dict, **_):
+    if isinstance(ax, Tuple) or isinstance(ax, List):
+        ax = ax[0]
     qtune.util.plot_raw_data_vertical_marks(y_data=evaluator_hdf5['raw_y_data'],
                                             x_data=evaluator_hdf5['raw_x_data'],
                                             marking_position=evaluator_hdf5['optimal_position'],
-                                            ax=ax[0])
+                                            ax=ax)
 
 
 def plot_2dim_sensing_dot_scan(ax, evaluator_hdf5: dict, **_):
@@ -592,9 +631,21 @@ def plot_2dim_sensing_dot_scan(ax, evaluator_hdf5: dict, **_):
                                          marking_position=evaluator_hdf5['new_voltages'])
 
 
+def plot_average_evaluator(ax, evaluator_hdf5: dict, mode="last measurement", **_):
+    if mode == "last measurement":
+        plot_function_matching[evaluator_hdf5['evaluator'].name](ax=ax,
+                                                                 evaluator_hdf5=evaluator_hdf5['evaluator'].to_hdf5())
+    else:
+        raise ValueError("Mode not specified")
+
+
 plot_function_matching = {'InterDotTCByLineScan': plot_inter_dot_tc,
                           'LoadTime': plot_load_time,
                           'LeadTransitionRFA': plot_transition,
                           'LeadTransitionRFB': plot_transition,
                           'SensingDot1D': plot_1dim_sensing_dot_scan,
-                          'SensingDot2D': plot_2dim_sensing_dot_scan}
+                          'SensingDot2D': plot_2dim_sensing_dot_scan,
+                          'LeadTransition': plot_transition,
+                          'AveragingInterDotTCByLineScan': plot_average_evaluator,
+                          'AveragingLeadTunnelTimeByLeadScan': plot_average_evaluator,
+                          'LeadTunnelTimeByLeadScan': plot_lead_time}

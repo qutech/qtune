@@ -6,3 +6,5 @@ sympy
 matplotlib
 pyqtgraph
 h5py
+IPython
+PyQt5

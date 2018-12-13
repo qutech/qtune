@@ -54,6 +54,73 @@ class LogLevelSelecter(QtCore.QObject):
         self.logger = logger
 
 
+class EvaluatorWidget(pg.LayoutWidget):
+    def __init__(self, history: History, logger, **kwargs):
+        super().__init__(**kwargs)
+        self._tune_run_number = 1
+        self._logger = logger
+        self.history = history
+        self.bottom = None
+        self.refresh()
+
+    @QtCore.pyqtSlot()
+    @log_exceptions('plotting')
+    def refresh(self):
+        top = pg.LayoutWidget()
+
+        for i, evaluator_name in enumerate(self.history.evaluator_names):
+            btn = QtWidgets.QPushButton(evaluator_name)
+            btn.setFixedWidth(250)
+            top.addWidget(btn, i // 2, i % 2)
+            btn.clicked.connect(self.plot_raw_data)
+
+        tune_run_label = QtWidgets.QLabel('Tune run Number')
+        tune_run_label.setFixedWidth(150)
+        top.addWidget(tune_run_label, 0, 2)
+        self.tune_run_line = QtWidgets.QLineEdit()
+        self.tune_run_line.setText('1')
+        self.tune_run_line.setValidator(QtGui.QIntValidator())
+        self.tune_run_line.editingFinished.connect(self.refreh_tune_run_number)
+        top.addWidget(self.tune_run_line, 1, 2)
+        self.addWidget(top, 0, 0)
+
+    @QtCore.pyqtSlot()
+    @log_exceptions('plotting')
+    def plot_raw_data(self):
+        self.bottom = MeasurementDataWidget(evaluator_name=self.sender().text(),
+                                       tune_run_number=self.tune_run_number,
+                                       history=self.history)
+        self.addWidget(self.bottom, 1, 0)
+
+    @QtCore.pyqtSlot()
+    @log_exceptions('plotting')
+    def refreh_tune_run_number(self):
+        i = self.tune_run_line.text()
+        self.tune_run_number = i
+        self.tune_run_line.setText(str(self.tune_run_number))
+
+    @property
+    def logger(self):
+        return logging.getLogger(self._logger)
+
+    @property
+    def tune_run_number(self):
+        return self._tune_run_number
+
+    @tune_run_number.setter
+    def tune_run_number(self, i: int):
+        try:
+            i = int(i)
+        except ValueError:
+            i = 1
+            self.logger.warning("The tune run number must be integer!")
+        if i < 1:
+            i = 1
+        elif i > self.history.number_of_stored_iterations:
+            i = self.history.number_of_stored_iterations
+        self._tune_run_number = i
+
+
 class PlotOrganizer(pg.LayoutWidget):
     @QtCore.pyqtSlot()
     @log_exceptions('plotting')
@@ -216,14 +283,16 @@ class QTuneMatplotWidget(MatplotlibWidget):
     def refresh(self):
         raise NotImplementedError()
 
-    def get_clear_axes(self):
-        if len(self.getFigure().axes) == len(self.parameter_names):
+    def get_clear_axes(self, number_rows=None):
+        if number_rows is None:
+            number_rows = len(self.parameter_names)
+        if len(self.getFigure().axes) == number_rows:
             for ax in self.getFigure().axes:
                 ax.clear()
             return self.getFigure().axes
         else:
             self.getFigure().clear()
-            return self.getFigure().subplots(nrows=len(self.parameter_names))
+            return self.getFigure().subplots(nrows=number_rows)
 
     @property
     def parameter_names(self):
@@ -268,6 +337,102 @@ class GradientWidget(QTuneMatplotWidget):
 
         plot_gradients(gradients, gradient_variances, axes=axes)
         self.draw()
+
+
+class MeasurementDataWidget(QTuneMatplotWidget):
+    def __init__(self, evaluator_name, tune_run_number, history, *args, **kwargs):
+        self.evaluator_name = evaluator_name
+        self.tune_run_number = tune_run_number
+        self.history = history
+        super().__init__(history=history, *args, **kwargs)
+        self.resize(600, 400)
+
+    @QtCore.pyqtSlot()
+    @log_exceptions('plotting')
+    def refresh(self):
+        if self.history.evaluator_data.iloc[self.tune_run_number - 1][self.evaluator_name] != \
+                self.history.evaluator_data.iloc[self.tune_run_number - 1][self.evaluator_name]:
+            return
+        if self.evaluator_name.startswith('Averaging'):
+            num_measurements = len(
+                self.history.evaluator_data.iloc[self.tune_run_number - 1][self.evaluator_name][
+                    'evaluator'].measurements)
+        else:
+            num_measurements = len(
+                self.history.evaluator_data.iloc[self.tune_run_number - 1][self.evaluator_name]['measurements'])
+
+        axes = self.get_clear_axes(number_rows=num_measurements)
+        self.history.plot_single_evaluator_data(ax=axes, evaluator_name=self.evaluator_name,
+                                                tune_run_number=self.tune_run_number - 1)
+        self.getFigure().tight_layout()
+        self.draw()
+
+
+class ReloadWidget(pg.LayoutWidget):
+    def __init__(self, history, autotuner, logger='qtune', *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.history = history
+        self.autotuner = autotuner
+        self._logger = logger
+        self._tune_run_number = 1
+        warning_label = QtWidgets.QLabel('This Window allows you to reload a previous state of the Autotuner!')
+        self.addWidget(warning_label, 0, 0)
+        load_voltages_button = QtWidgets.QPushButton('Reload Voltages')
+        load_voltages_button.setFixedWidth(150)
+        load_voltages_button.clicked.connect(self.reload_voltages)
+        self.addWidget(load_voltages_button, 1, 0)
+        # load_state_button = QtWidgets.QPushButton('Reload Entire State!')
+        # self.addWidget(load_state_button, 2, 0)
+        tune_run_label = QtWidgets.QLabel('Reload tune run number')
+        self.addWidget(tune_run_label, 1, 1)
+        self.tune_run_line = QtWidgets.QLineEdit()
+        self.tune_run_line.setText('1')
+        self.tune_run_line.setValidator(QtGui.QIntValidator())
+        self.tune_run_line.editingFinished.connect(self.refreh_tune_run_number)
+        self.addWidget(self.tune_run_line, 2, 1)
+
+    @QtCore.pyqtSlot()
+    @log_exceptions('plotting')
+    def refresh(self):
+        pass
+
+    @property
+    def tune_run_number(self):
+        return self._tune_run_number
+
+    @tune_run_number.setter
+    def tune_run_number(self, i: int):
+        try:
+            i = int(i)
+        except ValueError:
+            i = 1
+            self.logger.warning("The tune run number must be integer!")
+        if i < 1:
+            i = 1
+        elif i > self.history.number_of_stored_iterations:
+            i = self.history.number_of_stored_iterations
+        self._tune_run_number = i
+
+    @property
+    def logger(self):
+        return logging.getLogger(self._logger)
+
+    @QtCore.pyqtSlot()
+    @log_exceptions('plotting')
+    def refreh_tune_run_number(self):
+        i = self.tune_run_line.text()
+        self.tune_run_number = i
+        self.tune_run_line.setText(str(self.tune_run_number))
+
+    @QtCore.pyqtSlot()
+    @log_exceptions('plotting')
+    def reload_voltages(self):
+        voltages = self.history.get_gate_values(pd.Index(self.history.gate_names)).iloc[self.tune_run_number]
+        if self.autotuner:
+            self.autotuner._experiment.set_gate_voltages(new_gate_voltages=voltages)
+            self.autotuner.restart()
+        else:
+            self.logger.warning("No Autotuner connected to the History. Voltages could not be reloaded!")
 
 
 class GUI(QtWidgets.QMainWindow):
@@ -324,10 +489,19 @@ class GUI(QtWidgets.QMainWindow):
         gradient_window_btn.setFixedWidth(100)
         gradient_window_btn.clicked.connect(self.spawn_gradient_window)
 
+        evaluator_btn = QtWidgets.QPushButton("Raw Data Plot")
+        evaluator_btn.setFixedWidth(100)
+        evaluator_btn.clicked.connect(self.spawn_evaluator_window)
+
+        reload_btn = QtWidgets.QPushButton("Load")
+        reload_btn.setFixedWidth(100)
+        reload_btn.clicked.connect(self.spawn_reload_window)
+
         top = pg.LayoutWidget()
         top.addWidget(start_btn, 0, 0)
         top.addWidget(step_btn, 1, 0)
         top.addWidget(stop_btn, 2, 0)
+        top.addWidget(reload_btn, 3, 0)
 
         top.addWidget(auto_set_btn, 0, 1)
         top.addWidget(log_label, 1, 1)
@@ -336,6 +510,7 @@ class GUI(QtWidgets.QMainWindow):
         top.addWidget(plot_organizer_btn, 0, 2)
         top.addWidget(parameter_window_btn, 1, 2)
         top.addWidget(gradient_window_btn, 2, 2)
+        top.addWidget(evaluator_btn, 3, 2)
 
         left = pg.LayoutWidget()
         left.addWidget(top, 0, 0)
@@ -357,15 +532,17 @@ class GUI(QtWidgets.QMainWindow):
         self._stop = False
         self._thread.start()
 
-        self._logger = logging.getLogger(logger)
+        self._logger = logger
 
         self._plot_organizer = []
         self._parameter_windows = []
         self._gradient_windows = []
+        self._raw_data_windows = []
+        self._reload_windows = []
 
     @log_exceptions('plotting')
     def _close_child(self, window: QtWidgets.QWidget, event: QtGui.QCloseEvent):
-        for child_list in (self._plot_organizer, self._parameter_windows, self._gradient_windows):
+        for child_list in (self._plot_organizer, self._parameter_windows, self._gradient_windows, self._raw_data_windows):
             try:
                 child_list.remove(window)
                 break
@@ -392,6 +569,21 @@ class GUI(QtWidgets.QMainWindow):
 
         plot_organizer.show()
         plot_organizer.raise_()
+
+    @QtCore.pyqtSlot()
+    @log_exceptions('plotting')
+    def spawn_reload_window(self):
+        reload_widget = ReloadWidget(history=self.history, autotuner=self.auto_tuner, logger=self._logger)
+        reload_widget.setWindowFlags(QtCore.Qt.Window)
+        reload_widget.closeEvent = functools.partial(self._close_child, reload_widget)
+
+        self._update_plots.connect(reload_widget.refresh)
+        self._reload_windows.append(reload_widget)
+
+        reload_widget.setWindowTitle("QTune: Reload")
+
+        reload_widget.show()
+        reload_widget.raise_()
 
     @QtCore.pyqtSlot()
     @log_exceptions('plotting')
@@ -423,6 +615,21 @@ class GUI(QtWidgets.QMainWindow):
         parameter_widget.show()
         parameter_widget.raise_()
 
+    @QtCore.pyqtSlot()
+    @log_exceptions('plotting')
+    def spawn_evaluator_window(self):
+        evaluator_widget = EvaluatorWidget(self.history, logger=self._logger)
+        evaluator_widget.setWindowFlags(QtCore.Qt.Window)
+        evaluator_widget.closeEvent = functools.partial(self._close_child, evaluator_widget)
+
+        # self._update_plots.connect(evaluator_widget.refresh)
+        self._raw_data_windows.append(evaluator_widget)
+
+        evaluator_widget.setWindowTitle("Qtune: Evaluator Plot")
+
+        evaluator_widget.show()
+        evaluator_widget.raise_()
+
     @property
     def auto_tuner(self):
         return self._auto_tuner
@@ -430,6 +637,10 @@ class GUI(QtWidgets.QMainWindow):
     @property
     def history(self):
         return self._history
+
+    @property
+    def logger(self):
+        return logging.getLogger(self._logger)
 
     def _join_worker(self):
         if self._thread.is_alive():
