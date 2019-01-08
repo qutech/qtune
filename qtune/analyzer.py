@@ -14,6 +14,7 @@ known_evaluators = pd.Series([["parameter_tunnel_coupling"], ["parameter_time_ri
 known_evaluators = known_evaluators.sort_index()
 """
 
+
 class Analyzer:
     def __init__(self, filename: str=None):
         self.gate_names = None
@@ -405,34 +406,34 @@ class Analyzer:
             volt_ylim = [-40, 120]
         """
 
-
         """
-        second data half
-        standard_font_size = 9
-            fig_size_inches_par = [3.6, 2.6]
-            fig_size_inches_grad = [3.6, 2.3]
-            fig_size_inches_volt = [4, 3.5]
-            columnspacing = 1
-            par_linewidth = 1
-            par_markersize = 1.5
-            grad_elinewidth = 1
-            grad_linewidth = 1
-            set_point_change_linewidth = 1
-            set_point_linewidth = .8
-            par_labelpad = [0, 0] # y labels
-            grad_labelpad = [0, 0]
-            grad_ylim = [[-16, 9], [-25, 14]]
-            par_markeredgewidth = .1
-            par_y_ticklabelpad = 1.5
-            grad_y_ticklabelpad = 1.5
-            x_limits = [102, 102 + 3 * 21 + 4]
-            par_x = np.arange(105, 105 + 3 * 21)
+        #second data half
+        standard_font_size = 7
+        fig_size_inches_par = [3.6, 2.6]
+        fig_size_inches_grad = [3.6, 2.3]
+        fig_size_inches_volt = [4, 3.5]
+        columnspacing = 1
+        par_linewidth = 1
+        par_markersize = 1.5
+        grad_elinewidth = 1
+        grad_linewidth = 1
+        set_point_change_linewidth = 1
+        set_point_linewidth = .8
+        par_labelpad = [0, 0] # y labels
+        grad_labelpad = [0, 0]
+        grad_ylim = [[-14, 9], [-23, 14]]
+        par_markeredgewidth = .1
+        par_y_ticklabelpad = 1.5
+        grad_y_ticklabelpad = 1.5
+        x_limits = [102, 102 + 3 * 21 + 4]
+        par_x = np.arange(105, 105 + 3 * 21)
+        x_shift = 105
         
         """
 
 
         if reduced_for_paper:
-            standard_font_size = 9
+            standard_font_size = 7
             fig_size_inches_par = [3.6, 2.6]
             fig_size_inches_grad = [3.6, 2.3]
             fig_size_inches_volt = [4, 3.5]
@@ -445,7 +446,7 @@ class Analyzer:
             set_point_linewidth = .8
             par_labelpad = [0, 0]  # y labels
             grad_labelpad = [0, 0]
-            grad_ylim = [[-18, 9], [-25, 14]]
+            grad_ylim = [[-16, 9], [-22, 14]]
             par_markeredgewidth = .1
             par_y_ticklabelpad = 1.5
             grad_y_ticklabelpad = 1.5
@@ -453,7 +454,7 @@ class Analyzer:
             x_shift = 0
             volt_ylim = [-40, 120]
         else:
-            standard_font_size = 9
+            standard_font_size = 7
             fig_size_inches_par = [3.6, 2.6]
             fig_size_inches_grad = [3.6, 2.3]
             fig_size_inches_volt = [6.8, 3.2]
@@ -471,7 +472,7 @@ class Analyzer:
             par_y_ticklabelpad = 1.5
             grad_y_ticklabelpad = 1.5
             x_limits = [-2, 102 + 3 * 21 + 4]
-            volt_ylim = [-40, 120]
+            volt_ylim = [-28, 120]
             par_x = None
             x_shift = 0
 
@@ -577,7 +578,7 @@ class Analyzer:
                         plt.axvline(x=number_steps[j] + x_shift, linewidth=set_point_change_linewidth)
                     plt.legend(fontsize=standard_font_size)
                     plt.ylabel(gradient_plot_ylabel(parameter.decode("ascii")), fontsize=standard_font_size)
-                    plt.xlabel("Iteration Number", fontsize=standard_font_size,
+                    plt.xlabel("k, Iteration Number", fontsize=standard_font_size,
                        labelpad=par_labelpad[0])
                     fig = plt.gcf()
                     fig.set_size_inches(fig_size_inches_grad)
@@ -603,7 +604,7 @@ class Analyzer:
                     plt.axvline(x=number_steps[j] + x_shift, linewidth=set_point_change_linewidth)
                 plt.ylabel(parameter_plot_name(self.parameter_names[i].decode("ascii")), fontsize=standard_font_size)
                 if i == number_parameter - 1:
-                    plt.xlabel("Iteration Number", fontsize=standard_font_size,
+                    plt.xlabel("k, Iteration Number", fontsize=standard_font_size,
                        labelpad=par_labelpad[0])
                 y_des_val = [desired_values_pd_concatenated[self.parameter_names[i]][0],
                              desired_values_pd_concatenated[self.parameter_names[i]][0]]
@@ -658,7 +659,7 @@ class Analyzer:
             plt.ylabel(parameter_plot_name(self.parameter_names[i].decode("ascii")), fontsize=standard_font_size,
                        labelpad=par_labelpad[i])
 
-        plt.xlabel("Iteration Number", fontsize=standard_font_size,
+        plt.xlabel("k, Iteration Number", fontsize=standard_font_size,
                        labelpad=par_labelpad[0])
         fig = plt.gcf()
         fig.set_size_inches(fig_size_inches_par)
@@ -711,10 +712,10 @@ class Analyzer:
             #plt.title(
             #    "Gradient elements in the matrix row: " + parameter_plot_name(parameter.decode("ascii"), with_unit=False),
             #    fontsize=18)
-            plt.legend(ncol=4, fontsize=standard_font_size, loc='best', fancybox=True, columnspacing=columnspacing)
+            plt.legend(ncol=4, fontsize=standard_font_size, loc='lower left', fancybox=True, columnspacing=columnspacing)
             plt.ylabel(gradient_plot_ylabel(parameter.decode("ascii")), fontsize=standard_font_size,
                        labelpad=grad_labelpad[k])
-            plt.xlabel("Iteration Number", fontsize=standard_font_size,
+            plt.xlabel("k, Iteration Number", fontsize=standard_font_size,
                        labelpad=par_labelpad[0])
             fig = plt.gcf()
             fig.set_size_inches(fig_size_inches_grad)
@@ -755,7 +756,7 @@ class Analyzer:
                 plt.gca().tick_params("x", labelsize=standard_font_size)
                 plt.gca().tick_params("y", labelsize=standard_font_size)
         plt.legend(fontsize=standard_font_size, ncol=6)
-        plt.xlabel("Iteration Number", fontsize=standard_font_size,
+        plt.xlabel("k, Iteration Number", fontsize=standard_font_size,
                        labelpad=par_labelpad[0])
         plt.xlim(x_limits)
         plt.ylim(volt_ylim)
