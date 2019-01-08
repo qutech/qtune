@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 
 from qtune.history import History, plot_parameters, plot_gradients
+import qtune.autotuner
 
 IPython.get_ipython().magic('gui qt')
 IPython.get_ipython().magic('matplotlib qt')
@@ -57,7 +58,7 @@ class LogLevelSelecter(QtCore.QObject):
 class EvaluatorWidget(pg.LayoutWidget):
     def __init__(self, history: History, logger, **kwargs):
         super().__init__(**kwargs)
-        self._tune_run_number = 1
+        self._tune_run_number = 0
         self._logger = logger
         self.history = history
         self.bottom = None
@@ -78,7 +79,7 @@ class EvaluatorWidget(pg.LayoutWidget):
         tune_run_label.setFixedWidth(150)
         top.addWidget(tune_run_label, 0, 2)
         self.tune_run_line = QtWidgets.QLineEdit()
-        self.tune_run_line.setText('1')
+        self.tune_run_line.setText('0')
         self.tune_run_line.setValidator(QtGui.QIntValidator())
         self.tune_run_line.editingFinished.connect(self.refreh_tune_run_number)
         top.addWidget(self.tune_run_line, 1, 2)
@@ -88,8 +89,8 @@ class EvaluatorWidget(pg.LayoutWidget):
     @log_exceptions('plotting')
     def plot_raw_data(self):
         self.bottom = MeasurementDataWidget(evaluator_name=self.sender().text(),
-                                       tune_run_number=self.tune_run_number,
-                                       history=self.history)
+                                            tune_run_number=self.tune_run_number,
+                                            history=self.history)
         self.addWidget(self.bottom, 1, 0)
 
     @QtCore.pyqtSlot()
@@ -112,12 +113,12 @@ class EvaluatorWidget(pg.LayoutWidget):
         try:
             i = int(i)
         except ValueError:
-            i = 1
+            i = 0
             self.logger.warning("The tune run number must be integer!")
-        if i < 1:
-            i = 1
-        elif i > self.history.number_of_stored_iterations:
-            i = self.history.number_of_stored_iterations
+        if i < 0:
+            i = 0
+        elif i >= self.history.number_of_stored_iterations:
+            i = self.history.number_of_stored_iterations - 1
         self._tune_run_number = i
 
 
@@ -369,20 +370,24 @@ class MeasurementDataWidget(QTuneMatplotWidget):
 
 
 class ReloadWidget(pg.LayoutWidget):
+    gui_get_auto_tuner = QtCore.pyqtSignal()
+
     def __init__(self, history, autotuner, logger='qtune', *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.history = history
-        self.autotuner = autotuner
+        self.auto_tuner = autotuner
         self._logger = logger
-        self._tune_run_number = 1
+        self._tune_run_number = 0
         warning_label = QtWidgets.QLabel('This Window allows you to reload a previous state of the Autotuner!')
         self.addWidget(warning_label, 0, 0)
         load_voltages_button = QtWidgets.QPushButton('Reload Voltages')
         load_voltages_button.setFixedWidth(150)
         load_voltages_button.clicked.connect(self.reload_voltages)
         self.addWidget(load_voltages_button, 1, 0)
-        # load_state_button = QtWidgets.QPushButton('Reload Entire State!')
-        # self.addWidget(load_state_button, 2, 0)
+        load_state_button = QtWidgets.QPushButton('Reload Entire State!')
+        load_state_button.setFixedWidth(150)
+        load_state_button.clicked.connect(self.reload_autotuner)
+        self.addWidget(load_state_button, 2, 0)
         tune_run_label = QtWidgets.QLabel('Reload tune run number')
         self.addWidget(tune_run_label, 1, 1)
         self.tune_run_line = QtWidgets.QLineEdit()
@@ -405,12 +410,12 @@ class ReloadWidget(pg.LayoutWidget):
         try:
             i = int(i)
         except ValueError:
-            i = 1
+            i = 0
             self.logger.warning("The tune run number must be integer!")
-        if i < 1:
-            i = 1
-        elif i > self.history.number_of_stored_iterations:
-            i = self.history.number_of_stored_iterations
+        if i < 0:
+            i = 0
+        elif i >= self.history.number_of_stored_iterations:
+            i = self.history.number_of_stored_iterations - 1
         self._tune_run_number = i
 
     @property
@@ -428,11 +433,23 @@ class ReloadWidget(pg.LayoutWidget):
     @log_exceptions('plotting')
     def reload_voltages(self):
         voltages = self.history.get_gate_values(pd.Index(self.history.gate_names)).iloc[self.tune_run_number]
-        if self.autotuner:
-            self.autotuner._experiment.set_gate_voltages(new_gate_voltages=voltages)
-            self.autotuner.restart()
+        if self.auto_tuner:
+            self.auto_tuner._experiment.set_gate_voltages(new_gate_voltages=voltages)
+            self.auto_tuner.restart()
         else:
             self.logger.warning("No Autotuner connected to the History. Voltages could not be reloaded!")
+
+    @QtCore.pyqtSlot()
+    @log_exceptions('plotting')
+    def reload_autotuner(self):
+        if self.auto_tuner:
+            reload_file = self.history.get_reload_path(self.tune_run_number)
+            new_autotuner = qtune.autotuner.load_auto_tuner(file=reload_file, reserved=self.auto_tuner.reserved)
+            self.auto_tuner = new_autotuner
+            new_autotuner.restart()
+            self.gui_get_auto_tuner.emit()
+        else:
+            self.logger.warning("No Autotuner connected to the History. Previous state could not be reloaded!")
 
 
 class GUI(QtWidgets.QMainWindow):
@@ -572,10 +589,17 @@ class GUI(QtWidgets.QMainWindow):
 
     @QtCore.pyqtSlot()
     @log_exceptions('plotting')
+    def load_auto_tuner_from_reload_widget(self):
+        self._auto_tuner = self.sender().auto_tuner
+
+    @QtCore.pyqtSlot()
+    @log_exceptions('plotting')
     def spawn_reload_window(self):
         reload_widget = ReloadWidget(history=self.history, autotuner=self.auto_tuner, logger=self._logger)
         reload_widget.setWindowFlags(QtCore.Qt.Window)
         reload_widget.closeEvent = functools.partial(self._close_child, reload_widget)
+
+        reload_widget.gui_get_auto_tuner.connect(self.load_auto_tuner_from_reload_widget)
 
         self._update_plots.connect(reload_widget.refresh)
         self._reload_windows.append(reload_widget)

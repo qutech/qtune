@@ -21,7 +21,7 @@ class Autotuner(metaclass=HDF5Serializable):
     def __init__(self, experiment: Experiment, tuning_hierarchy: List[ParameterTuner] = None,
                  current_tuner_index: int = 0, current_tuner_status: bool = False,
                  voltage_to_set: Optional[pd.Series] = None, hdf5_storage_path: Optional[str] = None,
-                 append_time_to_path: bool = True):
+                 append_time_to_path: bool = True, last_save_file=None):
         """
         Initialize the AutoTuner.
 
@@ -55,6 +55,7 @@ class Autotuner(metaclass=HDF5Serializable):
         self._current_tuner_index = current_tuner_index
         self._current_tuner_status = current_tuner_status
         self._voltages_to_set = voltage_to_set
+        self.last_save_file = last_save_file
 
         if hdf5_storage_path:
             if append_time_to_path:
@@ -130,6 +131,10 @@ class Autotuner(metaclass=HDF5Serializable):
                  self.tuning_hierarchy[i].target.isna().all()[ind]], axis='columns').dropna().index
             tuned_parameters = tuned_parameters.union(set(not_na_index))
         return tuned_parameters
+
+    @property
+    def reserved(self):
+        return {'experiment': self._experiment}
 
     def is_tuning_complete(self) -> bool:
         if self._current_tuner_index == len(self._tuning_hierarchy):
@@ -211,8 +216,8 @@ class Autotuner(metaclass=HDF5Serializable):
         if self._hdf5_storage_path:
             if not os.path.isdir(self._hdf5_storage_path):
                 os.makedirs(self._hdf5_storage_path)
-            filename = os.path.join(self._hdf5_storage_path, time_string() + ".hdf5")
-            self.asynchrone_writer.write(self, file_name=filename, name='autotuner')
+            self.last_save_file = os.path.join(self._hdf5_storage_path, time_string() + ".hdf5")
+            self.asynchrone_writer.write(self, file_name=self.last_save_file, name='autotuner')
             # hdf5_file = h5py.File(storage_path, 'w-')
             # to_hdf5(hdf5_file, name="autotuner", obj=self, reserved={"experiment": self._experiment})
 
@@ -285,7 +290,8 @@ class Autotuner(metaclass=HDF5Serializable):
             current_tuner_index=self._current_tuner_index,
             current_tuner_status=self._current_tuner_status,
             voltage_to_set=self._voltages_to_set,
-            hdf5_storage_path=self._hdf5_storage_path
+            hdf5_storage_path=self._hdf5_storage_path,
+            last_save_file=self.last_save_file
         )
 
     def __repr__(self):

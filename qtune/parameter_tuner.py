@@ -21,7 +21,8 @@ class ParameterTuner(metaclass=HDF5Serializable):
                  last_parameter_values: Optional[pd.Series]=None,
                  last_parameters_variances: Optional[pd.Series]=None,
                  last_evaluation_failed: bool=False,
-                 evaluatable_voltages=None):
+                 evaluatable_voltages=None,
+                 last_parameter_covariances=None): # for backward compatibility
         """
         Initialize the ParamterTuner
         :param evaluators: List of evaluators representing the parameters to be tuned.

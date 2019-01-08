@@ -127,6 +127,7 @@ class History:
         self._evaluator_names = []
         self.experiment = experiment
         self._logger = 'qtune'
+        self._paths_for_reload = []
         if directory_or_file is None:
             pass
         elif os.path.isdir(directory_or_file):
@@ -162,14 +163,20 @@ class History:
         return ["all_voltages", "all_parameters", "all_gradients", "with_grad_covariances", "with_par_variances"]
 
     @property
-    def evaluator_data(self, evaluator_names: Optional[Tuple]=None):
-        if evaluator_names is None:
-            evaluator_names = self.evaluator_names
-        return self._evaluator_data[list(evaluator_names)]
+    def evaluator_data(self):
+        return self._evaluator_data[list(self.evaluator_names)]
 
     @property
     def number_of_stored_iterations(self):
         return self._data_frame.index.size
+
+    def get_reload_path(self, i):
+        return self._paths_for_reload[i]
+
+    def get_evaluator_data(self, evaluator_names=None):
+        if evaluator_names is None:
+            evaluator_names = self.evaluator_names
+        return self._evaluator_data[evaluator_names]
 
     def get_parameter_values(self, parameter_name) -> pd.Series:
         return self._data_frame[parameter_name]
@@ -261,18 +268,22 @@ class History:
         return pd.DataFrame({**voltages, **parameters, **variances, **gradients, **grad_covariances,
                              **tuner_index}, index=[0, ], dtype=float)
 
-    def append_autotuner(self, autotuner: qtune.autotuner.Autotuner):
+    def append_autotuner(self, autotuner: qtune.autotuner.Autotuner, path = None):
         """
         Appends an Autotuner instance to the History.
         :param autotuner:
         :return: None
         """
+        if path is None:
+            path = autotuner.last_save_file
+
         voltages = extract_voltages_from_hierarchy(autotuner.tuning_hierarchy).sort_index()
         evaluated_tuner_index = autotuner.current_tuner_index
         if autotuner.voltages_to_set is not None or autotuner.current_tuner_status:
             evaluated_tuner_index += 1
 
         if self._data_frame.empty:
+            self._paths_for_reload.append(path)
             new_information = self.read_autotuner_to_data_frame(autotuner)
             self._data_frame = self._data_frame.append(new_information, ignore_index=True, sort=True)
             new_evaluator_data = read_evaluator_data_from_autotuner(autotuner)
@@ -282,6 +293,7 @@ class History:
             self._evaluator_data = self._evaluator_data.append(new_evaluator_data, ignore_index=True, sort=True)
         if voltages.equals(self._data_frame[sorted(self.gate_names)].iloc[-1]):
             # stay in the row
+            self._paths_for_reload[-1] = path
             start = self._data_frame['tuner_index'].iloc[-1]
             new_information = self.read_autotuner_to_data_frame(autotuner, start=start, end=evaluated_tuner_index)
             self._data_frame.loc[self._data_frame.index[-1], new_information.columns] = new_information.iloc[0]
@@ -290,6 +302,7 @@ class History:
                 self._evaluator_data.loc[self._evaluator_data.index[-1], new_evaluator_data.columns] = \
                     new_evaluator_data.iloc[0]
         else:
+            self._paths_for_reload.append(path)
             new_information = self.read_autotuner_to_data_frame(autotuner, end=evaluated_tuner_index)
             self._data_frame = self._data_frame.append(new_information, ignore_index=True, sort=True)
             new_evaluator_data = read_evaluator_data_from_autotuner(autotuner, end=evaluated_tuner_index)
@@ -304,9 +317,9 @@ class History:
         with qtune.storage.ParallelHDF5Reader(reserved={'experiment': self.experiment}, multiprocess=False) as reader:
             directory_content = [os.path.join(path, file)
                                  for file in sorted(os.listdir(path))]
-            for loaded_data in reader.read_iter(directory_content):
+            for file, loaded_data in zip(directory_content, reader.read_iter(directory_content)):
                 autotuner = loaded_data['autotuner']
-                self.append_autotuner(autotuner)
+                self.append_autotuner(autotuner, file)
 
     def load_file(self, path):
         """
@@ -317,7 +330,7 @@ class History:
         hdf5_handle = h5py.File(path, mode="r")
         loaded_data = qtune.storage.from_hdf5(hdf5_handle, reserved={"experiment": self.experiment})
         autotuner = loaded_data["autotuner"]
-        self.append_autotuner(autotuner=autotuner)
+        self.append_autotuner(autotuner=autotuner, path=path)
 
     def plot_tuning(self, voltage_indices=None, parameter_names=None, gradient_parameter_names=None, mode=""):
         """
