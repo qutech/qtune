@@ -6,9 +6,14 @@ Created on Wed Aug 23 15:38:16 2017
 """
 
 import numpy as np
+import scipy
+
 from filterpy.kalman import KalmanFilter
 
-class GradKalmanFilter():
+from qtune.storage import HDF5Serializable
+
+
+class KalmanGradient(metaclass=HDF5Serializable):
     """ 
     Implements a Kalman filter that can estimate a gradient in a recursive
     manner. 
@@ -35,7 +40,11 @@ class GradKalmanFilter():
         Measurement function
 
     """
-    def __init__(self, nGates, nParams, initF = None, initX = None, initP = None, initR = None, initQ = None, alpha = 1):
+    def __init__(self, n_pos_dim: int, n_values: int, *,
+                 state_transition_function=None,
+                 initial_gradient=None,
+                 initial_covariance_matrix=None,
+                 measurement_covariance_matrix=None, process_noise=None, alpha=1):
         """
         Create the Kalman filter. You have to specify the number of gates and
         parameters. Additionally, there are some initial conditions and 
@@ -44,34 +53,34 @@ class GradKalmanFilter():
 
         Parameters
         ----------
-        nGates : int
+        n_pos_dim : int
             Number of Gates in your system.
         
-        nParams : int
+        n_values : int
             Number of Parameters in your system.
         
-        initF : 2D np.array with dimensions = (nParams*nGates, nParams*nGates), optional
+        state_transition_function : 2D np.array with dimensions = (n_values*n_pos_dim, n_values*n_pos_dim), optional
             Optional state transition function. If you know your system has a
             certain determinable  dynamic, you can specify it here to greatly
             increase filter performance. When no function is given, a diagonal
-            unit matrix is used (that means the filter expects no dynamic).
+            unit matrix is used (that means the filter expects no dynamics).
         
-        initX : list or 1D np.array with dimension = nGates*nParams, optional
+        initial_gradient : list or 1D np.array with dimension = n_pos_dim*n_values, optional
             Optional initial state vector (gradient matrix). It can be helpful
             to set this to the first measurement to increase convergence speed.
             If no initial state vector is given, a null vector is used.
 
-        initP : 2D np.array with dimensions = (nParams*nGates, nParams*nGates), optional
+        initial_covariance_matrix : 2D np.array with dimensions = (n_values*n_pos_dim, n_values*n_pos_dim), optional
             Optional initial covariance matrix.
             If no inital covariance matrix is given, a diagonal unit matrix is
             used.
         
-        initR : 2D np.array with dimensions = (nParams, nParams), optional
+        measurement_covariance_matrix : 2D np.array with dimensions = (n_values, n_values), optional
             Optional measurement noise/covariance matrix for the measurement of
             the parameters. You probably should specify it. If no measurement 
             covariance matrix is given, a diagonal unit matrix is used.
             
-        initQ : 2D np.array with dimensions = (nParams*nGates, nParams*nGates), optional
+        process_noise : 2D np.array with dimensions = (n_values*n_pos_dim, n_values*n_pos_dim), optional
             Optional process noise matrix.
             If no process noise matrix is given, null matrix is used.
             
@@ -83,61 +92,74 @@ class GradKalmanFilter():
             If no alpha is given, 1.00 is used (no fading memory).
         """
         
-        self.nGates = int(nGates)
-        self.nParams = int(nParams)
+        self.n_pos_dim = int(n_pos_dim)
+        self.n_values = int(n_values)
         
         # the dimension of our state vector is equal 
         # to the product of the number of gates and the number of parameters
-        dim_x = self.nGates*self.nParams
+        dim_x = self.n_pos_dim*self.n_values
         
         # creating the KalmanFilter object
-        self.filter = KalmanFilter(dim_x, self.nParams)
+        self.filter = KalmanFilter(dim_x, self.n_values)
         
         # if no state transition function is given, 
         # we assume our system has no dynamics
-        if initF is None:
+        if state_transition_function is None:
             self.filter.F = np.eye(dim_x)
         else:
-            self.filter.F = np.array(initF).reshape(dim_x, dim_x)
+            self.filter.F = np.array(state_transition_function).reshape(dim_x, dim_x)
             
         # set initial state vector and converts to a np.array if needed
-        if not initX is None:
-            self.filter.x = np.array(initX).reshape(dim_x, 1)
+        if initial_gradient is not None:
+            self.filter.x = np.array(initial_gradient).reshape(dim_x, 1)
         
         # set covariance matrix if needed
-        if not initP is None:
-            self.filter.P = np.array(initP).reshape(dim_x, dim_x)
+        if initial_covariance_matrix is not None:
+            self.filter.P = np.array(initial_covariance_matrix).reshape(dim_x, dim_x)
             
         # set measurement and process covariance matrix
-        if not initR is None:
-            self.filter.R = np.array(initR).reshape(self.nParams, self.nParams)
-        if initQ is None:
+        if measurement_covariance_matrix is not None:
+            self.filter.R = np.array(measurement_covariance_matrix).reshape(self.n_values, self.n_values)
+        if process_noise is None:
             self.filter.Q = np.zeros((dim_x, dim_x))
         else:
-            self.filter.Q = np.array(initQ).reshape(dim_x, dim_x)
+            self.filter.Q = np.array(process_noise).reshape(dim_x, dim_x)
         
         # set alpha value (needed for fading memory filtering)
         self.filter.alpha = alpha
 
-    def update(self, dU, dT, R = None, Q = None, predict = True, hack = True, threshold = 30, factor = 300):
+    def to_hdf5(self):
+        return dict(n_pos_dim=self.n_pos_dim,
+                    n_values=self.n_values,
+                    state_transition_function=self.filter.F,
+                    initial_gradient=self.grad,
+                    initial_covariance_matrix=self.cov,
+                    measurement_covariance_matrix=self.filter.R,
+                    process_noise=self.filter.Q,
+                    alpha=self.filter.alpha)
+
+    def update(self, diff_position, diff_values,
+               measurement_covariance=None,
+               process_covariance=None,
+               predict=True):
         """
         Updates the current gradient matrix with new measurements.
         
         Parameters
         ----------
 
-        dU : list or 1D np.array with dimension = nGates
+        diff_position : list or 1D np.array with dimension = n_pos_dim
             Vector of the voltage differences that were used to create the new
             measurement. 
 
-        dT : list or 1D np.array with dimension = nParams
+        diff_values : list or 1D np.array with dimension = n_values
             Vector of the measured parameter differences.
 
-        R : 2D np.array with dimensions = (nParams, nParams), optional
+        measurement_covariance : 2D np.array with dimensions = (n_values, n_values), optional
             Optional matrix of measurement covariance. If it is given, it will
             be used only for this update. Else self.filter.R is used.
 
-        Q : 2D np.array with dimensions = (nParams*nGates, nParams*nGates), optional
+        process_covariance : 2D np.array with dimensions = (n_values*n_pos_dim, n_values*n_pos_dim), optional
             Optional matrix of process covariance. If it is given, it will
             be used only for this update. Else self.filter.Q is used.
             Since it is used only in the prediction step, if predict is set
@@ -151,34 +173,22 @@ class GradKalmanFilter():
             If the alpha value is not equal to 1 we apply a 'fading memory' -
             effect. That means that older measurements lose significance
             and therefore the covariance increases by a given ratio each
-            prediciton step.
+            prediction step.
             If both the transition function is a diagonal unit matrix and
             alpha is set to 1, the prediciton step will have no effect at
             all and can be omitted (that means the predict value can be
             set to False).
         """
         
-        dT = np.array(dT).reshape(self.nParams, 1)
-        dU = np.array(dU).reshape(self.nGates)
+        diff_values = np.array(diff_values).reshape(self.n_values, 1)
+        diff_position = np.array(diff_position).reshape(self.n_pos_dim)
         
         if predict:
-            self.filter.predict(Q = Q)
+            self.filter.predict(Q=process_covariance)
 
-        self.filter.update(dT, R = R, H = self.__createMatrixH(dU))
-        
-        """
-        Following code is a hack that greatly increases the covariance
-        if a possible jump has been detected.
-        Detection occurs when the difference between estimation and the new
-        measurement is greater then threshold*estimated error. The estimated
-        error is already caluculated in filter.S. It is a projection of the
-        state vector into measurement space using the current gate voltages.
-        """
-        
-        if hack and max(abs(self.filter.y[:,0]/self.filter.S.diagonal())) > threshold:
-            self.filter.P *= factor
+        self.filter.update(diff_values, R=measurement_covariance, H=self.__createMatrixH(diff_position))
     
-    def __createMatrixH(self, dU):
+    def __createMatrixH(self, diff_position):
         """
         Creates the necessary H matrix (the so called measurement function)
         that is tailored to the voltage differences that were used in a 
@@ -187,7 +197,7 @@ class GradKalmanFilter():
         Parameters
         ----------
 
-        dU : list or 1D np.array with dimension = nGates
+        diff_position : list or 1D np.array with dimension = n_pos_dim
             Vector of the voltage differences that were used to create the new
             measurement. 
         
@@ -195,11 +205,16 @@ class GradKalmanFilter():
         Returns
         ------
         
-        H : 2D np.array with dimensions = (nParams,nGates*nParams)
+        H : 2D np.array with dimensions = (n_values,n_pos_dim*n_values)
             The measurement function that will be used in an update step.
         """
-        
-        return np.array([[dU[j % self.nGates] if i*self.nGates<= j < (i+1)*self.nGates else 0 for j in range(self.nGates*self.nParams)] for i in range(self.nParams)])
+
+        diff_position = np.asarray(diff_position)
+
+        if diff_position.shape != (self.n_pos_dim, ):
+            raise ValueError('Voltage differences have the wrong dimension')
+
+        return scipy.linalg.block_diag(*[diff_position]*self.n_values)
     
     @property
     def grad(self):
@@ -209,11 +224,11 @@ class GradKalmanFilter():
         Returns
         -------
 
-        grad : 2D np.array with dimension = (nParams, nGates)
+        grad : 2D np.array with dimension = (n_values, n_pos_dim)
             The updated gradient matrix.
         """
         
-        return self.filter.x.reshape(self.nParams, self.nGates)
+        return self.filter.x.reshape(self.n_values, self.n_pos_dim)
     
     @property
     def cov(self):
@@ -223,14 +238,14 @@ class GradKalmanFilter():
         Returns
         -------
 
-        cov : 2D np.array with dimensions = (nParams*nGates, nParams*nGates)
+        cov : 2D np.array with dimensions = (n_values*n_pos_dim, n_values*n_pos_dim)
             The covariance matrix of the gradient matrix.
         """
         
         return self.filter.P
     
     @property
-    def sugg_dU(self):
+    def sugg_diff_position(self):
         """
         Returns a suggestion for the next vector of voltage differences in the
         next measurement.
@@ -238,7 +253,7 @@ class GradKalmanFilter():
         Returns
         -------
 
-        cov : 1D np.array with dimension = nGates
+        cov : 1D np.array with dimension = n_pos_dim
             The suggested vector of voltage differences for the next
             measurement.
         """
@@ -247,10 +262,10 @@ class GradKalmanFilter():
         w, v = np.linalg.eigh(self.filter.P)
         
         # split the eigenvector in parts (one part contains the actual vector,
-        # all else are just null vectors). They will have the length of nGates
+        # all else are just null vectors). They will have the length of n_pos_dim
         # after that. The eigenvector with the biggest eigenvalue is used,
         # because that is the vector with the greatest uncertainty                               
-        z = np.split(v[:, np.argmax(w)], self.nParams)
+        z = np.split(v[:, np.argmax(w)], self.n_values)
         
         # just use the one vector which has a non trivial norm
-        return [i for i in z if np.linalg.norm(i)!=0][0]
+        return next(i for i in z if np.linalg.norm(i) != 0)

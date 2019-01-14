@@ -1,127 +1,538 @@
+from typing import Tuple, Sequence, Deque, Callable, Optional, Dict
+import enum
+import math
+import logging
+
 import numpy as np
 import pandas as pd
-from typing import Tuple
-from qtune.GradKalman import GradKalmanFilter
-from qtune.evaluator import Evaluator
+
+from qtune.gradient import GradientEstimator
+from qtune.storage import HDF5Serializable
+from qtune.util import get_orthogonal_vector
 
 
-class Solver:
+def make_target(desired: pd.Series = np.nan,
+                maximum: pd.Series = np.nan,
+                minimum: pd.Series = np.nan,
+                tolerance: pd.Series = np.nan,
+                cost_threshold: pd.Series = np.nan,
+                rescaling_factor: pd.Series = np.nan):
     """
-    The solver class implements an algorithm to minimise the difference of the parameters to the target values.
+    The function is designed to bring the target values into a standardised form. The solver rescales any values it
+    receives. The target must therefore contain rescaled value.
+    Parameters which should always be left invariant are appended with the desired value NaN.
+    :param desired: the target values / set points (rescaled)
+    :param maximum: the maximal values (rescaled)
+    :param minimum: the minimal values (rescaled)
+    :param tolerance: the tolerance to the target values (should be approximately the accuracy of the measurements.) (rescaled)
+    :param cost_threshold: used in the sensing dot tuner to decide if the measurement must be repeated with a longer
+    measurement. (rescaled)
+    :param rescaling_factor: Factor to rescale the parameters
+    :return: DataFrame containing the target.
     """
-    def __init__(self, gate_names=None, gradient=None, evaluators: Tuple[Evaluator, ...] = (),
-                 desired_values: pd.Series = pd.Series()):
-        self.gradient = gradient
-        self.gate_names = gate_names
-        self.need_new_gradient = False
-        self.evaluators = ()
-        self.desired_values = desired_values.sort_index()
-        self.parameter = pd.Series()
-        for e in evaluators:
-            self.add_evaluator(e)
-        self.parameter.sort_index()
+    for ser in (desired, maximum, minimum, tolerance):
+        if isinstance(ser, pd.Series):
+            names = ser.index
+            break
+    else:
+        raise RuntimeError('Could not extract values names from arguments')
 
-    def check_dimensionality(self) -> bool:
-        if self.gradient.shape != (len(self.parameter.index.tolist()), len(self.gate_names)):
-            print('The gradients shape', self.gradient.shape, 'doesnt match the number of parameters',
-                  self.parameter.index.tolist(), 'and gate names', len(self.gate_names), '!')
-            return False
-        elif self.desired_values.index.tolist() != self.parameter.index.tolist():
-            print('The desired values', self.desired_values.index.tolist(), 'do not match the parameters',
-                  self.parameter.index.tolist(), '!')
-            return False
+    def to_series(arg):
+        if not isinstance(arg, pd.Series):
+            return pd.Series(arg, index=names)
         else:
-            return True
+            return arg[names]
 
-    def add_evaluator(self, evaluator: Evaluator):
-        try:
-            self.parameter.append(evaluator.parameters, verify_integrity=True)
-        except ValueError:
-            print('A parameter of evaluator', evaluator, 'is already evaluated by another evaluator!')
-            return
-        self.evaluators += (evaluator, )
+    if not isinstance(rescaling_factor, pd.Series):
+        if rescaling_factor != rescaling_factor:
+            rescaling_factor = pd.Series(data=1, index=names)
 
-    def suggest_next_step(self):
+    return pd.DataFrame({'desired': to_series(desired),
+                         'minimum': to_series(minimum),
+                         'maximum': to_series(maximum),
+                         'tolerance': to_series(tolerance),
+                         'cost_threshold': to_series(cost_threshold),
+                         'rescaling_factor': to_series(rescaling_factor)},
+                        index=names)
+
+
+class Solver(metaclass=HDF5Serializable):
+    """
+    The solver class implements an optimization algorithm to minimise the difference of the values to the target values.
+    """
+    _current_position = None
+    _current_values = None
+    _target = None
+    _logger = 'qtune'
+
+    @property
+    def current_position(self) -> pd.Series:
+        return self._current_position
+
+    @current_position.setter
+    def current_position(self, new_position: pd.Series):
+        labels = self._current_position.index.intersection(new_position.index)
+        self._current_position[labels] = new_position[labels]
+
+    @property
+    def logger(self):
+        return logging.getLogger(self._logger)
+
+    def suggest_next_position(self, tuned_parameters=None) -> pd.Series:
         raise NotImplementedError()
 
-    def update_after_step(self, d_voltages_series: pd.Series):
+    def update_after_step(self, position: pd.Series, values: pd.Series, variances: pd.Series):
         raise NotImplementedError()
 
+    def to_hdf5(self):
+        raise NotImplementedError()
 
-class KalmanSolver(Solver):
+    def restart(self, new_position):
+        self.current_position = new_position
+
+    @property
+    def target(self) -> pd.DataFrame:
+        return self._target
+
+    @target.setter
+    def target(self, changes: Dict[str, pd.Series]):
+        for category in changes:
+            if not changes[category].index.isin(self.target[category].index).all():
+                self.logger.error('The new target %s %s is not consistent with the previous one!'
+                                  % (category, changes[category].index.difference(self.target[category].index)))
+            if len(self.target.loc[changes[category].index, category]) != changes[category].size:
+                self.logger.error('The new target %s %s is not consistent with the previous one! It does not have the '
+                                  'right number of entries.'
+                                  % (category, changes[category].index.difference(self.target[category].index)))
+            self.target.loc[changes[category].index, category] = changes[category]
+
+    @property
+    def state(self) -> pd.Series:
+        raise NotImplementedError()
+
+    def rescale_values(self, values: pd.Series, variances: pd.Series):
+        """
+        Rescales the values in place.
+        :param values: unscaled values
+        :param variances: unscaled variances
+        :return: None
+        """
+        rescaling_factor = self.target['rescaling_factor'].append(
+            pd.Series(index=values.index.difference(self.target['rescaling_factor'].index), data=1))
+        values /= rescaling_factor[values.index]
+        variances /= rescaling_factor[values.index] ** 2
+
+    def descale_values(self, values: pd.Series, variances: pd.Series):
+        """
+        Descale the values to their original scale in place.
+        :param values: scaled values
+        :param variances: scaled variances
+        :return: None
+        """
+        rescaling_factor = self.target['rescaling_factor'].append(
+            pd.Series(index=values.index.difference(self.target['rescaling_factor'].index), data=1))
+        values *= rescaling_factor[values.index]
+        variances *= rescaling_factor[values.index] ** 2
+
+
+class NewtonSolver(Solver):
     """
-    Solver using the Kalman filter to update the gradient.
+    This solver implements the Gauss-Newton algorithm.
     """
-    def __init__(self, gate_names=None, gradient=None, evaluators: Tuple[Evaluator, ...] = (),
-                 desired_values: pd.Series = pd.Series(), covariance=None, noise=None, alpha=1.02,
-                 shifting_uncertainty=None):
-        super().__init__(gate_names=gate_names, gradient=gradient, desired_values=desired_values, evaluators=evaluators)
-        self.covariance = covariance
-        self.noise = noise
-        self.shifting_uncertainty = shifting_uncertainty
-        if gradient is not None:
-            n_parameter, n_gates = gradient.shape()
-            self.grad_kalman = GradKalmanFilter(nGates=n_gates, nParams=n_parameter, initF=None, initX=gradient,
-                                                initP=covariance, initR=noise, initQ=None, alpha=alpha)
 
-    def initialize_kalman(self, gradient=None, covariance=None, noise=None, shifting_uncertainty=None, alpha=1.02):
-        if gradient is None:
-            gradient = self.gradient
-        n_parameters, n_gates = gradient.shape
-        self.grad_kalman = GradKalmanFilter(nGates=n_gates, nParams=n_parameters, initX=gradient, initP=covariance,
-                                            initR=noise, initQ=shifting_uncertainty, alpha=alpha)
-        self.gradient = gradient
+    def __init__(self, target: pd.DataFrame,
+                 gradient_estimators: Sequence[GradientEstimator],
+                 current_position: pd.Series,
+                 current_values: pd.Series = None):
+        """
+        Initialize the NewtonSolver.
+        :param target: DataFrame containing the target. Should be build with the static make_target functionl
+        :param gradient_estimators: Estimator for the gradient of each position being tuned.
+        :param current_position: Initial positions
+        :param current_values: Initial values
+        """
+        self._target = target
+        self._gradient_estimators = list(gradient_estimators)
+        assert (len(self._target.index) == len(self._gradient_estimators))
+        self._current_position = current_position
+        for gradient_estimator in gradient_estimators:
+            assert set(self._current_position.index).issubset(set(gradient_estimator.current_position.index))
+        if current_values is not None:
+            assert set(self.target.index).issubset(set(current_values.index))
+            self._current_values = current_values[self._target.index]
+        else:
+            self._current_values = pd.Series(np.nan, index=self._target.index)
+        assert len(self._current_position) >= len(self._current_values)
 
-    def update_after_step(self, d_voltages_series: pd.Series, d_parameter_series: pd.Series = None,
-                          residuals_series: pd.Series = None):
-        if d_parameter_series is None:
-            current_parameter = self.parameter
-            for e in self.evaluators:
-                evaluation_result = e.evaluate()
-                if evaluation_result['failed']:
-                    return self.grad_kalman.grad, self.grad_kalman.cov, True
-                evaluation_result.drop(['failed'])
-                evaluated_parameters = evaluation_result.index.tolist()
-                for i in evaluated_parameters:
-                    if i != "residual":
-                        self.parameter[i] = evaluation_result[i]
-                self.parameter = self.parameter.sort_index()
+    @property
+    def gradient_estimators(self):
+        return self._gradient_estimators
 
-            d_parameter_series = self.parameter.add(-1.*current_parameter)
-        d_parameter_series = d_parameter_series.sort_index()
-        d_parameter_vector = np.asarray(d_parameter_series.values)
-        d_parameter_vector = d_parameter_vector.T
-        d_voltages_series = d_voltages_series.sort_index()
-        d_voltages_vector = np.asarray(d_voltages_series.values)
-        d_voltages_vector = d_voltages_vector.T
+    @property
+    def jacobian(self) -> pd.DataFrame:
+        gradients = [gradient.estimate() for gradient in self._gradient_estimators]
+        return pd.concat(gradients, axis=1, keys=self._target.index).T
 
-        r = np.copy(self.grad_kalman.filter.R)
-        residuals = residuals_series.sort_index()
-        for j in range(self.parameter.size):
-            r[j, j] = 0.1 * r[j, j] + residuals[j]
+    @property
+    def state(self):
+        jacobian = self.jacobian[self._current_position.index]
+        index = []
+        for param in jacobian.index:
+            for gate in jacobian.columns:
+                index.append('d{}/d{}'.format(param, gate))
+        return pd.Series(jacobian.values.ravel(), index=index)
 
-        self.grad_kalman.update(d_voltages_vector, d_parameter_vector, R=r, hack=False)
-        self.gradient = self.grad_kalman.grad
-        return self.grad_kalman.grad, self.grad_kalman.cov, False
+    def suggest_next_position(self, tuned_parameters=None) -> pd.Series:
+        """
+        This function checks first if any gradient estimator requires a measurement, which is returned if this is the
+        case. Otherwise the Gauss-Newton method is applied to find the next voltages.
+        :param tuned_parameters: The gradients of these parameters is given to the
+        :return:
+        """
+        tuned_parameters = set() if tuned_parameters is None else tuned_parameters
+        tuned_estimators = [gradient
+                            for i, gradient in enumerate(self._gradient_estimators)
+                            if self.target.index[i] in tuned_parameters]
+        tuned_gradients = [gradient.estimate() for gradient in tuned_estimators]
+        if len(tuned_gradients) == 0:
+            tuned_jacobian = None
+        else:
+            tuned_jacobian = pd.concat(tuned_gradients, axis=1).T
+            tuned_jacobian = tuned_jacobian[self._current_position.index]
+
+        for i, estimator in enumerate(self._gradient_estimators):
+            if self.target.iloc[i].desired == self.target.iloc[i].desired:
+                suggestion = estimator.require_measurement(gates=self._current_position.index,
+                                                           tuned_jacobian=tuned_jacobian)
+                if suggestion is not None and not suggestion.empty:
+                    return suggestion
+
+        if self._current_position is None:
+            raise RuntimeError('NewtonSolver: Position not initialized.')
+
+        # our jacobian is sufficiently accurate
+        # nan targets are replaced with the current values
+
+        required_diff = self.target.desired.add(-1 * self._current_values, fill_value=0).fillna(0)
+
+        jacobian = self.jacobian[self._current_position.index]
+
+        step, *_ = np.linalg.lstsq(jacobian, required_diff, rcond=None)
+
+        # this is not exactly Newton
+
+        return self._current_position + step
+
+    def update_after_step(self, position: pd.Series, values: pd.Series, variances: pd.Series):
+        for estimator, value, value_index, variance in zip(self._gradient_estimators,
+                                                           values[self._current_values.index],
+                                                           self._current_values.index, variances):
+            if not math.isnan(self.target.desired[value_index]):
+                estimator.update(position, value, variance, is_new_position=True)
+        self._current_position = position[self._current_position.index]
+        self._current_values = values[self._current_values.index]
+
+    def to_hdf5(self):
+        return dict(target=self.target,
+                    gradient_estimators=self._gradient_estimators,
+                    current_position=self._current_position,
+                    current_values=self._current_values)
+
+    def restart(self, new_position):
+        for grad_est in self.gradient_estimators:
+            grad_est.restart(new_position)
+        super().restart(new_position)
+
+    def __repr__(self):
+        return "{type}({data})".format(type=type(self), data=self.to_hdf5())
 
 
-class KalmanNewtonSolver(KalmanSolver):
-    """
-    Uses the Newton algorithm to compute the voltage steps and the Kalman filter to update the gradient.
-    """
-    def __init__(self, gate_names=None, gradient=None, evaluators: Tuple[Evaluator, ...] = (),
-                 desired_values: pd.Series = pd.Series(), covariance=None, noise=None, alpha=1.02,
-                 shifting_uncertainty=None):
-        super().__init__(gate_names=gate_names, gradient=gradient, evaluators=evaluators, desired_values=desired_values,
-                         covariance=covariance, noise=noise, alpha=alpha, shifting_uncertainty=shifting_uncertainty)
+class NelderMeadSolver(Solver):
+    class State(enum.Enum):
+        start_iteration = 'start_iteration'
+        build_up = 'built_up'
+        reflect = 'reflect'
+        expand = 'expand'
+        contract_outside = 'contract_outside'
+        contract_inside = 'contract_inside'
+        shrink = 'shrink'
 
-    def suggest_next_step(self) -> pd.Series:
-        if not self.check_dimensionality():
-            print('The internal dimensionality is not consistent! Cant predict next Step! Abort mission!')
-            return pd.Series()
-        d_parameter_series = self.desired_values.add(-1.*self.parameter)
-        d_parameter_series = d_parameter_series.sort_index()
-        d_parameter_vector = np.asarray(d_parameter_series.values).T
-        d_voltages_vector = np.linalg.lstsq(self.grad_kalman.grad, d_parameter_vector)[0]
-        d_voltages_series = pd.Series(d_voltages_vector, self.gate_names)
-        return d_voltages_series
+    def __init__(self,
+                 target: pd.Series,
+                 simplex: Sequence[Tuple[pd.Series, pd.Series]],
+                 span: pd.Series,
+                 current_position: pd.Series,
+                 current_values: pd.Series,
+                 reflected_point: Optional[Tuple[pd.Series, pd.Series]] = None,
+                 shrunk_points: Optional[Sequence[Tuple[pd.Series, pd.Series]]] = None,
+                 cost_function: Callable = lambda v: np.sum(v * v),
+                 state='built_up'):
+        """
+
+        :param target:
+        :param simplex:
+        :param span: Used to build up the initial simplex
+        :param cost_function:
+        :param current_position:
+        """
+        if 'desired' not in target:
+            raise ValueError('The NelderMead solver requires the desired column in the target.')
+        self._target = target
+        self._simplex = list(simplex)
+
+        self._current_position = current_position
+        self._current_values = current_values[self.target.desired.index]
+
+        self._span = span[current_position.index]
+
+        self._cost_function = cost_function
+
+        self._state = self.State(state)
+
+        self._reflected_point = reflected_point
+        self._shrunk_points = shrunk_points or []
+
+    @classmethod
+    def from_scratch(cls,
+                     target: pd.Series,
+                     span: pd.Series,
+                     current_position: pd.Series,
+                     current_values: pd.Series):
+        current_values = current_values[target.index]
+        span = span[current_position.index]
+        simplex = [(current_position, current_values)]
+
+        return cls(target=target,
+                   span=span,
+                   current_position=current_position,
+                   current_values=current_values,
+                   simplex=simplex)
+
+    @property
+    def target(self):
+        return self._target
+
+    @property
+    def simplex(self) -> Deque[Tuple[pd.Series, pd.Series]]:
+        """Sorted chronologically if state=built_up otherwise sorted by cost"""
+        return self._simplex
+
+    def get_positions(self):
+        return [position for position, _ in self.simplex]
+
+    def cost_function(self, values: pd.Series):
+        values = values - self.target.desired
+        if self._cost_function:
+            return self._cost_function(values)
+        else:
+            np.sum(values * values)
+
+    def get_costs(self):
+        return [self.cost_function(values) for _, values in self.simplex]
+
+    @property
+    def current_position(self) -> pd.Series:
+        return self._current_position
+
+    @property
+    def current_values(self) -> pd.Series:
+        return self._current_values
+
+    def _get_sorted_simplex(self) -> list:
+        def get_entry_cost(entry):
+            _, values = entry
+            return self.cost_function(values)
+
+        return sorted(self.simplex, key=get_entry_cost)
+
+    def _insert_into_simplex(self, position, values):
+        self._simplex.append((position, values))
+        self._simplex = self._get_sorted_simplex()
+        self._simplex.pop()
+
+    def suggest_next_position(self) -> pd.Series:
+        positions = self.get_positions()
+        worst_position = positions[-1]
+
+        m = pd.DataFrame(positions).mean(axis=0)
+        r = 2 * m - worst_position
+        s = m + 2 * (m - worst_position)
+        c = m + (r - m) / 2
+        cc = m + (worst_position - m) / 2
+
+        if len(self.simplex) < len(self.current_position) + 1:
+            starting_point = self.simplex[0][0]
+            diffs = [position - starting_point for position, values in self.simplex]
+            self._state = self.State.build_up
+            return starting_point + get_orthogonal_vector(diffs) * self._span
+
+        elif self._state in (self.State.start_iteration, self.State.reflect):
+            self._state = self.State.reflect
+            return r
+
+        elif self._state == self.State.expand:
+            return s
+
+        elif self._state == self.State.contract_outside:
+            return c
+
+        elif self._state == self.State.contract_inside:
+            return cc
+
+        elif self._state == self.State.shrink:
+            i = len(self._shrunk_points) + 1
+            if i == len(self.simplex):
+                raise RuntimeError('Bug')
+
+            v = positions[0] + (positions[i] - positions[0]) / 2
+            return v
+
+        else:
+            raise RuntimeError('Bug')
+
+    def update_after_step(self, position: pd.Series, values: pd.Series, variances: pd.Series):
+        position = position[self._current_position.index]
+        values = values[self._current_values.index]
+
+        if len(self.simplex) < len(self.current_position) + 1:
+            self.simplex.append((position, values))
+
+            if len(self.simplex) == len(self.current_position) + 1:
+                self._simplex = self._get_sorted_simplex()
+                self._state = self.State.start_iteration
+
+        elif self._state == self.State.reflect:
+            new_cost = self.cost_function(values)
+            costs = self.get_costs()
+
+            self._reflected_point = (position, values)
+
+            if new_cost < costs[0]:
+                # require expansion point
+                self._state = self.State.expand
+
+            elif new_cost >= costs[-2]:
+                if new_cost < costs[-1]:
+                    self._state = self.State.contract_outside
+                else:
+                    self._state = self.State.contract_inside
+
+            else:
+                # costs[0] <= new_cost < costs[-2]
+                self._insert_into_simplex(position, values)
+
+        elif self._state == self.State.expand:
+            reflected_pos, reflected_val = self._reflected_point
+            reflection_cost = self.cost_function(reflected_val)
+
+            expansion_cost = self.cost_function(values)
+            if expansion_cost < reflection_cost:
+                self._insert_into_simplex(position, values)
+            else:
+                self._insert_into_simplex(reflected_pos, reflected_val)
+
+        elif self._state == self.State.contract_outside:
+            reflected_pos, reflected_val = self._reflected_point
+            reflection_cost = self.cost_function(reflected_val)
+
+            contraction_cost = self.cost_function(values)
+            if contraction_cost < reflection_cost:
+                self._insert_into_simplex(position, values)
+
+            else:
+                self._state = self.State.shrink
+
+        elif self._state == self.State.contract_inside:
+            worst_cost = self.get_costs()[-1]
+
+            contraction_cost = self.cost_function(values)
+            if contraction_cost < worst_cost:
+                self._insert_into_simplex(position, values)
+
+            else:
+                self._state = self.State.shrink
+
+        elif self._state == self.State.shrink:
+            self._shrunk_points.append((position, values))
+
+            if len(self._shrunk_points) == len(self._current_position):
+                for shrink_point in self._shrunk_points:
+                    self._insert_into_simplex(*shrink_point)
+                self._shrunk_points = []
+
+        else:
+            # we just got a point without requesting it
+            worst_cost = self.get_costs()[-1]
+            new_cost = self.cost_function(values)
+
+            if new_cost < worst_cost:
+                self._insert_into_simplex(position, values)
+
+            self._state = self.State.start_iteration
+
+        self._current_position = position
+        self._current_values = values
+
+    def to_hdf5(self):
+        return dict(target=self._target,
+                    simplex=self._simplex,
+                    span=self._span,
+                    current_position=self._current_position,
+                    current_values=self._current_values,
+                    reflected_point=self._reflected_point,
+                    shrunk_points=self._shrunk_points,
+                    cost_function=self._cost_function,
+                    state=str(self._state))
+
+
+class ForwardingSolver(Solver):
+    """Solves by forwarding the values of the given values and renaming them to a voltage vector which updates the
+    given position"""
+
+    def __init__(self,
+                 target: pd.DataFrame,
+                 values_to_position: pd.Series,
+                 current_position: pd.Series,
+                 next_position: pd.Series = None):
+        """
+        Initializes the ForwardingSolver
+        :param values_to_position: A series of strings mapping the evaluation results to the parameters.
+        :param next_position:
+        """
+        self._target = target
+        self._values_to_position = values_to_position
+        self._current_position = current_position
+        if next_position is None:
+            next_position = self._current_position.copy()
+        else:
+            next_position = next_position[self._current_position.index]
+        self._next_position = next_position
+
+    def suggest_next_position(self, tuned_parameters) -> pd.Series:
+        return self._next_position
+
+    def update_after_step(self, position: pd.Series, values: pd.Series, variances: pd.Series):
+        """
+        Writes the correct values into the next_position.
+        :param position: Position of evaluation.
+        :param values:
+        :param variances: Errors on the values.
+        :return: None
+        """
+        self._current_position[position.index.intersection(self.current_position.index)] = \
+            position[position.index.intersection(self.current_position.index)]
+        self._next_position[position.index.intersection(self._next_position.index)] = \
+            position[position.index.intersection(self.current_position.index)]
+        self.descale_values(values, variances)
+        new_position_names = self._values_to_position[
+            values.index.intersection(self._values_to_position.index)].dropna()
+        self._next_position[new_position_names] = values[new_position_names.index]
+
+    def state(self):
+        return pd.Series()
+
+    def to_hdf5(self):
+        return dict(target=self._target,
+                    values_to_position=self._values_to_position,
+                    current_position=self._current_position,
+                    next_position=self._next_position)

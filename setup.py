@@ -4,7 +4,15 @@ import os.path
 import re
 import sys
 
-from pip.req import parse_requirements
+
+REQUIRED_PACKAGES = [
+    'pandas',
+    'numpy',
+    'filterpy',
+    'scipy',
+    'h5py',
+    'sympy'
+]
 
 
 def get_file(*args):
@@ -44,7 +52,8 @@ class MatlabInstall(setuptools.Command):
         if p.returncode:
             raise RuntimeError('Could not locate matlab', str(err, 'utf-8'))
         else:
-            return os.path.dirname(str(out, 'utf-8').splitlines()[0])
+            path = os.path.dirname(str(out, 'utf-8').splitlines()[0])
+            return os.path.split(path)[0]
 
     def get_installer_dir(self):
         return os.path.join(self.matlabroot, 'extern', 'engines', 'python')
@@ -73,10 +82,6 @@ class MatlabInstall(setuptools.Command):
                 raise RuntimeError('Error while installing matlab engine')
 
 
-def get_requirements():
-    return [str(ir.req) for ir in parse_requirements(get_file('requirements.txt'), session=True)]
-
-
 setuptools.setup(
     name="qtune",
     version=get_version(),
@@ -86,11 +91,11 @@ setuptools.setup(
     url="https://git.rwth-aachen.de/qutech/python-atune",
     packages=['qtune'],
     package_data={'qtune': ['qtune/MATLAB/*/*.m']},
-    long_description=read('README'),
-    install_requires=get_requirements(),
+    long_description=read('README.md'),
+    install_requires=REQUIRED_PACKAGES,
 
-    setup_requires=['pytest-runner'] + get_requirements(),
-    tests_require=['pytest'] + get_requirements(),
+    setup_requires=['pytest-runner'] + REQUIRED_PACKAGES,
+    tests_require=['pytest'] + REQUIRED_PACKAGES,
 
     cmdclass={'install_matlab': MatlabInstall}
 )

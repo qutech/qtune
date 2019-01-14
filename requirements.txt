@@ -1,3 +1,10 @@
 pandas
 numpy
 filterpy
+scipy
+sympy
+matplotlib
+pyqtgraph
+h5py
+IPython
+PyQt5
