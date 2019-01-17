@@ -1,4 +1,4 @@
-#qtune Readme: Introduction
+# qtune Readme: Introduction
 The qtune package contains tools for the setup of a general optimization program. It is originally designed for the 
 automatic fine-tuning of semiconductor spin qubits based on gate defined quantum dots, but applicable to general 
 optimization problems with dependent target parameters. 
@@ -14,7 +14,7 @@ For development we recommend cloning the git repository
 
     python setup.py develop
 
-#Interface of the Physical Back-End
+# Interface of the Physical Back-End
 The core features of this program package do not require a specific structure of the measurement software. This section 
 concerns only the required interface of the physical back-end.
 The **Experiment** class serves as abstraction of the physical experiment. It provides an interface to the control 
@@ -26,7 +26,7 @@ ordered to set voltages exceeding physical or safety limits.
 The **Evaluator** class provides the function *evaluate*() which returns a fixed number of parameters and a measurement
 error, which is interpreted as the variance of the evaluation.
 
-#Proposed Measurement and Evaluation Structure
+# Proposed Measurement and Evaluation Structure
 The implementation of a physical back-end, as contained in the qtune package, should be regarded as proposal.
 
 The **Experiment** provides the function *measure*(**Measurement**), which receives an instance of the **Measurement** 
@@ -47,7 +47,7 @@ experiment. This could be for example a fitting function or an edge detection.
 for the **Experiment** in the dictionary called options. When *evaluate*() is called on the Evaluator, it calls 
 *measure*(**Measurement**) on the **Experiment**.][evaluation image]
 
-#Parameter Tuning
+# Parameter Tuning
 This section describes how the dependency between parameters is taken into account.
 The parameters are grouped by instances of the **ParameterTuner** class. Each group is tuned simultaneously, i.e. 
 depends on the same set of distinct parameters. The dependencies are assumed always one directional and static. The
@@ -88,7 +88,7 @@ The index n is incremented every time every time the parameters of the **Paramet
 the voltages suggested by this **ParameterTuner** are set to the **Experiment** and the index is reset to 0.
 ][autotuner flow]
 
-#Optimization Algorithms
+# Optimization Algorithms
 
 The voltage steps of each **ParameterTuner** are calculated by its member instance of the **Solver** class. This class 
 can implement any optimization algorithm e.g. Nelder-Mead or Gauss-Newton algorithm. 
@@ -126,7 +126,7 @@ in the null space of the gradients belonging to parameters which are tuned by an
 A **Solver** also passes this information on to it's **GradientEstimators**, which calculate the gradients only in the 
 mentioned null space.
 
-#Getting Started
+# Getting Started
 The IPython notebook "setup_tutorial.ipynb" gives a detailed
 tutorial for the setup of an automated fine-tuning program. The physical back-end is replaced by a simulation to enable
 the tutorial to be executed before the connection to an experiment. 
@@ -145,31 +145,48 @@ tuning the positions and parameters. The positions and parameters are tuned by *
 same gates and their **Solver** instances share all **GradientEstimators**. The **GradientEstimators** belonging to the 
 parameters estimate the gradients only in the null space of the gradients belonging to the positions.
 
-#Features
-##Storage
+# Features
+## Storage
 After each evaluation of parameters, change in voltages or estimation of gradients, 
 the full state of all classes except for the experiment is serialized and stored 
 in an HDF5 file. The full state of the program can be reinitialized from any library file. This way, 
 the program can be set back to any point during the tuning. The **History** class 
 additionally saves all relevant information for the evaluation of the performance. The **History** class can plot the
 gradients, last fits, control and target parameters.
-##GUI
+## GUI
 For real-time plotting of parameters and gradients, the user can couple the **History** and the
 **Autotuner** to the GUI. The GUI automatically stores the program data in the HDF5 library and lets the user start and
 stop the program conveniently. The program can also be ordered to execute only one step at a time. The program is 
 logging its activity and the user can chose how detailed the logging describes the current activity by
 setting the log level. 
-#Naming Convention
-##Voltages
+# Naming Convention
+## Voltages
 are used in the Evaluator class to describe the voltages on the gates in the experiment.
-##Positions
+## Positions
 are an abstraction of gate voltages in the Gradient and Solver classes. These classes
 could not only be used for the tuning algorithm but they could be reused in any gradient 
 based solving algorithm.
-##Parameters
+## Parameters
 correspond to properties of the physical experiment. They are extracted from the measurement data 
 by the Evaluator class and handed over to the ParameterTuner class.
-##Values
+## Values
 are the abstraction of parameters in the Gradient and Solver classes.
-##Options
+## Options
 describe the measurements in the Measurement class.
+
+# License
+    Copyright (c) 2017 and later, JARA-FIT Institute for Quantum Information,
+    Forschungszentrum Jülich GmbH and RWTH Aachen University
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.

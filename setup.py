@@ -85,17 +85,29 @@ class MatlabInstall(setuptools.Command):
 setuptools.setup(
     name="qtune",
     version=get_version(),
+    
     author="RWTH Aachen Quantum Technology Group",
-    author_email="simon.humpohl@rwth-aachen.de",
+    author_email="julian.teske@rwth-aachen.de",
+    
     keywords="autotune quantum",
     url="https://git.rwth-aachen.de/qutech/python-atune",
+    
     packages=['qtune'],
     package_data={'qtune': ['qtune/MATLAB/*/*.m']},
+    
+    license="GNU GPLv3+",
+    
     long_description=read('README.md'),
     install_requires=REQUIRED_PACKAGES,
-
     setup_requires=['pytest-runner'] + REQUIRED_PACKAGES,
     tests_require=['pytest'] + REQUIRED_PACKAGES,
 
-    cmdclass={'install_matlab': MatlabInstall}
+    cmdclass={'install_matlab': MatlabInstall},
+    
+    classifiers=[
+        "Development Status :: 3 - Alpha",
+        "Intended Audience :: Science/Research",
+        "Topic :: Scientific/Engineering :: Physics",
+        "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)"    
+    ]
 )
