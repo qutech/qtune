@@ -17,12 +17,13 @@ class GradientSerializationTest(unittest.TestCase):
     def test_serialization(self):
         self.assertIn('KalmanGradientEstimator', serializables)
 
-        kal_args = dict(n_values=3, n_pos_dim=2,
-                        state_transition_function=np.random.randn(6, 6),
-                        initial_gradient=np.random.rand(3, 2),
-                        initial_covariance_matrix=np.random.rand(6, 6),
-                        measurement_covariance_matrix=np.random.rand(3, 3),
-                        process_noise=np.random.rand(6, 6),
+        np.random.seed(1)
+        kal_args = dict(n_values=1, n_pos_dim=2,
+                        state_transition_function=np.random.randn(2, 2),
+                        initial_gradient=np.random.rand(1, 2),
+                        initial_covariance_matrix=np.random.rand(2, 2),
+                        measurement_covariance_matrix=np.random.rand(1, 1),
+                        process_noise=np.random.rand(2, 2),
                         alpha=1.1)
         kal_grad = KalmanGradient(**kal_args)
 
