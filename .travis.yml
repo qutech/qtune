@@ -9,7 +9,7 @@ cache: pip
 before_install:
   - pip install coverage coveralls
 script:
-  - "coverage run --source=qupulse --rcfile=coverage.ini setup.py test"
+  - "coverage run --source=qtune --rcfile=coverage.ini setup.py test"
 after_success:
   - coveralls
 
