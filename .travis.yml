@@ -1,0 +1,17 @@
+language: python
+python:
+  - 3.5
+  - 3.6
+
+#these directories are persistent
+cache: pip
+
+before_install:
+  - pip install coverage coveralls
+script:
+  - "coverage run --source=qtune --rcfile=coverage.ini setup.py test"
+after_success:
+  - coveralls
+
+notifications:
+  email: false
