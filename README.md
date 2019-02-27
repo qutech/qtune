@@ -7,12 +7,17 @@ parameters (here assumed to be voltages) are set and target parameters are measu
 Class names are written **bold** and functions *cursive* throughout the readme. UML class diagrams are inserted to show 
 the heritage and dependencies, and UML activity diagrams visualize function calls.
 The package abbreviations are pd for pandas and np for numpy.
-#Installation
+
+# Installation
 qtune is compatible with Python 3.5+. 
 For development we recommend cloning the git repository
-[git.rwth-aachen.de/qutech/python-atune](https://git.rwth-aachen.de/qutech/python-atune) and installing by:
+[https://github.com/qutech/qtune](https://https://github.com/qutech/qtune) and installing by:
 
     python setup.py develop
+
+It can also be installed as pip package:
+
+    pip install qtune
 
 # Interface of the Physical Back-End
 The core features of this program package do not require a specific structure of the measurement software. This section 
