@@ -217,7 +217,10 @@ class NewtonSolver(Solver):
 
         jacobian = self.jacobian[self._current_position.index]
 
-        step, *_ = np.linalg.lstsq(jacobian, required_diff, rcond=None)
+        # we want the new default behaviour since numpy 1.14
+        # passing None does not work on older versions
+        rcond = np.finfo(float).eps * max(jacobian.shape)
+        step, *_ = np.linalg.lstsq(jacobian, required_diff, rcond=rcond)
 
         # this is not exactly Newton
 
