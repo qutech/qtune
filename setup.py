@@ -90,20 +90,25 @@ setuptools.setup(
     author_email="julian.teske@rwth-aachen.de",
     
     keywords="autotune quantum",
-    url="https://git.rwth-aachen.de/qutech/python-atune",
+    url="https://github.com/qutech/qtune",
     
     packages=['qtune'],
     package_data={'qtune': ['qtune/MATLAB/*/*.m']},
     
     license="GNU GPLv3+",
+
+    description="Quantum dot auto tune framework",
     
     long_description=read('README.md'),
+    long_description_content_type="text/markdown",
+
     install_requires=REQUIRED_PACKAGES,
     setup_requires=['pytest-runner'] + REQUIRED_PACKAGES,
+
+    test_suite="tests",
     tests_require=['pytest'] + REQUIRED_PACKAGES,
 
     cmdclass={'install_matlab': MatlabInstall},
-    
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Science/Research",
