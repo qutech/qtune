@@ -46,14 +46,17 @@ class MatlabInstall(setuptools.Command):
 
     @staticmethod
     def find_matlabroot():
-        p = subprocess.Popen(['where', 'matlab'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        out, err = p.communicate(timeout=1)
+        try:
+            encoding = re.findall(rb'(\d+)', subprocess.check_output('chcp.com'))[0].decode()
+        except:
+            encoding = 'utf-8'
 
-        if p.returncode:
-            raise RuntimeError('Could not locate matlab', str(err, 'utf-8'))
-        else:
-            path = os.path.dirname(str(out, 'utf-8').splitlines()[0])
-            return os.path.split(path)[0]
+        try:
+            path = subprocess.check_output(['where', 'matlab']).decode(encoding).splitlines()[0]
+        except subprocess.CalledProcessError:
+            raise RuntimeError('Could not locate matlab')
+
+        return os.path.dirname(os.path.dirname(path))
 
     def get_installer_dir(self):
         return os.path.join(self.matlabroot, 'extern', 'engines', 'python')
