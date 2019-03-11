@@ -195,3 +195,13 @@ describe the measurements in the Measurement class.
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+ # Citing
+ 
+ This package was developed in the Jülich Aachen Research Alliance (JARA-FIT) institute quantum information.
+ 
+ Please cite the article "A Machine Learning Approach for Automated Fine-Tuning of Semiconductor Spin Qubits" 
+ (arXiv: [1901.01972](https://arxiv.org/abs/1901.01972)) if you are using the qtune package.
+ 
+ This article presents an experimental demonstration of the effectiveness of an algorithm using the Kalman filter, which
+ is used for the implementation of a **GradientEstimator**.
