@@ -428,7 +428,9 @@ class Analyzer:
         x_limits = [102, 102 + 3 * 21 + 4]
         par_x = np.arange(105, 105 + 3 * 21)
         x_shift = 105
-        
+        volt_ylim = [-40, 120]
+        end_caps_size = 1.2
+
         """
 
 
@@ -440,7 +442,7 @@ class Analyzer:
             columnspacing = 1
             par_linewidth = 1
             par_markersize = 1.5
-            grad_elinewidth = 1
+            grad_elinewidth = .5
             grad_linewidth = 1
             set_point_change_linewidth = 1
             set_point_linewidth = .8
@@ -453,6 +455,7 @@ class Analyzer:
             x_limits = [-2, 106]
             x_shift = 0
             volt_ylim = [-40, 120]
+            end_caps_size = 1.2
         else:
             standard_font_size = 7
             fig_size_inches_par = [3.6, 2.6]
@@ -461,7 +464,7 @@ class Analyzer:
             columnspacing = 1
             par_linewidth = 1
             par_markersize = 1.5
-            grad_elinewidth = 1
+            grad_elinewidth = .5
             grad_linewidth = 1
             set_point_change_linewidth = 1
             set_point_linewidth = .8
@@ -475,6 +478,7 @@ class Analyzer:
             volt_ylim = [-28, 120]
             par_x = None
             x_shift = 0
+            end_caps_size = .5
 
         gate_renaming = {"BA": "PA", "BB": "PB", "N": "N", "SA": "SA", "SB": "SB", "T": "T"}
 
@@ -557,13 +561,14 @@ class Analyzer:
                 plt.figure(figure_number, figsize=(5, 4))
                 figure_number += 1
                 for gate in self.tunable_gate_names:
-                    plt.errorbar(x=list(range(number_steps[number_runs - 1] + 1)),
+                    plt.errorbar(x=np.arange(number_steps[number_runs - 1] + 1),
                                  y=1e-3 * gradient_sequence_pd_recalculated[gate][parameter],
                                  yerr=1e-3 * np.sqrt(
                                      covariance_sequence_pd_recalculated[
                                          parameter.decode("ascii") + "_" + gate.decode("ascii")][
                                          parameter.decode("ascii") + "_" + gate.decode("ascii")]),
-                                 label=gate.decode("ascii"), color=tunable_gate_colours[gate.decode("ascii")])
+                                 label=gate.decode("ascii"), color=tunable_gate_colours[gate.decode("ascii")],
+                                 capsize=end_caps_size)
                     plt.gca().tick_params("x", labelsize=standard_font_size)
                     plt.gca().tick_params("y", labelsize=standard_font_size)
                     plt.xlim(x_limits)
@@ -593,9 +598,10 @@ class Analyzer:
                 # plt.subplot(1, 1, 1)
                 plt.subplot(number_parameter, 1, i + 1)
                 #plt.plot(residuals_pd_concatenated[self.parameter_names[i]], "r")
-                plt.errorbar(x=list(range(number_steps[number_runs - 1] + 1)),
+                plt.errorbar(x=np.arange(number_steps[number_runs - 1] + 1),
                              y=parameters_sequence_pd_concatenated_recalc[self.parameter_names[i]],
-                             yerr=np.sqrt(residuals_pd_concatenated[self.parameter_names[i]]), color="r")
+                             yerr=np.sqrt(residuals_pd_concatenated[self.parameter_names[i]]), color="r",
+                                 capsize=end_caps_size)
 #                plt.xlim(9.5, 22.5)
                 # if i == 0:
                     # plt.title("Recalculated Parameters with Residuals", fontsize=18)
@@ -674,10 +680,10 @@ class Analyzer:
             else:
                 plt.figure(figure_number, figsize=(5, 4))
             figure_number += 1
-            for gate in self.tunable_gate_names:
+            for i, gate in enumerate(self.tunable_gate_names):
                 if with_covariance:
                     #plt.errorbar(x=list(range(number_steps[number_runs - 1] + 1) + x_shift),
-                    plt.errorbar(x=np.arange(x_shift, x_shift + gradient_sequence_pd_concatenated[gate][parameter].size),
+                    plt.errorbar(x=np.arange(x_shift, x_shift + gradient_sequence_pd_concatenated[gate][parameter].size) + i * 0.1,
                                  y=1e-3 * gradient_sequence_pd_concatenated[gate][parameter],
                                  yerr=1e-3 * np.sqrt(
                                      covariance_sequence_pd_concatenated[parameter.decode("ascii") + "_" + gate.decode("ascii")][
@@ -685,6 +691,7 @@ class Analyzer:
                                 label=gate.decode("ascii"), color=tunable_gate_colours[gate.decode("ascii")],
                                  linewidth=grad_linewidth,
                                  elinewidth=grad_elinewidth,
+                                 capsize=end_caps_size
                                  )
 
                     if reduced_for_paper:
