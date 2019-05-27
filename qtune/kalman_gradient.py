@@ -1,9 +1,18 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Aug 23 15:38:16 2017
+# qtune: Automated fine tuning and optimization
+#
+#   Copyright (C) 2019  Jonas Dedden and Simon S. Humpohl
+#
+#   This program is free software: you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation version 3 of the License.
+#
+#   This program is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+################################################################################
 
-@author: dedden
-"""
+# @email: julian.teske@rwth-aachen.de
 
 import numpy as np
 import scipy

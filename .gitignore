@@ -1,0 +1,4 @@
+.eggs/
+build/
+dist/
+qtune.egg-info/
