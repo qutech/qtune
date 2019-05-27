@@ -1,3 +1,19 @@
+# qtune: Automated fine tuning and optimization
+#
+#   Copyright (C) 2019  Julian D. Teske and Simon S. Humpohl
+#
+#   This program is free software: you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation version 3 of the License.
+#
+#   This program is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+################################################################################
+
+# @email: julian.teske@rwth-aachen.de
+
 import pandas as pd
 import numpy as np
 from typing import Tuple, Sequence
